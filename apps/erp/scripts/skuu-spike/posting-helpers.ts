@@ -4,8 +4,6 @@ import type { KyselyDatabase } from "@carbon/database/client";
 import type { Transaction } from "kysely";
 import { sql } from "kysely";
 
-export const SPIKE_USER = "spike-system";
-
 export function unwrap<T>(result: {
   data: T | null;
   error: { message?: string } | null;
