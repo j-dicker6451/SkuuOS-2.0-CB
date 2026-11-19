@@ -67,6 +67,53 @@ function spikeReadableId(ctx: SpikeContext, suffix: string) {
   return `${ctx.prefix}-${suffix}`;
 }
 
+/** ERP default: Active makeMethod for the item; promote Draft from upsertPart if needed. */
+async function resolveSpikeMakeMethodId(
+  trx: Transaction<KyselyDatabase>,
+  companyId: string,
+  userId: string,
+  itemId: string
+): Promise<string> {
+  const active = await trx
+    .selectFrom("makeMethod")
+    .select("id")
+    .where("itemId", "=", itemId)
+    .where("companyId", "=", companyId)
+    .where("status", "=", "Active")
+    .orderBy("version", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  if (active) return active.id;
+
+  const draft = await trx
+    .selectFrom("makeMethod")
+    .select(["id", "status", "version"])
+    .where("itemId", "=", itemId)
+    .where("companyId", "=", companyId)
+    .orderBy("createdAt", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  if (!draft) {
+    throw new Error(`makeMethod missing for item ${itemId} after upsertPart`);
+  }
+  const version =
+    draft.version != null && Number(draft.version) > 0
+      ? Number(draft.version)
+      : 1;
+  await trx
+    .updateTable("makeMethod")
+    .set({
+      status: "Active",
+      version,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userId
+    })
+    .where("id", "=", draft.id)
+    .where("companyId", "=", companyId)
+    .execute();
+  return draft.id;
+}
+
 async function receiveLot(
   ctx: SpikeContext,
   itemId: string,
@@ -138,31 +185,12 @@ async function setupBulkItem(
   const operationId = `${ctx.prefix}-mop`;
 
   await runTrx(db, async (trx) => {
-    const defaultMethod = await trx
-      .selectFrom("makeMethod")
-      .select("id")
-      .where("itemId", "=", bulkItemId)
-      .where("companyId", "=", ctx.companyId)
-      .orderBy("createdAt")
-      .limit(1)
-      .executeTakeFirst();
-    if (!defaultMethod) {
-      throw new Error(
-        `Default makeMethod missing for bulk item ${bulkItemId} after upsertPart`
-      );
-    }
-    const makeMethodId = defaultMethod.id;
-    await trx
-      .updateTable("makeMethod")
-      .set({
-        version: 1,
-        status: "Active",
-        isDefault: true,
-        updatedAt: new Date().toISOString()
-      })
-      .where("id", "=", makeMethodId)
-      .where("companyId", "=", ctx.companyId)
-      .execute();
+    const makeMethodId = await resolveSpikeMakeMethodId(
+      trx,
+      ctx.companyId,
+      ctx.userId,
+      bulkItemId
+    );
     await trx
       .insertInto("process")
       .values({
@@ -199,7 +227,6 @@ async function setupBulkItem(
           itemId: ingredientItemIds[i]!,
           itemType: "Part",
           methodType: "Pull from Inventory",
-          description: ing.name,
           quantity: ing.percentage / 100,
           unitOfMeasureCode: ctx.lookups.unitKg,
           companyId: ctx.companyId,
@@ -307,10 +334,15 @@ async function createAndRunBulkJob(
   for (const m of materials) {
     const pctRow = await ctx.db
       .selectFrom("jobMaterial as jm")
+      .innerJoin("methodMaterial as mm", (join) =>
+        join
+          .onRef("mm.makeMethodId", "=", "jm.jobMakeMethodId")
+          .onRef("mm.itemId", "=", "jm.itemId")
+      )
       .innerJoin(
         "skuuMethodMaterialFormula as f",
         "f.methodMaterialId",
-        "jm.sourceMethodMaterialId"
+        "mm.id"
       )
       .select(["f.percentWw", "jm.quantity", "jm.estimatedQuantity"])
       .where("jm.id", "=", m.id)
@@ -421,31 +453,12 @@ async function setupFillItem(
 ) {
   const kgPerUnit = (packSizeMl * density) / 1000;
   await runTrx(db, async (trx) => {
-    const defaultMethod = await trx
-      .selectFrom("makeMethod")
-      .select("id")
-      .where("itemId", "=", fillItemId)
-      .where("companyId", "=", ctx.companyId)
-      .orderBy("createdAt")
-      .limit(1)
-      .executeTakeFirst();
-    if (!defaultMethod) {
-      throw new Error(
-        `Default makeMethod missing for fill item ${fillItemId} after upsertPart`
-      );
-    }
-    const makeMethodId = defaultMethod.id;
-    await trx
-      .updateTable("makeMethod")
-      .set({
-        version: 1,
-        status: "Active",
-        isDefault: true,
-        updatedAt: new Date().toISOString()
-      })
-      .where("id", "=", makeMethodId)
-      .where("companyId", "=", ctx.companyId)
-      .execute();
+    const makeMethodId = await resolveSpikeMakeMethodId(
+      trx,
+      ctx.companyId,
+      ctx.userId,
+      fillItemId
+    );
     const processId = `${ctx.prefix}-fproc-${key}`;
     const opId = `${ctx.prefix}-fop-${key}`;
     await trx
@@ -480,7 +493,6 @@ async function setupFillItem(
         itemId: bulkItemId,
         itemType: "Part",
         methodType: "Pull from Inventory",
-        description: "Bulk",
         quantity: kgPerUnit,
         unitOfMeasureCode: ctx.lookups.unitKg,
         companyId: ctx.companyId,
@@ -585,7 +597,7 @@ async function shipFillUnits(
           itemId: fillItemId,
           saleQuantity: quantity,
           unitPrice: 5,
-          methodType: "Pick from Inventory",
+          methodType: "Pull from Inventory",
           unitOfMeasureCode: ctx.lookups.unitEa,
           locationId: ctx.locationId,
           companyId: ctx.companyId,
