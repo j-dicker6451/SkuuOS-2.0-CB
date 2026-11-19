@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { KyselyDatabase } from "@carbon/database/client";
-import type { Transaction } from "kysely";
+import type { SpikeDb, SpikeTrx } from "./spike-db";
 import { sql } from "kysely";
 
 export function unwrap<T>(result: {
@@ -16,8 +15,8 @@ export function unwrap<T>(result: {
 }
 
 export async function seedTrx(
-  db: import("kysely").Kysely<KyselyDatabase>,
-  fn: (trx: Transaction<KyselyDatabase>) => Promise<unknown>
+  db: SpikeDb,
+  fn: (trx: SpikeTrx) => Promise<unknown>
 ) {
   await db.transaction().execute(async (trx) => {
     await sql`SET LOCAL "app.sync_in_progress" = 'true'`.execute(trx);

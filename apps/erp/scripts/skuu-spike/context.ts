@@ -9,13 +9,12 @@ type ServiceContext = ServiceFn.ServiceContext;
 const { createServiceContext } = ServiceFn;
 import * as DbClient from "../../../../packages/database/src/client.ts";
 
-type KyselyDatabase = DbClient.KyselyDatabase;
 const { getPostgresClient } = DbClient;
-import type { Kysely } from "kysely";
 import { PostgresDriver, sql } from "kysely";
 import { Pool, type PoolClient } from "pg";
 import { spikeServiceRoleClient } from "./supabase-local";
 import { resolveSpikeLookups, type SpikeLookups } from "./seed-lookups";
+import { asSpikeDb, type SpikeDb } from "./spike-db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,7 +37,7 @@ export function loadSpikeInput(): SpikeInput {
 }
 
 export type SpikeContext = {
-  db: Kysely<KyselyDatabase>;
+  db: SpikeDb;
   pool: Pool;
   companyId: string;
   groupId: string;
@@ -54,7 +53,7 @@ export type SpikeContext = {
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 export async function connectSpikeDb(): Promise<{
-  db: Kysely<KyselyDatabase>;
+  db: SpikeDb;
   pool: Pool;
 }> {
   const databaseUrl = process.env.SUPABASE_DB_URL ?? process.env.DATABASE_URL;
@@ -68,7 +67,7 @@ export async function connectSpikeDb(): Promise<{
     max: 4,
     options: "-c app.sync_in_progress=true"
   });
-  const db = getPostgresClient(pool, PostgresDriver);
+  const db = asSpikeDb(getPostgresClient(pool, PostgresDriver));
   await sql`SELECT set_config('app.sync_in_progress', 'true', false)`.execute(db);
   return { db, pool };
 }
@@ -106,7 +105,7 @@ async function resolveCompanyByEmail(
 
 /** Seeded company (userToCompany), or an isolated always-post-style mini company. */
 function spikeServiceContext(
-  db: Kysely<KyselyDatabase>,
+  db: SpikeDb,
   companyId: string,
   groupId: string,
   userId: string

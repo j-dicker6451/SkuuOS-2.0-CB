@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { sql, type Transaction } from "kysely";
-import type { KyselyDatabase } from "@carbon/database/client";
-import type { Kysely } from "kysely";
+import { sql } from "kysely";
+import type { SpikeDb, SpikeTrx } from "./spike-db";
 
-type Db = Kysely<KyselyDatabase>;
-type Trx = Transaction<KyselyDatabase>;
+type Db = SpikeDb;
+type Trx = SpikeTrx;
 
 function savepointName(step: string) {
   return `teardown_${step.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 48)}`;
@@ -72,6 +71,7 @@ async function deleteCompanyRows(
     | "jobOperationId"
     | "jobMaterialId"
     | "jobId"
+    | "operationId"
     | "id"
     | "documentId"
     | "journalId"
@@ -90,6 +90,95 @@ async function deleteCompanyRows(
       .where(column, "in", slice)
       .execute();
   }
+}
+
+async function deleteJobMaterialSteps(
+  trx: Trx,
+  jobMaterialIds: string[],
+  jobOperationStepIds: string[]
+) {
+  const chunk = 200;
+  if (jobMaterialIds.length > 0) {
+    for (let i = 0; i < jobMaterialIds.length; i += chunk) {
+      const slice = jobMaterialIds.slice(i, i + chunk);
+      await trx
+        .deleteFrom("jobMaterialStep")
+        .where("jobMaterialId", "in", slice)
+        .execute();
+    }
+  }
+  if (jobOperationStepIds.length > 0) {
+    for (let i = 0; i < jobOperationStepIds.length; i += chunk) {
+      const slice = jobOperationStepIds.slice(i, i + chunk);
+      await trx
+        .deleteFrom("jobMaterialStep")
+        .where("jobOperationStepId", "in", slice)
+        .execute();
+    }
+  }
+}
+
+async function deleteJobGraph(
+  trx: Trx,
+  companyId: string,
+  jobIds: string[],
+  jobOpIds: string[]
+) {
+  const jobMaterialIds = (
+    await trx
+      .selectFrom("jobMaterial")
+      .select("id")
+      .where("companyId", "=", companyId)
+      .where("jobId", "in", jobIds)
+      .execute()
+  ).map((r) => r.id);
+
+  const jobOperationStepIds =
+    jobOpIds.length > 0
+      ? (
+          await trx
+            .selectFrom("jobOperationStep")
+            .select("id")
+            .where("companyId", "=", companyId)
+            .where("operationId", "in", jobOpIds)
+            .execute()
+        ).map((r) => r.id)
+      : [];
+
+  await deleteJobMaterialSteps(trx, jobMaterialIds, jobOperationStepIds);
+
+  if (jobMaterialIds.length > 0) {
+    await deleteCompanyRows(
+      trx,
+      "jobMaterialScrap",
+      companyId,
+      "jobMaterialId",
+      jobMaterialIds
+    );
+    await deleteSpikeTableRows(
+      trx,
+      "skuuJobMaterialDispense",
+      companyId,
+      "jobMaterialId",
+      jobMaterialIds
+    );
+  }
+
+  await deleteCompanyRows(trx, "jobMaterial", companyId, "jobId", jobIds);
+
+  if (jobOpIds.length > 0) {
+    await deleteCompanyRows(
+      trx,
+      "jobOperationStep",
+      companyId,
+      "operationId",
+      jobOpIds
+    );
+  }
+  await deleteCompanyRows(trx, "jobOperation", companyId, "jobId", jobIds);
+
+  await deleteCompanyRows(trx, "jobMakeMethod", companyId, "jobId", jobIds);
+  await deleteCompanyRows(trx, "job", companyId, "id", jobIds);
 }
 
 type SpikeDbTable = "costLedger" | "skuuFormulaPhase" | "skuuJobMaterialDispense";
@@ -443,7 +532,7 @@ export async function teardownTagged(
     });
 
     await teardownStep(trx, "delete-job-mes-rows", async () => {
-      if (jobIds.length === 0) return;
+      if (jobIds.length === 0 || jobOpIds.length === 0) return;
       await deleteCompanyRows(
         trx,
         "productionQuantity",
@@ -465,40 +554,6 @@ export async function teardownTagged(
         "jobOperationId",
         jobOpIds
       );
-
-      const jobMaterialIds = (
-        await trx
-          .selectFrom("jobMaterial")
-          .select("id")
-          .where("companyId", "=", companyId)
-          .where("jobId", "in", jobIds)
-          .execute()
-      ).map((r) => r.id);
-
-      if (jobMaterialIds.length > 0) {
-        const chunk = 200;
-        for (let i = 0; i < jobMaterialIds.length; i += chunk) {
-          const slice = jobMaterialIds.slice(i, i + chunk);
-          await trx
-            .deleteFrom("jobMaterialStep")
-            .where("jobMaterialId", "in", slice)
-            .execute();
-        }
-        await deleteCompanyRows(
-          trx,
-          "jobMaterialScrap",
-          companyId,
-          "jobMaterialId",
-          jobMaterialIds
-        );
-        await deleteSpikeTableRows(
-          trx,
-          "skuuJobMaterialDispense",
-          companyId,
-          "jobMaterialId",
-          jobMaterialIds
-        );
-      }
     });
 
     await teardownStep(trx, "delete-journals", async () => {
@@ -545,17 +600,7 @@ export async function teardownTagged(
 
     await teardownStep(trx, "delete-jobs", async () => {
       if (jobIds.length === 0) return;
-      await deleteCompanyRows(trx, "jobMaterial", companyId, "jobId", jobIds);
-      await deleteCompanyRows(
-        trx,
-        "jobOperationStep",
-        companyId,
-        "jobOperationId",
-        jobOpIds
-      );
-      await deleteCompanyRows(trx, "jobOperation", companyId, "jobId", jobIds);
-      await deleteCompanyRows(trx, "jobMakeMethod", companyId, "jobId", jobIds);
-      await deleteCompanyRows(trx, "job", companyId, "id", jobIds);
+      await deleteJobGraph(trx, companyId, jobIds, jobOpIds);
     });
 
     await teardownStep(trx, "delete-dispense-by-prefix", async () => {

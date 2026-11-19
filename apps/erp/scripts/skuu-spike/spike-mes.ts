@@ -52,7 +52,7 @@ export async function resolveJobOutputTrackedEntity(
     .where("companyId", "=", companyId)
     .where("itemId", "=", itemId)
     .where("documentId", "=", jobId)
-    .where("entryType", "in", ["Assembly Output", "Job Receipt"])
+    .where("entryType", "=", "Assembly Output")
     .where("trackedEntityId", "is not", null)
     .orderBy("createdAt", "desc")
     .limit(1)
