@@ -2,6 +2,7 @@
 
 import { sql, type Kysely } from "kysely";
 import type { KyselyDatabase } from "@carbon/database/client";
+import { equals, round } from "@carbon/database/precision";
 import { manufactureFromExpectedYield } from "@skuu/formula";
 import { issueMaterial } from "~/modules/inventory/inventory.service";
 import { invokePosting } from "~/modules/shared/shared.service";
@@ -17,7 +18,55 @@ import type { SpikeContext, SpikeInput } from "./context";
 
 type Db = Kysely<KyselyDatabase>;
 
-const roundQty = (n: number) => Math.round(n * 10000) / 10000;
+const QTY_EPS = 1e-5;
+
+export type SpikeLot = { id: string; quantity: number };
+
+/**
+ * Greedy allocation: prefer smaller lots first so full consumes happen before
+ * partial splits (Carbon: drawQuantity must be below parent qty on a split).
+ */
+export function allocateTrackedIssueDraws(
+  lots: SpikeLot[],
+  toIssue: number
+): { trackedEntityId: string; quantity: number }[] {
+  if (toIssue <= QTY_EPS) return [];
+  if (lots.length === 0) {
+    throw new Error("No input lots to issue");
+  }
+
+  let remaining = round(toIssue);
+  const ordered = [...lots].sort((a, b) => a.quantity - b.quantity);
+  const children: { trackedEntityId: string; quantity: number }[] = [];
+
+  for (const lot of ordered) {
+    if (remaining <= QTY_EPS) break;
+    const available = round(lot.quantity);
+    if (available <= QTY_EPS) continue;
+
+    const capped = round(Math.min(available, remaining));
+    if (capped <= QTY_EPS) continue;
+
+    const quantity = equals(capped, available) ? available : capped;
+    children.push({ trackedEntityId: lot.id, quantity });
+    remaining = round(remaining - quantity);
+  }
+
+  if (remaining > QTY_EPS) {
+    throw new Error(
+      `Insufficient lot quantity: need ${round(toIssue)}, short ${remaining}`
+    );
+  }
+
+  const sum = round(children.reduce((acc, c) => acc + c.quantity, 0));
+  if (!equals(sum, round(toIssue))) {
+    throw new Error(
+      `Lot draws sum ${sum} does not match job material requirement ${round(toIssue)}`
+    );
+  }
+
+  return children;
+}
 
 /** Job output lot seeded on job insert — Reserved until MES batch complete (produceBatchOutput). */
 export async function resolveJobOutputTrackedEntity(
@@ -167,24 +216,14 @@ export async function assertJobMaterialsGross(
 }
 
 export function buildTrackedIssueChildren(
-  lots: { id: string; quantity: number }[],
+  lots: SpikeLot[],
   toIssue: number,
   multiLotDemo: boolean
 ): { trackedEntityId: string; quantity: number }[] {
-  if (toIssue <= 0) return [];
-  if (lots.length === 0) {
-    throw new Error("No input lots to issue");
-  }
   if (!multiLotDemo || lots.length < 2) {
-    return [{ trackedEntityId: lots[0]!.id, quantity: roundQty(toIssue) }];
+    return allocateTrackedIssueDraws(lots.slice(0, 1), toIssue);
   }
-  const firstMax = Math.min(lots[0]!.quantity, roundQty(toIssue * 0.55));
-  const firstQty = Math.max(0.0001, firstMax);
-  const secondQty = roundQty(toIssue - firstQty);
-  return [
-    { trackedEntityId: lots[0]!.id, quantity: firstQty },
-    { trackedEntityId: lots[1]!.id, quantity: secondQty }
-  ];
+  return allocateTrackedIssueDraws(lots, toIssue);
 }
 
 /** MES shop floor: trackedEntitiesToOperation (consume) per job material line. */

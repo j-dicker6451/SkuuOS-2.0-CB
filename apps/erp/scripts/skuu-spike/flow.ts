@@ -24,6 +24,7 @@ import type { SpikeContext, SpikeInput } from "./context";
 import type { SpikeReportLine } from "./report";
 import { ensureSpikePart } from "./item-factory";
 import {
+  allocateTrackedIssueDraws,
   assertJobConsumptionTrace,
   assertJobMaterialsGross,
   issueTrackedMaterialsMes,
@@ -393,7 +394,7 @@ async function createAndRunBulkJob(
     multiLotItemId != null
       ? await ctx.db
           .selectFrom("jobMaterial")
-          .select("id")
+          .select(["id", "quantity", "estimatedQuantity", "quantityToIssue"])
           .where("jobId", "=", jobId)
           .where("itemId", "=", multiLotItemId)
           .executeTakeFirst()
@@ -401,30 +402,27 @@ async function createAndRunBulkJob(
   if (jobMat0 && multiLotItemId) {
     const lots = lotsByItem.get(multiLotItemId) ?? [];
     if (lots.length >= 2) {
+      const toIssue = Number(
+        jobMat0.quantityToIssue ??
+          jobMat0.estimatedQuantity ??
+          jobMat0.quantity ??
+          0
+      );
+      const draws = allocateTrackedIssueDraws(lots, toIssue);
       await ctx.db
         .insertInto("skuuJobMaterialDispense")
-        .values([
-          {
+        .values(
+          draws.map((draw, sortOrder) => ({
             id: nanoid(),
             jobMaterialId: jobMat0.id,
             companyId: ctx.companyId,
-            trackedEntityId: lots[0]!.id,
-            quantityKg: lots[0]!.quantity > 0 ? Math.min(3, lots[0]!.quantity) : 1,
-            supplierBatchNumber: `${lots[0]!.id}-A`,
-            sortOrder: 0,
+            trackedEntityId: draw.trackedEntityId,
+            quantityKg: draw.quantity,
+            supplierBatchNumber: `${draw.trackedEntityId}-lot`,
+            sortOrder,
             createdBy: ctx.userId
-          },
-          {
-            id: nanoid(),
-            jobMaterialId: jobMat0.id,
-            companyId: ctx.companyId,
-            trackedEntityId: lots[1]!.id,
-            quantityKg: 2,
-            supplierBatchNumber: `${lots[1]!.id}-B`,
-            sortOrder: 1,
-            createdBy: ctx.userId
-          }
-        ])
+          }))
+        )
         .onConflict((oc) => oc.column("id").doNothing())
         .execute();
     }
