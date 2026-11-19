@@ -15,6 +15,7 @@ import type { Kysely } from "kysely";
 import { PostgresDriver, sql } from "kysely";
 import { Pool, type PoolClient } from "pg";
 import { spikeServiceRoleClient } from "./supabase-local";
+import { resolveSpikeLookups, type SpikeLookups } from "./seed-lookups";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +47,7 @@ export type SpikeContext = {
   customerId: string;
   prefix: string;
   service: ServiceContext;
+  lookups: SpikeLookups;
   cleanup?: () => Promise<void>;
 };
 
@@ -138,7 +140,7 @@ export async function buildSpikeContext(
   if (resolved) {
       const company = await db
         .selectFrom("company")
-        .select(["id", "companyGroupId"])
+        .select(["id", "companyGroupId", "baseCurrencyCode"])
         .where("id", "=", resolved.companyId)
         .executeTakeFirstOrThrow();
       const location = await db
@@ -164,6 +166,12 @@ export async function buildSpikeContext(
         throw new Error(`No customer for company ${company.id}`);
       }
       const prefix = `${tag}-${input.formulaRef}`.replace(/[^a-zA-Z0-9-_]/g, "-");
+      const lookups = await resolveSpikeLookups(
+        db,
+        company.id,
+        company.companyGroupId!,
+        company.baseCurrencyCode
+      );
       const service = spikeServiceContext(
         db,
         company.id,
@@ -179,7 +187,8 @@ export async function buildSpikeContext(
       locationId: location.id,
       customerId: customer.id,
       prefix,
-      service
+      service,
+      lookups
     };
   }
 

@@ -19,7 +19,7 @@ import {
   recalculateJobRequirements
 } from "~/modules/production/production.service";
 import { handlesOf } from "../../test/database/fixtures/handles";
-import { seedTrx, unwrap, SPIKE_USER } from "./posting-helpers";
+import { seedTrx, unwrap } from "./posting-helpers";
 import type { SpikeContext, SpikeInput } from "./context";
 import type { SpikeReportLine } from "./report";
 
@@ -111,7 +111,7 @@ async function ensureBatchItem(
         type: "Part",
         itemTrackingType: "Batch",
         replenishmentSystem: "Buy",
-        unitOfMeasureCode: "KG",
+        unitOfMeasureCode: ctx.lookups.unitKg,
         companyId: ctx.companyId,
         createdBy: ctx.userId
       })
@@ -186,7 +186,7 @@ async function setupBulkItem(
         type: "Part",
         itemTrackingType: "Batch",
         replenishmentSystem: "Make",
-        unitOfMeasureCode: "KG",
+        unitOfMeasureCode: ctx.lookups.unitKg,
         companyId: ctx.companyId,
         createdBy: ctx.userId
       })
@@ -210,7 +210,7 @@ async function setupBulkItem(
       .values({
         id: processId,
         name: `${input.product} mix`,
-        defaultStandardFactor: "Hours/Piece",
+        defaultStandardFactor: ctx.lookups.standardFactor,
         companyId: ctx.companyId,
         createdBy: ctx.userId
       })
@@ -243,7 +243,7 @@ async function setupBulkItem(
           methodType: "Pull from Inventory",
           description: ing.name,
           quantity: ing.percentage / 100,
-          unitOfMeasureCode: "KG",
+          unitOfMeasureCode: ctx.lookups.unitKg,
           companyId: ctx.companyId,
           createdBy: ctx.userId
         })
@@ -311,7 +311,7 @@ async function createAndRunBulkJob(
   const created = await insertJob(client, ctx.db, {
     itemId: bulkItemId,
     quantity: input.batchKg,
-    unitOfMeasureCode: "KG",
+    unitOfMeasureCode: ctx.lookups.unitKg,
     locationId: ctx.locationId,
     companyId: ctx.companyId,
     createdBy: ctx.userId,
@@ -473,7 +473,7 @@ async function setupFillItem(
         type: "Part",
         itemTrackingType: "Batch",
         replenishmentSystem: "Make",
-        unitOfMeasureCode: "EA",
+        unitOfMeasureCode: ctx.lookups.unitEa,
         companyId: ctx.companyId,
         createdBy: ctx.userId
       })
@@ -499,7 +499,7 @@ async function setupFillItem(
       .values({
         id: processId,
         name: `Fill ${packSizeMl}mL`,
-        defaultStandardFactor: "Hours/Piece",
+        defaultStandardFactor: ctx.lookups.standardFactor,
         companyId: ctx.companyId,
         createdBy: ctx.userId
       })
@@ -528,7 +528,7 @@ async function setupFillItem(
         methodType: "Pull from Inventory",
         description: "Bulk",
         quantity: kgPerUnit,
-        unitOfMeasureCode: "KG",
+        unitOfMeasureCode: ctx.lookups.unitKg,
         companyId: ctx.companyId,
         createdBy: ctx.userId
       })
@@ -549,7 +549,7 @@ async function runFillJob(
   const created = await insertJob(client, ctx.db, {
     itemId: fillItemId,
     quantity: units,
-    unitOfMeasureCode: "EA",
+    unitOfMeasureCode: ctx.lookups.unitEa,
     locationId: ctx.locationId,
     companyId: ctx.companyId,
     createdBy: ctx.userId,
@@ -612,7 +612,7 @@ async function shipFillUnits(
           id: salesOrderId,
           salesOrderId: `${ctx.prefix}-SO-${key}`,
           customerId: ctx.customerId,
-          currencyCode: "USD",
+          currencyCode: ctx.lookups.currencyCode,
           exchangeRate: 1,
           locationId: ctx.locationId,
           companyId: ctx.companyId,
@@ -632,10 +632,10 @@ async function shipFillUnits(
           saleQuantity: quantity,
           unitPrice: 5,
           methodType: "Pick from Inventory",
-          unitOfMeasureCode: "EA",
+          unitOfMeasureCode: ctx.lookups.unitEa,
           locationId: ctx.locationId,
           companyId: ctx.companyId,
-          createdBy: SPIKE_USER
+          createdBy: ctx.userId
         })
         .execute();
   });
@@ -706,6 +706,10 @@ export async function runSpikeFlow(
   const extra: SpikeReportLine[] = [];
   const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
   note("tag", `Run tag ${ctx.prefix} (env prefix ${tag})`);
+  note(
+    "lookups",
+    `UoM mass=${ctx.lookups.unitKg} count=${ctx.lookups.unitEa} currency=${ctx.lookups.currencyCode}`
+  );
 
   await teardownTagged(ctx.db, ctx.companyId, ctx.prefix);
   note("reset", `Cleared prior tagged rows for ${ctx.prefix}`);
