@@ -3,16 +3,17 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServiceContext, type ServiceContext } from "@carbon/api/service-fn.server";
-import {
-  getPostgresClient,
-  type KyselyDatabase
-} from "@carbon/database/client";
-import { resolveCompany } from "../../packages/database/src/datasets/types.ts";
+import * as ServiceFn from "../../../../packages/api/src/service-fn.server.ts";
+
+type ServiceContext = ServiceFn.ServiceContext;
+const { createServiceContext } = ServiceFn;
+import * as DbClient from "../../../../packages/database/src/client.ts";
+
+type KyselyDatabase = DbClient.KyselyDatabase;
+const { getPostgresClient } = DbClient;
 import type { Kysely } from "kysely";
 import { PostgresDriver, sql } from "kysely";
 import { Pool, type PoolClient } from "pg";
-import { loadDotEnv } from "../lib/local-script-config";
 import { spikeServiceRoleClient } from "./supabase-local";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,7 +55,6 @@ export async function connectSpikeDb(): Promise<{
   db: Kysely<KyselyDatabase>;
   pool: Pool;
 }> {
-  loadDotEnv();
   const databaseUrl = process.env.SUPABASE_DB_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl || !LOCAL_HOSTS.has(new URL(databaseUrl).hostname)) {
     throw new Error(
@@ -81,6 +81,25 @@ async function withPgClient<T>(
   } finally {
     client.release();
   }
+}
+
+async function resolveCompanyByEmail(
+  client: PoolClient,
+  email: string
+): Promise<{ companyId: string; userId: string } | null> {
+  const { rows } = await client.query<{
+    companyId: string;
+    userId: string;
+  }>(
+    `SELECT utc."companyId", utc."userId"
+     FROM "userToCompany" utc
+     JOIN "user" u ON u.id = utc."userId"
+     WHERE u.email = $1 AND utc.role = 'employee'
+     ORDER BY utc."companyId"
+     LIMIT 1`,
+    [email]
+  );
+  return rows[0] ?? null;
 }
 
 /** Seeded company (userToCompany), or an isolated always-post-style mini company. */
@@ -114,7 +133,7 @@ export async function buildSpikeContext(
   const email = process.env.SKUU_SPIKE_USER ?? "test@carbon.ms";
 
   const resolved = await withPgClient(pool, (client) =>
-    resolveCompany(client, email)
+    resolveCompanyByEmail(client, email)
   );
   if (resolved) {
       const company = await db

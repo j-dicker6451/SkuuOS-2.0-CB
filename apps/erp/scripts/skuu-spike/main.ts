@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { writeFileSync } from "node:fs";
@@ -10,7 +9,7 @@ import { createReporter } from "./report";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function main() {
+export async function main() {
   const input = loadSpikeInput();
   const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
   const { report, note } = createReporter();
@@ -24,14 +23,10 @@ async function main() {
     );
     await runSpikeFlow(ctx, input, note);
   } catch (err) {
-    note(
-      "error",
-      err instanceof Error ? err.message : String(err)
-    );
+    note("error", err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
   } finally {
-    if (ctx?.cleanup) await ctx.cleanup();
-    else if (ctx?.pool) await ctx.pool.end();
+    if (ctx?.pool) await ctx.pool.end();
     const reportPath = path.join(__dirname, "report-last-run.txt");
     writeFileSync(
       reportPath,
@@ -41,5 +36,3 @@ async function main() {
     note("done", `Report written to ${reportPath}`);
   }
 }
-
-main();

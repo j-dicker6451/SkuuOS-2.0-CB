@@ -12,16 +12,44 @@ import {
   postInventoryAdjustment,
   postShipment,
   issueMaterial
-} from "../../apps/erp/app/modules/inventory/inventory.service";
-import { invokeCreate, invokePosting } from "../../apps/erp/app/modules/shared/shared.service";
-import { releaseJobs, completeJob } from "../../apps/erp/app/modules/production/production.server";
-import { insertJob, recalculateJobRequirements } from "../../apps/erp/app/modules/production/production.service";
-import { handlesOf } from "../../apps/erp/test/database/fixtures/handles";
+} from "~/modules/inventory/inventory.service";
+import { invokeCreate, invokePosting } from "~/modules/shared/shared.service";
+import {
+  insertJob,
+  recalculateJobRequirements
+} from "~/modules/production/production.service";
+import { handlesOf } from "../../test/database/fixtures/handles";
 import { seedTrx, unwrap, SPIKE_USER } from "./posting-helpers";
 import type { SpikeContext, SpikeInput } from "./context";
 import type { SpikeReportLine } from "./report";
 
 type Db = SpikeContext["db"];
+
+async function releaseJobSpike(ctx: SpikeContext, jobId: string) {
+  await ctx.db
+    .updateTable("job")
+    .set({ status: "Ready", updatedAt: new Date().toISOString() })
+    .where("id", "=", jobId)
+    .where("companyId", "=", ctx.companyId)
+    .execute();
+}
+
+async function completeJobSpike(
+  ctx: SpikeContext,
+  jobId: string,
+  quantityComplete: number
+) {
+  await sql`
+    SELECT complete_job_to_inventory(
+      ${jobId},
+      ${quantityComplete}::numeric,
+      NULL,
+      ${ctx.locationId},
+      ${ctx.companyId},
+      ${ctx.userId}
+    )
+  `.execute(ctx.db);
+}
 
 async function runTrx<T>(
   db: Db,
@@ -340,15 +368,7 @@ async function createAndRunBulkJob(
     }
   }
 
-  const released = await releaseJobs(ctx.service, { jobIds: [jobId] });
-  if (released.error) {
-    throw new Error(`releaseJobs: ${released.error.message}`);
-  }
-  if (released.data?.failed?.length) {
-    throw new Error(
-      `releaseJobs failed: ${released.data.failed.map((f) => f.message).join("; ")}`
-    );
-  }
+  await releaseJobSpike(ctx, jobId);
 
   const operation = await ctx.db
     .selectFrom("jobOperation")
@@ -410,14 +430,7 @@ async function createAndRunBulkJob(
       .execute();
   }
 
-  const completion = await completeJob(ctx.service, {
-    jobId,
-    quantityComplete: input.batchKg,
-    locationId: ctx.locationId
-  });
-  if (completion.error) {
-    throw new Error(`completeJob: ${completion.error.message}`);
-  }
+  await completeJobSpike(ctx, jobId, input.batchKg);
 
   const bulkLot = await ctx.db
     .selectFrom("trackedEntity")
@@ -549,11 +562,7 @@ async function runFillJob(
     companyId: ctx.companyId,
     userId: ctx.userId
   });
-  const released = await releaseJobs(ctx.service, { jobIds: [jobId] });
-  if (released.error) throw new Error(released.error.message);
-  if (released.data?.failed?.length) {
-    throw new Error(released.data.failed[0]!.message);
-  }
+  await releaseJobSpike(ctx, jobId);
 
   const operation = await ctx.db
     .selectFrom("jobOperation")
@@ -578,14 +587,7 @@ async function runFillJob(
       `fill issue (${label}): ${issueResult.error.message} (friction: same bulk lot on two fill jobs may need explicit trackedEntityIds per line)`
     );
   }
-  const completion = await completeJob(ctx.service, {
-    jobId,
-    quantityComplete: units,
-    locationId: ctx.locationId
-  });
-  if (completion.error) {
-    throw new Error(`fill complete: ${completion.error.message}`);
-  }
+  await completeJobSpike(ctx, jobId, units);
   const fillLots = await ctx.db
     .selectFrom("trackedEntity")
     .select(["id", "readableId", "quantity"])
