@@ -13,7 +13,7 @@ UoM and currency codes are read from the seeded company (`kg`, `EA`, `company.ba
 
 Parts are created with `upsertPart` (same as **New Part**), never raw `item` inserts — `app.sync_in_progress` on Kysely seed transactions skips item interceptors and breaks receipts.
 
-Teardown deletes by **`readableId` prefix** (and legacy `id` prefix), including `itemCost`, `itemReplenishment`, `itemPlanning`, jobs, lots, and Skuu rows.
+Teardown deletes by **`readableId` prefix** (and legacy `id` prefix), including jobs matched by readable **`jobId` prefix** or spike **`itemId`**, MES rows (`trackedActivity`, `itemLedger`, `productionQuantity`, …), shipments/SO lines, and Skuu rows. Uses `session_replication_role = replica` like test fixture resets.
 
 | Step | ERP mirror |
 | --- | --- |
