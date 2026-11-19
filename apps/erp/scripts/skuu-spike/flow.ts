@@ -236,7 +236,7 @@ async function setupBulkItem(
           itemId: ingredientItemIds[i]!,
           itemType: "Part",
           methodType: "Pull from Inventory",
-          quantity: ing.percentage / 100,
+          quantity: 0,
           unitOfMeasureCode: ctx.lookups.unitKg,
           companyId: ctx.companyId,
           createdBy: ctx.userId
@@ -258,21 +258,6 @@ async function setupBulkItem(
       formulaRows.push({ methodMaterialId, percentWw: ing.percentage });
     }
 
-    await trx
-      .insertInto("skuuMakeMethodBulk")
-      .values({
-        makeMethodId: resolvedMakeMethodId,
-        companyId: ctx.companyId,
-        enabled: true,
-        batchBasisKg: 1,
-        expectedYieldPercent: input.expectedYieldPercent,
-        productDensityGPerMl: input.productDensityGPerMl,
-        yieldLossPercent: 0,
-        createdBy: ctx.userId,
-        updatedBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("makeMethodId").doNothing())
-      .execute();
     await trx
       .insertInto("skuuFormulaPhase")
       .values({

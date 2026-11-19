@@ -81,6 +81,31 @@ export function percentToQuantityMultiplier(percentWw: number): number {
   return percentWw / 100;
 }
 
+/** Gross input kg before yield loss (alias of manufactureFromExpectedYield). */
+export function grossInputKg(
+  targetOutputKg: number,
+  expectedYieldPercent: number
+): number {
+  return manufactureFromExpectedYield(targetOutputKg, expectedYieldPercent);
+}
+
+/** Net methodMaterial.quantity from % w/w (finish basis). */
+export function netMethodQuantityMultiplier(percentWw: number): number {
+  return percentWw / 100;
+}
+
+/**
+ * Gross methodMaterial.quantity when Skuu bulk is enabled: same kg per line as
+ * lineKgFromPercent at 1 kg target, so Carbon explode (qty × job qty) matches
+ * gross batch input.
+ */
+export function grossMethodQuantityMultiplier(
+  percentWw: number,
+  expectedYieldPercent: number
+): number {
+  return lineKgFromPercent(percentWw, grossInputKg(1, expectedYieldPercent));
+}
+
 /** Line kg for a batch from % w/w and grossed input kg. */
 export function lineKgFromPercent(
   percentWw: number,

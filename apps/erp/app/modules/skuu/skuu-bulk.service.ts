@@ -2,7 +2,12 @@
 // SkuuOS bulk formula persistence (AGPL extension).
 
 import type { Database } from "@carbon/database";
-import { type PercentLine, validatePercentSum } from "@skuu/formula";
+import {
+  grossMethodQuantityMultiplier,
+  netMethodQuantityMultiplier,
+  type PercentLine,
+  validatePercentSum
+} from "@skuu/formula";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SkuuBulkProfile = {
@@ -94,6 +99,55 @@ export async function assertSkuuBulkFormulaValid(
   }
 }
 
+/** Writes methodMaterial.quantity from skuu % rows (gross when bulk enabled). */
+export async function syncMethodMaterialQuantitiesForBulkFormula(
+  client: SkuuClient,
+  args: {
+    makeMethodId: string;
+    companyId: string;
+    userId: string;
+  }
+) {
+  const profile = await loadSkuuBulkProfile(
+    client,
+    args.makeMethodId,
+    args.companyId
+  );
+  const percents = await loadSkuuFormulaPercents(
+    client,
+    args.makeMethodId,
+    args.companyId
+  );
+  const { data: materials, error: loadErr } = await client
+    .from("methodMaterial")
+    .select("id")
+    .eq("makeMethodId", args.makeMethodId)
+    .eq("companyId", args.companyId);
+  if (loadErr) return { error: loadErr };
+  const enabled = profile?.enabled ?? false;
+  const expectedYieldPercent = profile?.expectedYieldPercent ?? 100;
+  const now = new Date().toISOString();
+
+  for (const row of materials ?? []) {
+    const percentWw = percents.get(row.id);
+    if (percentWw == null) continue;
+    const quantity = enabled
+      ? grossMethodQuantityMultiplier(percentWw, expectedYieldPercent)
+      : netMethodQuantityMultiplier(percentWw);
+    const { error } = await client
+      .from("methodMaterial")
+      .update({
+        quantity,
+        updatedBy: args.userId,
+        updatedAt: now
+      })
+      .eq("id", row.id)
+      .eq("companyId", args.companyId);
+    if (error) return { error };
+  }
+  return { error: null };
+}
+
 export async function upsertSkuuBulkProfile(
   client: SkuuClient,
   args: {
@@ -104,7 +158,7 @@ export async function upsertSkuuBulkProfile(
   }
 ) {
   const now = new Date().toISOString();
-  return client.from("skuuMakeMethodBulk").upsert(
+  const upsert = await client.from("skuuMakeMethodBulk").upsert(
     {
       makeMethodId: args.makeMethodId,
       companyId: args.companyId,
@@ -119,6 +173,14 @@ export async function upsertSkuuBulkProfile(
     },
     { onConflict: "makeMethodId" }
   );
+  if (upsert.error) return upsert;
+  const sync = await syncMethodMaterialQuantitiesForBulkFormula(client, {
+    makeMethodId: args.makeMethodId,
+    companyId: args.companyId,
+    userId: args.userId
+  });
+  if (sync.error) return { data: null, error: sync.error };
+  return upsert;
 }
 
 export async function upsertSkuuMaterialPercent(
@@ -132,12 +194,27 @@ export async function upsertSkuuMaterialPercent(
 ) {
   const now = new Date().toISOString();
   if (args.percentWw == null) {
-    return client
+    const del = await client
       .from("skuuMethodMaterialFormula")
       .delete()
       .eq("methodMaterialId", args.methodMaterialId);
+    if (del.error) return del;
+    const { data: material } = await client
+      .from("methodMaterial")
+      .select("makeMethodId")
+      .eq("id", args.methodMaterialId)
+      .maybeSingle();
+    if (material?.makeMethodId) {
+      const sync = await syncMethodMaterialQuantitiesForBulkFormula(client, {
+        makeMethodId: material.makeMethodId,
+        companyId: args.companyId,
+        userId: args.userId
+      });
+      if (sync.error) return { data: null, error: sync.error };
+    }
+    return del;
   }
-  return client.from("skuuMethodMaterialFormula").upsert(
+  const upsert = await client.from("skuuMethodMaterialFormula").upsert(
     {
       methodMaterialId: args.methodMaterialId,
       companyId: args.companyId,
@@ -148,6 +225,21 @@ export async function upsertSkuuMaterialPercent(
     },
     { onConflict: "methodMaterialId" }
   );
+  if (upsert.error) return upsert;
+  const { data: material } = await client
+    .from("methodMaterial")
+    .select("makeMethodId")
+    .eq("id", args.methodMaterialId)
+    .maybeSingle();
+  if (material?.makeMethodId) {
+    const sync = await syncMethodMaterialQuantitiesForBulkFormula(client, {
+      makeMethodId: material.makeMethodId,
+      companyId: args.companyId,
+      userId: args.userId
+    });
+    if (sync.error) return { data: null, error: sync.error };
+  }
+  return upsert;
 }
 
 export async function defaultRetestDateForItem(

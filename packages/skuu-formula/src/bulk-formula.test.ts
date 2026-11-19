@@ -3,6 +3,8 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDispensedAmounts,
+  grossInputKg,
+  grossMethodQuantityMultiplier,
   lineKgFromPercent,
   litersToKg,
   manufactureFromExpectedYield,
@@ -56,5 +58,24 @@ describe("lineKgFromPercent", () => {
   it("scales decimal kg for a batch", () => {
     const gross = manufactureFromExpectedYield(250, 100);
     expect(lineKgFromPercent(12.5, gross)).toBeCloseTo(31.25, 4);
+  });
+});
+
+describe("grossMethodQuantityMultiplier", () => {
+  it("100 kg job at 98% yield sums to gross input kg", () => {
+    const yieldPct = 98;
+    const lines = [
+      { percentWw: 90.5 },
+      { percentWw: 9.5 }
+    ];
+    const jobQty = 100;
+    const grossTarget = grossInputKg(jobQty, yieldPct);
+    const sumFromMultipliers = lines.reduce(
+      (acc, line) =>
+        acc + grossMethodQuantityMultiplier(line.percentWw, yieldPct) * jobQty,
+      0
+    );
+    expect(sumFromMultipliers).toBeCloseTo(grossTarget, 4);
+    expect(grossTarget).toBeCloseTo(102.0408, 4);
   });
 });

@@ -12,6 +12,8 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   formatDispensedAmounts,
+  grossInputKg,
+  lineKgFromPercent,
   sumPercentWw,
   validatePercentSum
 } from "@skuu/formula";
@@ -58,6 +60,9 @@ export function SkuuBulkFormulaSection({
       percentWw: m.percentWw
     }))
   );
+  const grossBasisKg = enabled
+    ? grossInputKg(batchBasisKg, expectedYieldPercent)
+    : batchBasisKg;
 
   return (
     <Card>
@@ -126,7 +131,7 @@ export function SkuuBulkFormulaSection({
             const preview =
               line.percentWw != null && enabled
                 ? formatDispensedAmounts(
-                    (line.percentWw / 100) * batchBasisKg,
+                    lineKgFromPercent(line.percentWw, grossBasisKg),
                     line.percentWw
                   )
                 : null;
@@ -157,7 +162,8 @@ export function SkuuBulkFormulaSection({
                 )}
                 {preview && (
                   <span className="text-xs text-muted-foreground pb-2">
-                    {preview.kg} kg · {preview.g} g · {preview.percentWw}%
+                    {preview.percentWw}% net · {preview.kg} kg gross ·{" "}
+                    {preview.g} g
                     {line.phaseNumber != null
                       ? ` · Phase ${line.phaseNumber}`
                       : ""}
