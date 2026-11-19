@@ -18,7 +18,7 @@ Teardown deletes by **`readableId` prefix** (and legacy `id` prefix), including 
 | Step | ERP mirror |
 | --- | --- |
 | Receive raw | `postInventoryAdjustment` (manual positive adj.) |
-| Bulk/fill jobs | `insertJob` → `recalculateJobRequirements` → release (spike SQL) → `issueMaterial` → `complete_job_to_inventory` |
+| Bulk/fill jobs | `insertJob` → `recalculateJobRequirements` (Skuu gross-up) → release → **MES** `trackedEntitiesToOperation` + `jobOperationBatchComplete` → `complete_job_to_inventory` |
 | Ship | `createDocument` + `postShipment` |
 
 - Input: `example-formula.json` or `SKUU_SPIKE_INPUT`

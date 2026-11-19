@@ -23,6 +23,14 @@ import { seedTrx, unwrap } from "./posting-helpers";
 import type { SpikeContext, SpikeInput } from "./context";
 import type { SpikeReportLine } from "./report";
 import { ensureSpikePart } from "./item-factory";
+import {
+  assertJobConsumptionTrace,
+  assertJobMaterialsGross,
+  issueTrackedMaterialsMes,
+  reportBatchOperationCompleteMes,
+  resolveJobOutputTrackedEntity,
+  syncSkuuBulkToPostgrest
+} from "./spike-mes";
 import { teardownTagged } from "./teardown";
 
 type Db = SpikeContext["db"];
@@ -183,9 +191,10 @@ async function setupBulkItem(
 ) {
   const processId = `${ctx.prefix}-proc`;
   const operationId = `${ctx.prefix}-mop`;
+  const formulaRows: { methodMaterialId: string; percentWw: number }[] = [];
 
-  await runTrx(db, async (trx) => {
-    const makeMethodId = await resolveSpikeMakeMethodId(
+  const makeMethodId = await runTrx(db, async (trx) => {
+    const resolvedMakeMethodId = await resolveSpikeMakeMethodId(
       trx,
       ctx.companyId,
       ctx.userId,
@@ -206,7 +215,7 @@ async function setupBulkItem(
       .insertInto("methodOperation")
       .values({
         id: operationId,
-        makeMethodId,
+        makeMethodId: resolvedMakeMethodId,
         processId,
         description: "Blend",
         companyId: ctx.companyId,
@@ -222,7 +231,7 @@ async function setupBulkItem(
         .insertInto("methodMaterial")
         .values({
           id: methodMaterialId,
-          makeMethodId,
+          makeMethodId: resolvedMakeMethodId,
           methodOperationId: operationId,
           itemId: ingredientItemIds[i]!,
           itemType: "Part",
@@ -246,12 +255,13 @@ async function setupBulkItem(
         })
         .onConflict((oc) => oc.column("methodMaterialId").doNothing())
         .execute();
+      formulaRows.push({ methodMaterialId, percentWw: ing.percentage });
     }
 
     await trx
       .insertInto("skuuMakeMethodBulk")
       .values({
-        makeMethodId,
+        makeMethodId: resolvedMakeMethodId,
         companyId: ctx.companyId,
         enabled: true,
         batchBasisKg: 1,
@@ -266,7 +276,7 @@ async function setupBulkItem(
     await trx
       .insertInto("skuuFormulaPhase")
       .values({
-        makeMethodId,
+        makeMethodId: resolvedMakeMethodId,
         phaseNumber: 1,
         companyId: ctx.companyId,
         instructions: "Spike demo phase — precautions N/A.",
@@ -277,21 +287,21 @@ async function setupBulkItem(
         oc.columns(["makeMethodId", "phaseNumber"]).doNothing()
       )
       .execute();
+    return resolvedMakeMethodId;
   });
 
-  return { bulkItemId, processId };
+  await syncSkuuBulkToPostgrest(ctx, makeMethodId, input, formulaRows);
+
+  return { bulkItemId, processId, makeMethodId };
 }
 
 async function createAndRunBulkJob(
   ctx: SpikeContext,
   input: SpikeInput,
   bulkItemId: string,
+  makeMethodId: string,
   lotsByItem: Map<string, { id: string; quantity: number }[]>
 ) {
-  const grossKg = manufactureFromExpectedYield(
-    input.batchKg,
-    input.expectedYieldPercent
-  );
   const client = ctx.service.asSystem.supabase;
   const created = await insertJob(client, ctx.db, {
     itemId: bulkItemId,
@@ -311,6 +321,25 @@ async function createAndRunBulkJob(
     companyId: ctx.companyId,
     userId: ctx.userId
   });
+  const { grossKg, sumEstimated } = await assertJobMaterialsGross(
+    ctx,
+    jobId,
+    input.batchKg,
+    input.expectedYieldPercent,
+    makeMethodId
+  );
+
+  const outputEntity = await resolveJobOutputTrackedEntity(
+    ctx.db,
+    ctx.companyId,
+    jobId,
+    bulkItemId
+  );
+  if (!outputEntity) {
+    throw new Error(
+      "Job output trackedEntity missing (expected Reserved lot from sync_insert_job_make_method)"
+    );
+  }
 
   const jobRow = await ctx.db
     .selectFrom("job")
@@ -357,6 +386,9 @@ async function createAndRunBulkJob(
       );
     }
   }
+  materialChecks.push(
+    `yield gross-up: jobMaterial estimatedQuantity sum ${sumEstimated.toFixed(4)} kg (target ${grossKg.toFixed(4)} kg)`
+  );
 
   await releaseJobSpike(ctx, jobId);
 
@@ -368,77 +400,92 @@ async function createAndRunBulkJob(
     .limit(1)
     .executeTakeFirstOrThrow();
 
-  const handles = handlesOf({
-    db: ctx.db,
-    companyId: ctx.companyId,
-    userId: ctx.userId
-  });
-  const issueResult = await invokePosting(
-    handles,
-    "issue",
-    { type: "jobOperation", id: operation.id, quantity: input.batchKg },
-    issueMaterial
-  );
-  if (issueResult.error) {
-    throw new Error(`issue bulk job: ${issueResult.error.message}`);
+  const multiLotItemId = [...lotsByItem.entries()].find(
+    ([, lots]) => lots.length > 1
+  )?.[0];
+
+  const jobMat0 =
+    multiLotItemId != null
+      ? await ctx.db
+          .selectFrom("jobMaterial")
+          .select("id")
+          .where("jobId", "=", jobId)
+          .where("itemId", "=", multiLotItemId)
+          .executeTakeFirst()
+      : null;
+  if (jobMat0 && multiLotItemId) {
+    const lots = lotsByItem.get(multiLotItemId) ?? [];
+    if (lots.length >= 2) {
+      await ctx.db
+        .insertInto("skuuJobMaterialDispense")
+        .values([
+          {
+            id: nanoid(),
+            jobMaterialId: jobMat0.id,
+            companyId: ctx.companyId,
+            trackedEntityId: lots[0]!.id,
+            quantityKg: lots[0]!.quantity > 0 ? Math.min(3, lots[0]!.quantity) : 1,
+            supplierBatchNumber: `${lots[0]!.id}-A`,
+            sortOrder: 0,
+            createdBy: ctx.userId
+          },
+          {
+            id: nanoid(),
+            jobMaterialId: jobMat0.id,
+            companyId: ctx.companyId,
+            trackedEntityId: lots[1]!.id,
+            quantityKg: 2,
+            supplierBatchNumber: `${lots[1]!.id}-B`,
+            sortOrder: 1,
+            createdBy: ctx.userId
+          }
+        ])
+        .onConflict((oc) => oc.column("id").doNothing())
+        .execute();
+    }
   }
 
-  for (const [itemId, lots] of lotsByItem) {
-    const jm = materials.find(() => true);
-    void jm;
-    const jobMat = await ctx.db
-      .selectFrom("jobMaterial")
-      .select("id")
-      .where("jobId", "=", jobId)
-      .where("itemId", "=", itemId)
-      .executeTakeFirst();
-    if (!jobMat || lots.length < 2) continue;
-    await ctx.db
-      .insertInto("skuuJobMaterialDispense")
-      .values([
-        {
-          id: nanoid(),
-          jobMaterialId: jobMat.id,
-          companyId: ctx.companyId,
-          trackedEntityId: lots[0]!.id,
-          quantityKg: lots[0]!.quantity > 0 ? Math.min(3, lots[0]!.quantity) : 1,
-          supplierBatchNumber: `${lots[0]!.id}-A`,
-          sortOrder: 0,
-          createdBy: ctx.userId
-        },
-        {
-          id: nanoid(),
-          jobMaterialId: jobMat.id,
-          companyId: ctx.companyId,
-          trackedEntityId: lots[1]!.id,
-          quantityKg: 2,
-          supplierBatchNumber: `${lots[1]!.id}-B`,
-          sortOrder: 1,
-          createdBy: ctx.userId
-        }
-      ])
-      .execute();
-  }
+  await issueTrackedMaterialsMes(
+    ctx,
+    operation.id,
+    outputEntity.id,
+    jobId,
+    lotsByItem,
+    multiLotItemId
+  );
+
+  await reportBatchOperationCompleteMes(
+    ctx,
+    operation.id,
+    outputEntity.id,
+    input.batchKg
+  );
 
   await completeJobSpike(ctx, jobId, input.batchKg);
+  await assertJobConsumptionTrace(ctx.db, ctx.companyId, jobId);
 
-  const bulkLot = await ctx.db
-    .selectFrom("trackedEntity")
-    .select(["id", "readableId", "quantity"])
-    .where("companyId", "=", ctx.companyId)
-    .where("itemId", "=", bulkItemId)
-    .where("status", "=", "Available")
-    .orderBy("createdAt", "desc")
-    .limit(1)
-    .executeTakeFirst();
+  const bulkLot =
+    (await resolveJobOutputTrackedEntity(
+      ctx.db,
+      ctx.companyId,
+      jobId,
+      bulkItemId
+    )) ?? null;
 
   return {
     jobId,
     jobRow,
     materialChecks,
-    bulkLot,
+    bulkLot: bulkLot
+      ? {
+          id: bulkLot.id,
+          readableId: bulkLot.readableId,
+          quantity: bulkLot.quantity
+        }
+      : null,
     grossKg,
-    operationId: operation.id
+    operationId: operation.id,
+    outputStatus: bulkLot?.status ?? outputEntity.status
   };
 }
 
@@ -509,6 +556,7 @@ async function runFillJob(
   fillItemId: string,
   units: number,
   bulkLotId: string,
+  kgPerUnit: number,
   label: string
 ) {
   const client = ctx.service.asSystem.supabase;
@@ -537,30 +585,65 @@ async function runFillJob(
     .limit(1)
     .executeTakeFirstOrThrow();
 
+  const outputEntity = await resolveJobOutputTrackedEntity(
+    ctx.db,
+    ctx.companyId,
+    jobId,
+    fillItemId
+  );
+  if (!outputEntity) {
+    throw new Error(`Fill job ${jobId}: output trackedEntity missing`);
+  }
+
+  const bulkMaterial = await ctx.db
+    .selectFrom("jobMaterial")
+    .select(["id", "itemId", "quantity"])
+    .where("jobId", "=", jobId)
+    .where("companyId", "=", ctx.companyId)
+    .where("methodType", "=", "Pull from Inventory")
+    .executeTakeFirst();
+  if (!bulkMaterial) {
+    throw new Error(`Fill job ${jobId}: bulk pull material missing`);
+  }
+
   const handles = handlesOf({
     db: ctx.db,
     companyId: ctx.companyId,
     userId: ctx.userId
   });
+  const bulkQty = kgPerUnit * units;
   const issueResult = await invokePosting(
     handles,
     "issue",
-    { type: "jobOperation", id: operation.id, quantity: units },
+    {
+      type: "trackedEntitiesToOperation",
+      materialId: bulkMaterial.id,
+      jobOperationId: operation.id,
+      itemId: bulkMaterial.itemId,
+      parentTrackedEntityId: outputEntity.id,
+      children: [{ trackedEntityId: bulkLotId, quantity: bulkQty }]
+    },
     issueMaterial
   );
   if (issueResult.error) {
-    throw new Error(
-      `fill issue (${label}): ${issueResult.error.message} (friction: same bulk lot on two fill jobs may need explicit trackedEntityIds per line)`
-    );
+    throw new Error(`fill tracked issue (${label}): ${issueResult.error.message}`);
   }
+
+  await reportBatchOperationCompleteMes(
+    ctx,
+    operation.id,
+    outputEntity.id,
+    units
+  );
   await completeJobSpike(ctx, jobId, units);
-  const fillLots = await ctx.db
-    .selectFrom("trackedEntity")
-    .select(["id", "readableId", "quantity"])
-    .where("companyId", "=", ctx.companyId)
-    .where("itemId", "=", fillItemId)
-    .where("status", "=", "Available")
-    .execute();
+
+  const outputLot = await resolveJobOutputTrackedEntity(
+    ctx.db,
+    ctx.companyId,
+    jobId,
+    fillItemId
+  );
+  const fillLots = outputLot ? [outputLot] : [];
   return { jobId, fillLots };
 }
 
@@ -743,12 +826,24 @@ export async function runSpikeFlow(
     itemTrackingType: "Batch",
     unitOfMeasureCode: ctx.lookups.unitKg
   });
-  await setupBulkItem(ctx.db, ctx, input, ingredientIds, bulkItemId);
+  const { makeMethodId } = await setupBulkItem(
+    ctx.db,
+    ctx,
+    input,
+    ingredientIds,
+    bulkItemId
+  );
   note("bulk", `Bulk item ${bulkItemId} with % formula and Skuu header`);
 
   let bulkRun: Awaited<ReturnType<typeof createAndRunBulkJob>>;
   try {
-    bulkRun = await createAndRunBulkJob(ctx, input, bulkItemId, lotsByItem);
+    bulkRun = await createAndRunBulkJob(
+      ctx,
+      input,
+      bulkItemId,
+      makeMethodId,
+      lotsByItem
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     note("friction", `Bulk job path: ${msg}`);
@@ -766,7 +861,7 @@ export async function runSpikeFlow(
   } else {
     note(
       "bulk-lot",
-      `Bulk lot ${bulkRun.bulkLot.readableId} qty ${bulkRun.bulkLot.quantity}`
+      `Bulk lot ${bulkRun.bulkLot.id} (${bulkRun.bulkLot.readableId ?? "no label"}) qty ${bulkRun.bulkLot.quantity} status after MES batch complete: ${bulkRun.outputStatus}`
     );
   }
 
@@ -786,7 +881,7 @@ export async function runSpikeFlow(
         unitOfMeasureCode: ctx.lookups.unitEa
       }
     );
-    await setupFillItem(
+    const { kgPerUnit } = await setupFillItem(
       ctx.db,
       ctx,
       String(f),
@@ -801,6 +896,7 @@ export async function runSpikeFlow(
         fillItemId,
         fill.units,
         bulkLotId,
+        kgPerUnit,
         `F${f}`
       );
       fillResults.push(fr);
