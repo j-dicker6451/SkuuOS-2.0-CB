@@ -1,0 +1,548 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import {
+  Badge,
+  Button,
+  HStack,
+  MENU_ITEM_SHORTCUTS,
+  MenuIcon,
+  MenuItem,
+  useDisclosure
+} from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ColumnDef } from "@tanstack/react-table";
+import { memo, useMemo, useState } from "react";
+import {
+  LuBookMarked,
+  LuCalendar,
+  LuEuro,
+  LuFlag,
+  LuGlobe,
+  LuHash,
+  LuMail,
+  LuMapPin,
+  LuPencil,
+  LuPhone,
+  LuPrinter,
+  LuShapes,
+  LuStar,
+  LuTag,
+  LuTrash,
+  LuUser
+} from "react-icons/lu";
+import { Link, useNavigate } from "react-router";
+import {
+  DateTime,
+  EmployeeAvatar,
+  Hyperlink,
+  New,
+  SupplierAvatar,
+  Table
+} from "~/components";
+import { Enumerable } from "~/components/Enumerable";
+import { useSupplierStages } from "~/components/Form/SupplierStage";
+import { useSupplierTypes } from "~/components/Form/SupplierType";
+import { ConfirmDelete } from "~/components/Modals";
+import type { InfiniteOptions } from "~/components/Table";
+import { useCompanySettings, usePermissions } from "~/hooks";
+import { useCustomColumns } from "~/hooks/useCustomColumns";
+import { supplierStatusType } from "~/modules/purchasing/purchasing.models";
+import type {
+  SupplierListItem,
+  SupplierReportContacts
+} from "~/modules/purchasing/types";
+import { SupplierStatusIndicator } from "~/modules/purchasing/ui/Supplier/SupplierStatusIndicator";
+import { usePeople } from "~/stores";
+import { path } from "~/utils/path";
+import { SUPPLIER_CONTACT_VALUES } from "./supplier-list-export";
+
+// A row of the suppliers list, with the contacts the loader adds per page.
+type SupplierRow = SupplierListItem & {
+  reportContacts: SupplierReportContacts;
+};
+
+type SuppliersTableProps = {
+  data: SupplierRow[];
+  count: number;
+  infinite: InfiniteOptions;
+  tags: { name: string }[];
+};
+
+const SuppliersTable = memo(function SuppliersTable({
+  data,
+  count,
+  infinite,
+  tags
+}: SuppliersTableProps) {
+  const { t } = useLingui();
+  const navigate = useNavigate();
+  const permissions = usePermissions();
+  const [people] = usePeople();
+  const deleteModal = useDisclosure();
+  const [selectedSupplier, setSelectedSupplier] =
+    useState<SupplierListItem | null>(null);
+  const supplierTypes = useSupplierTypes();
+  const supplierStages = useSupplierStages();
+  const companySettings = useCompanySettings();
+  const showSupplierReadableId =
+    companySettings?.showSupplierReadableId ?? false;
+
+  const customColumns = useCustomColumns<SupplierRow>("supplier");
+  const columns = useMemo<ColumnDef<SupplierRow>[]>(() => {
+    const idColumn: ColumnDef<SupplierRow> = {
+      accessorKey: "readableId",
+      header: t`ID`,
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-muted-foreground">
+          {row.original.readableId ?? ""}
+        </span>
+      ),
+      meta: {
+        icon: <LuHash />
+      }
+    };
+    const defaultColumns: ColumnDef<SupplierRow>[] = [
+      ...(showSupplierReadableId ? [idColumn] : []),
+      {
+        accessorKey: "name",
+        header: t`Name`,
+        cell: ({ row }) => (
+          <div className="max-w-[320px] truncate">
+            <Hyperlink to={path.to.supplierDetails(row.original.id!)}>
+              <SupplierAvatar supplierId={row.original.id!} />
+            </Hyperlink>
+          </div>
+        ),
+        meta: {
+          mobile: "P1",
+          icon: <LuBookMarked />
+        }
+      },
+      {
+        accessorKey: "status",
+        header: t`Supplier Status`,
+        cell: (item) => (
+          // @ts-expect-error TS2322 - TODO: fix type
+          <SupplierStatusIndicator status={item.getValue<string>()} />
+        ),
+        meta: {
+          mobile: "P2",
+          filter: {
+            type: "static",
+            options: supplierStatusType.map((status) => ({
+              value: status,
+              label: <SupplierStatusIndicator status={status} />
+            }))
+          },
+          icon: <LuStar />
+        }
+      },
+      {
+        accessorKey: "supplierStageId",
+        header: t`Stage`,
+        cell: ({ row }) => (
+          <Enumerable
+            value={row.original.stage ?? ""}
+            color={
+              supplierStages.find(
+                (s) => s.value === row.original.supplierStageId
+              )?.color
+            }
+          />
+        ),
+        meta: {
+          mobile: "P2",
+          icon: <LuFlag />,
+          sortBy: "stage",
+          exportValue: (row) => row.stage,
+          filter: {
+            type: "static",
+            options: supplierStages?.map((stage) => ({
+              value: stage.value,
+              label: <Enumerable value={stage.label} color={stage.color} />
+            }))
+          }
+        }
+      },
+      {
+        accessorKey: "supplierTypeId",
+        header: t`Type`,
+        cell: ({ row }) => <Enumerable value={row.original.type ?? ""} />,
+        meta: {
+          mobile: "P2",
+          icon: <LuShapes />,
+          sortBy: "type",
+          exportValue: (row) => row.type,
+          filter: {
+            type: "static",
+            options: supplierTypes?.map((type) => ({
+              value: type.value,
+              label: <Enumerable value={type.label} />
+            }))
+          }
+        }
+      },
+      {
+        id: "accountManagerId",
+        header: t`Account Manager`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.accountManagerId} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "tags",
+        header: t`Tags`,
+        cell: ({ row }) => (
+          <HStack spacing={0} className="gap-1">
+            {row.original.tags?.map((tag) => (
+              <Badge key={tag} variant="secondary">
+                {tag}
+              </Badge>
+            ))}
+          </HStack>
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: tags?.map((tag) => ({
+              value: tag.name,
+              label: <Badge variant="secondary">{tag.name}</Badge>
+            })),
+            isArray: true
+          },
+          icon: <LuTag />
+        }
+      },
+      {
+        accessorKey: "currencyCode",
+        header: t`Currency`,
+        cell: (item) => item.getValue(),
+        meta: {
+          icon: <LuEuro />
+        }
+      },
+      {
+        accessorKey: "phone",
+        header: t`Phone`,
+        cell: (item) => item.getValue(),
+        meta: {
+          icon: <LuPhone />
+        }
+      },
+      {
+        accessorKey: "fax",
+        header: t`Fax`,
+        cell: (item) => item.getValue(),
+        meta: {
+          icon: <LuPrinter />
+        }
+      },
+      {
+        accessorKey: "website",
+        header: t`Website`,
+        cell: (item) => item.getValue(),
+        meta: {
+          icon: <LuGlobe />
+        }
+      },
+      {
+        id: "createdBy",
+        header: t`Created By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.createdBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "createdAt",
+        header: t`Created At`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          icon: <LuCalendar />
+        }
+      },
+      {
+        id: "updatedBy",
+        header: t`Updated By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.updatedBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "updatedAt",
+        header: t`Updated At`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          icon: <LuCalendar />
+        }
+      },
+      {
+        id: "purchasingContactName",
+        header: t`Purchasing Contact Name`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.purchasingContactName(row.original) ?? "",
+        meta: {
+          icon: <LuUser />,
+          exportValue: SUPPLIER_CONTACT_VALUES.purchasingContactName
+        }
+      },
+      {
+        id: "purchasingContactEmail",
+        header: t`Purchasing Contact Email`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.purchasingContactEmail(row.original) ?? "",
+        meta: {
+          icon: <LuMail />,
+          exportValue: SUPPLIER_CONTACT_VALUES.purchasingContactEmail
+        }
+      },
+      {
+        id: "purchasingContactPhone",
+        header: t`Purchasing Contact Phone`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.purchasingContactPhone(row.original) ?? "",
+        meta: {
+          icon: <LuPhone />,
+          exportValue: SUPPLIER_CONTACT_VALUES.purchasingContactPhone
+        }
+      },
+      {
+        id: "invoiceAddress",
+        header: t`Invoice Address`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.invoiceAddress(row.original) ?? "",
+        meta: {
+          icon: <LuMapPin />,
+          exportValue: SUPPLIER_CONTACT_VALUES.invoiceAddress
+        }
+      },
+      {
+        id: "invoiceContactName",
+        header: t`Invoice Contact Name`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.invoiceContactName(row.original) ?? "",
+        meta: {
+          icon: <LuUser />,
+          exportValue: SUPPLIER_CONTACT_VALUES.invoiceContactName
+        }
+      },
+      {
+        id: "invoiceContactEmail",
+        header: t`Invoice Contact Email`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.invoiceContactEmail(row.original) ?? "",
+        meta: {
+          icon: <LuMail />,
+          exportValue: SUPPLIER_CONTACT_VALUES.invoiceContactEmail
+        }
+      },
+      {
+        id: "invoiceContactPhone",
+        header: t`Invoice Contact Phone`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.invoiceContactPhone(row.original) ?? "",
+        meta: {
+          icon: <LuPhone />,
+          exportValue: SUPPLIER_CONTACT_VALUES.invoiceContactPhone
+        }
+      },
+      {
+        id: "shippingAddress",
+        header: t`Shipping Address`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.shippingAddress(row.original) ?? "",
+        meta: {
+          icon: <LuMapPin />,
+          exportValue: SUPPLIER_CONTACT_VALUES.shippingAddress
+        }
+      },
+      {
+        id: "shippingContactName",
+        header: t`Shipping Contact Name`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.shippingContactName(row.original) ?? "",
+        meta: {
+          icon: <LuUser />,
+          exportValue: SUPPLIER_CONTACT_VALUES.shippingContactName
+        }
+      },
+      {
+        id: "shippingContactEmail",
+        header: t`Shipping Contact Email`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.shippingContactEmail(row.original) ?? "",
+        meta: {
+          icon: <LuMail />,
+          exportValue: SUPPLIER_CONTACT_VALUES.shippingContactEmail
+        }
+      },
+      {
+        id: "shippingContactPhone",
+        header: t`Shipping Contact Phone`,
+        cell: ({ row }) =>
+          SUPPLIER_CONTACT_VALUES.shippingContactPhone(row.original) ?? "",
+        meta: {
+          icon: <LuPhone />,
+          exportValue: SUPPLIER_CONTACT_VALUES.shippingContactPhone
+        }
+      }
+    ];
+
+    return [...defaultColumns, ...customColumns];
+  }, [
+    supplierTypes,
+    supplierStages,
+    people,
+    tags,
+    customColumns,
+    t,
+    showSupplierReadableId
+  ]);
+
+  const renderContextMenu = useMemo(
+    () => (row: SupplierRow) => (
+      <>
+        <MenuItem
+          shortcut={MENU_ITEM_SHORTCUTS.edit}
+          onClick={() => navigate(path.to.supplier(row.id!))}
+        >
+          <MenuIcon icon={<LuPencil />} />
+          <Trans>Edit Supplier</Trans>
+        </MenuItem>
+        <MenuItem
+          shortcut={MENU_ITEM_SHORTCUTS.delete}
+          destructive
+          disabled={!permissions.can("delete", "purchasing")}
+          onClick={() => {
+            setSelectedSupplier(row);
+            deleteModal.onOpen();
+          }}
+        >
+          <MenuIcon icon={<LuTrash />} />
+          <Trans>Delete Supplier</Trans>
+        </MenuItem>
+      </>
+    ),
+    [navigate, deleteModal, permissions]
+  );
+
+  return (
+    <>
+      <Table<SupplierRow>
+        getRowLabel={(row) => row.name ?? undefined}
+        count={count}
+        columns={columns}
+        data={data}
+        infinite={infinite}
+        defaultColumnPinning={{
+          left: ["name"]
+        }}
+        defaultColumnVisibility={{
+          currencyCode: false,
+          phone: false,
+          fax: false,
+          website: false,
+          createdBy: false,
+          createdAt: false,
+          updatedBy: false,
+          updatedAt: false,
+          purchasingContactName: false,
+          purchasingContactEmail: false,
+          purchasingContactPhone: false,
+          invoiceAddress: false,
+          invoiceContactName: false,
+          invoiceContactEmail: false,
+          invoiceContactPhone: false,
+          shippingAddress: false,
+          shippingContactName: false,
+          shippingContactEmail: false,
+          shippingContactPhone: false
+        }}
+        importCSV={[
+          {
+            table: "supplier",
+            label: t`Suppliers`
+          },
+          {
+            table: "supplierContact",
+            label: t`Contacts`
+          }
+        ]}
+        primaryAction={
+          permissions.can("create", "purchasing") && (
+            <div className="flex items-center gap-2">
+              <Button
+                className="max-md:hidden"
+                variant="secondary"
+                leftIcon={<LuShapes />}
+                asChild
+              >
+                <Link to={path.to.supplierTypes}>
+                  <Trans>Supplier Types</Trans>
+                </Link>
+              </Button>
+              <New label={t`Supplier`} to={path.to.newSupplier} />
+            </div>
+          )
+        }
+        renderContextMenu={renderContextMenu}
+        title={t`Suppliers`}
+        table="supplier"
+        withSavedView
+      />
+      {selectedSupplier && selectedSupplier.id && (
+        <ConfirmDelete
+          action={path.to.deleteSupplier(selectedSupplier.id)}
+          isOpen={deleteModal.isOpen}
+          name={selectedSupplier.name!}
+          text={`Are you sure you want to delete ${selectedSupplier.name!}? This cannot be undone.`}
+          onCancel={() => {
+            deleteModal.onClose();
+          }}
+          onSubmit={() => {
+            deleteModal.onClose();
+          }}
+        />
+      )}
+    </>
+  );
+});
+
+SuppliersTable.displayName = "SupplierTable";
+
+export default SuppliersTable;

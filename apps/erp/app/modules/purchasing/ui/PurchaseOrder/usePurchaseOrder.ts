@@ -1,0 +1,185 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useCarbon } from "@carbon/auth";
+import { toastError } from "@carbon/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useSubmit } from "react-router";
+import { useUser } from "~/hooks";
+import type { Receipt, Shipment } from "~/modules/inventory/types";
+import type { PurchaseInvoice } from "~/modules/invoicing/types";
+import type { PurchaseOrder } from "~/modules/purchasing/types";
+import { path } from "~/utils/path";
+
+const MAX_RELATED_DOCS_RETRIES = 2;
+const RELATED_DOCS_RETRY_DELAY_MS = 1000;
+
+export const usePurchaseOrder = () => {
+  const navigate = useNavigate();
+  const submit = useSubmit();
+
+  const edit = useCallback(
+    (purchaseOrder: Pick<PurchaseOrder, "id">) =>
+      navigate(path.to.purchaseOrder(purchaseOrder.id!)),
+    [navigate]
+  );
+
+  const invoice = useCallback(
+    (purchaseOrder: Pick<PurchaseOrder, "id">) =>
+      navigate(
+        `${path.to.newPurchaseInvoice}?sourceDocument=Purchase Order&sourceDocumentId=${purchaseOrder.id}`
+      ),
+    [navigate]
+  );
+
+  const receive = useCallback(
+    (purchaseOrder: Pick<PurchaseOrder, "id">) => {
+      if (!purchaseOrder.id) return;
+      const formData = new FormData();
+      formData.set("sourceDocument", "Purchase Order");
+      formData.set("sourceDocumentId", purchaseOrder.id);
+      submit(formData, { method: "post", action: path.to.newReceipt });
+    },
+    [submit]
+  );
+
+  const ship = useCallback(
+    (purchaseOrder: Pick<PurchaseOrder, "id">) => {
+      if (!purchaseOrder.id) return;
+      const formData = new FormData();
+      formData.set("sourceDocument", "Purchase Order");
+      formData.set("sourceDocumentId", purchaseOrder.id);
+      submit(formData, { method: "post", action: path.to.newShipment });
+    },
+    [submit]
+  );
+
+  return {
+    edit,
+    invoice,
+    receive,
+    ship
+  };
+};
+
+export const usePurchaseOrderRelatedDocuments = (
+  supplierInteractionId: string,
+  isOutsideProcessing: boolean,
+  purchaseOrderId?: string
+) => {
+  const [receipts, setReceipts] = useState<
+    Pick<Receipt, "id" | "receiptId" | "status">[]
+  >([]);
+  const [invoices, setInvoices] = useState<
+    Pick<PurchaseInvoice, "id" | "invoiceId" | "status">[]
+  >([]);
+  const [shipments, setShipments] = useState<
+    Pick<Shipment, "id" | "shipmentId" | "status">[]
+  >([]);
+  const [returnOrders, setReturnOrders] = useState<
+    { id: string; purchaseReturnOrderId: string; status: string }[]
+  >([]);
+  const [hasError, setHasError] = useState(false);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const { carbon } = useCarbon();
+  const { company } = useUser();
+
+  const getRelatedDocuments = useCallback(
+    async (supplierInteractionId: string, attempt = 0) => {
+      if (!carbon || !supplierInteractionId) return;
+      const [receipts, invoices, shipments, headerReturns, lineReturns] =
+        await Promise.all([
+          carbon
+            .from("receipt")
+            .select("id, receiptId, status")
+            .eq("supplierInteractionId", supplierInteractionId),
+          // The view derives Paid, Partially Paid and Overdue from settlements
+          carbon
+            .from("purchaseInvoices")
+            .select("id, invoiceId, status")
+            .eq("supplierInteractionId", supplierInteractionId)
+            .eq("companyId", company.id),
+          isOutsideProcessing
+            ? carbon
+                .from("shipment")
+                .select("id, shipmentId, status")
+                .eq("supplierInteractionId", supplierInteractionId)
+            : Promise.resolve({ data: [], error: null }),
+          // Supplier returns linked at the header level
+          purchaseOrderId
+            ? carbon
+                .from("purchaseReturnOrder")
+                .select("id, purchaseReturnOrderId, status")
+                .eq("purchaseOrderId", purchaseOrderId)
+            : Promise.resolve({ data: [], error: null }),
+          // Supplier returns linked only through their lines
+          purchaseOrderId
+            ? carbon
+                .from("purchaseReturnOrderLine")
+                .select(
+                  "purchaseReturnOrder!purchaseReturnOrderLine_purchaseReturnOrderId_fkey(id, purchaseReturnOrderId, status), purchaseOrderLine!inner(purchaseOrderId)"
+                )
+                .eq("purchaseOrderLine.purchaseOrderId", purchaseOrderId)
+            : Promise.resolve({ data: [], error: null })
+        ]);
+
+      const failed = !!receipts.error || !!invoices.error || !!shipments.error;
+      // Retry transient failures before surfacing a hard error, so a network
+      // blip doesn't leave Ship/Receive/Invoice permanently disabled. Only
+      // toast / commit the error state on the final attempt.
+      const willRetry = failed && attempt < MAX_RELATED_DOCS_RETRIES;
+
+      if (receipts.error) {
+        if (!willRetry) toastError("Failed to load receipts", receipts.error);
+      } else {
+        setReceipts(receipts.data);
+      }
+
+      if (invoices.error) {
+        if (!willRetry) toastError("Failed to load invoices", invoices.error);
+      } else {
+        setInvoices(invoices.data ?? []);
+      }
+      if (shipments.error) {
+        if (!willRetry) toastError("Failed to load shipments", shipments.error);
+      } else {
+        setShipments(shipments.data);
+      }
+
+      if (!headerReturns.error && !lineReturns.error) {
+        const byId = new Map<
+          string,
+          { id: string; purchaseReturnOrderId: string; status: string }
+        >();
+        for (const row of headerReturns.data ?? []) byId.set(row.id, row);
+        for (const row of lineReturns.data ?? []) {
+          const order = (row as any).purchaseReturnOrder;
+          if (order) byId.set(order.id, order);
+        }
+        setReturnOrders(Array.from(byId.values()));
+      }
+
+      if (willRetry) {
+        retryTimeoutRef.current = setTimeout(
+          () => getRelatedDocuments(supplierInteractionId, attempt + 1),
+          RELATED_DOCS_RETRY_DELAY_MS * (attempt + 1)
+        );
+        return;
+      }
+
+      setHasError(failed);
+    },
+    [carbon, company.id, isOutsideProcessing, purchaseOrderId]
+  );
+
+  useEffect(() => {
+    getRelatedDocuments(supplierInteractionId);
+    return () => {
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    };
+  }, [getRelatedDocuments, supplierInteractionId]);
+
+  return { receipts, invoices, shipments, returnOrders, hasError };
+};

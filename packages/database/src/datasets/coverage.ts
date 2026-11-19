@@ -1,0 +1,348 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { Dataset } from "./types.ts";
+
+/**
+ * Row-count floors, so a tier that silently writes nothing fails. Counts are absolute
+ * (bootstrap rows included). Floor = the smallest count any dataset produced
+ * (`// min` = that count when ≥ 20, floored at 80%). The shared `period` table is omitted.
+ */
+export const COVERAGE_FLOORS: Record<string, number> = {
+  ability: 6,
+  accountingPeriod: 12,
+  address: 14,
+  approvalRequest: 2,
+  approvalRule: 3,
+  assemblyComponentMapping: 3,
+  assemblyInstruction: 1,
+  assemblyInstructionStep: 5,
+  assemblyInstructionStepMaterial: 3,
+  assemblyInstructionStepTool: 2,
+  batchProperty: 4,
+  changeOrder: 6,
+  changeOrderActionTask: 6,
+  changeOrderAffectedItem: 3,
+  companyAccountsPayableBillingAddress: 1,
+  companyAccountsReceivableBillingAddress: 1,
+  configurationParameter: 3,
+  configurationParameterGroup: 1,
+  configurationRule: 2,
+  consumable: 2,
+  contact: 16,
+  contractor: 2,
+  contractorAbility: 2,
+  costCenter: 4,
+  costLedger: 7,
+  customField: 3,
+  customer: 4,
+  customerAsset: 3,
+  customerBankAccount: 4,
+  customerContact: 4,
+  customerContract: 1,
+  // 12–13 depending on the anchor's day of month; floored at 80% per the task.
+  customerContractInvoice: 10, // min 13
+  customerContractInvoiceLine: 21, // min 27
+  customerContractLedgerEntry: 2, // Opening entries
+  customerContractLine: 3,
+  customerContractRevenue: 22, // min 28
+  customerItemPriceOverride: 1,
+  customerItemPriceOverrideBreak: 2,
+  customerLocation: 4,
+  customerPartToItem: 2,
+  customerPayment: 4,
+  customerShipping: 4,
+  customerTax: 4,
+  customerType: 4,
+  demandProjection: 22, // min 28
+  department: 4,
+  depreciationRun: 1,
+  depreciationRunLine: 3,
+  dimension: 16,
+  dimensionValue: 2,
+  employeeAbility: 2,
+  employeeJob: 1,
+  employeeShift: 1,
+  enforcementRule: 5,
+  enforcementRuleItemAssignment: 5,
+  enforcementRuleWorkCenterAssignment: 1,
+  eventSystemSubscription: 18,
+  exchangeRateOverride: 1,
+  externalLink: 7,
+  fixedAsset: 9,
+  fixedAssetDisposal: 1,
+  fixedAssetUsageLog: 2,
+  gauge: 3,
+  gaugeCalibrationRecord: 4,
+  group: 23, // min 29
+  holiday: 3,
+  inspection: 5,
+  inspectionDocument: 3,
+  inspectionFeature: 6,
+  inspectionHistory: 2,
+  inspectionMeasurement: 12,
+  inspectionSample: 6,
+  inspectionSamplingPlan: 8,
+  inspectionTrackedEntity: 1,
+  inventoryCount: 2,
+  inventoryCountLine: 11,
+  invoiceSettlement: 6,
+  item: 29, // min 37
+  itemCost: 29, // min 37
+  itemInspectionDocumentAssignment: 2,
+  itemLedger: 32, // min 40
+  itemPlanning: 59, // min 74
+  itemPostingGroup: 5,
+  itemReplenishment: 29, // min 37
+  itemSerialSequence: 2,
+  itemShelfLife: 1,
+  itemStockQuantities: 16, // min 20
+  itemSupersession: 1,
+  itemUnitSalePrice: 29, // min 37
+  job: 16, // min 21
+  jobFavorite: 1,
+  jobMakeMethod: 30, // min 38
+  jobMaterial: 77, // min 97
+  jobOperation: 76, // min 96
+  jobOperationBatch: 1,
+  jobOperationNote: 2,
+  jobOperationParameter: 16,
+  jobOperationStep: 35, // min 44
+  jobOperationStepRecord: 10,
+  jobOperationTool: 4,
+  journal: 29, // min 37
+  journalLine: 64, // min 80
+  journalLineDimension: 2,
+  kanban: 5,
+  laborCategory: 3,
+  laborCategoryRate: 3,
+  location: 2,
+  maintenanceDispatch: 11,
+  maintenanceDispatchComment: 4,
+  maintenanceDispatchEvent: 6,
+  maintenanceDispatchItem: 2,
+  maintenanceDispatchWorkCenter: 4,
+  maintenanceSchedule: 6,
+  maintenanceScheduleItem: 1,
+  makeMethod: 24, // min 30
+  material: 6,
+  materialDimension: 2,
+  materialFinish: 2,
+  materialForm: 1,
+  materialGrade: 3,
+  materialRequest: 2,
+  materialSubstance: 2,
+  materialType: 1,
+  memo: 4,
+  methodMaterial: 40, // min 51
+  methodOperation: 26, // min 33
+  methodOperationParameter: 4,
+  methodOperationTool: 1,
+  modelUpload: 1,
+  nonConformance: 5,
+  nonConformanceActionProcess: 1,
+  nonConformanceActionTask: 7,
+  nonConformanceApprovalTask: 1,
+  nonConformanceCustomer: 1,
+  nonConformanceInspection: 1,
+  nonConformanceItem: 6,
+  nonConformanceJobOperation: 1,
+  nonConformancePurchaseOrderLine: 1,
+  nonConformancePurchaseReturnOrderLine: 1,
+  nonConformanceReviewer: 2,
+  nonConformanceSalesOrderLine: 1,
+  nonConformanceSalesReturnOrderLine: 1,
+  nonConformanceSupplier: 2,
+  nonConformanceTrackedEntity: 1,
+  nonConformanceWorkflow: 3,
+  noQuoteReason: 4,
+  note: 2,
+  opportunity: 25, // min 32
+  part: 18, // min 23
+  partner: 2,
+  payment: 8,
+  peopleAbsence: 1,
+  peopleAssignment: 6,
+  periodCloseTask: 3,
+  pickMethod: 19,
+  pickingList: 2,
+  pickingListLine: 4,
+  pricingRule: 3,
+  printJob: 5,
+  printerRoute: 1,
+  procedure: 4,
+  procedureParameter: 9,
+  procedureStep: 19,
+  process: 11,
+  productionEvent: 19, // min 24
+  productionQuantity: 11,
+  project: 2,
+  projectElement: 23, // min 29
+  projectElementLink: 5,
+  projectMilestone: 4,
+  projectState: 6,
+  projectStockTransfer: 1,
+  projectStockTransferLine: 1,
+  purchaseInvoice: 7,
+  purchaseInvoiceDelivery: 7,
+  purchaseInvoiceLine: 8,
+  purchaseOrder: 18,
+  purchaseOrderDelivery: 18,
+  purchaseOrderLine: 16, // min 21
+  purchaseOrderPayment: 18,
+  purchaseOrderStatusHistory: 3,
+  purchaseReturnOrder: 4,
+  purchaseReturnOrderCreditLine: 1,
+  purchaseReturnOrderLine: 4,
+  purchasingRfq: 3,
+  purchasingRfqLine: 5,
+  purchasingRfqSupplier: 7,
+  purchasingRfqToPurchaseOrder: 1,
+  purchasingRfqToSupplierQuote: 3,
+  qualityDocument: 3,
+  qualityDocumentStep: 3,
+  quote: 8,
+  quoteFavorite: 1,
+  quoteLine: 10,
+  quoteLinePrice: 13,
+  quoteMakeMethod: 32, // min 40
+  quoteMaterial: 105, // min 132
+  quoteOperation: 85, // min 107
+  quoteOperationParameter: 8,
+  quoteOperationTool: 4,
+  quotePayment: 8,
+  quoteShipment: 8,
+  receipt: 6,
+  receiptLine: 7,
+  rentalAgreement: 2,
+  rentalAgreementCharge: 1,
+  rentalAgreementContact: 1,
+  rentalAgreementLine: 3,
+  rentalBillingPeriod: 2,
+  rework: 1,
+  riskRegister: 5,
+  salesInvoice: 9,
+  salesInvoiceLine: 9,
+  salesInvoiceShipment: 9,
+  salesOrder: 19, // min 24
+  salesOrderFavorite: 1,
+  salesOrderLine: 28, // min 36
+  salesOrderPayment: 19, // min 24
+  salesOrderShipment: 19, // min 24
+  salesOrderStatusHistory: 3,
+  salesReturnOrder: 3,
+  salesReturnOrderCreditLine: 1,
+  salesReturnOrderLine: 3,
+  salesRfq: 4,
+  salesRfqLine: 4,
+  service: 1,
+  serviceJob: 5,
+  serviceJobAssignment: 4,
+  serviceJobEstimateLine: 4,
+  serviceJobItem: 1,
+  serviceJobTime: 8,
+  shift: 2,
+  shipment: 5,
+  shipmentFixedAssetLine: 1,
+  shipmentLine: 5,
+  shippingMethod: 5,
+  shippingTerm: 4,
+  stockTransfer: 3,
+  stockTransferLine: 3,
+  storageType: 3,
+  storageUnit: 18,
+  suggestion: 2,
+  supplier: 11,
+  supplierBankAccount: 4,
+  supplierContact: 12,
+  supplierInteraction: 17, // min 22
+  supplierLocation: 10,
+  supplierPart: 14,
+  supplierPartPrice: 14,
+  supplierPayment: 11,
+  supplierProcess: 3,
+  supplierQuote: 6,
+  supplierQuoteLine: 9,
+  supplierQuoteLinePrice: 17, // min 22
+  supplierShipping: 11,
+  supplierTax: 11,
+  supplierStage: 4,
+  supplierType: 6,
+  tag: 5,
+  timeCardEntry: 6,
+  timesheetEntry: 6, // min 8
+  tool: 2,
+  trackedActivity: 7,
+  trackedActivityInput: 6,
+  trackedActivityOutput: 6,
+  trackedEntity: 49, // min 62
+  training: 3,
+  trainingAssignment: 2,
+  trainingCompletion: 1,
+  trainingQuestion: 8,
+  userAttribute: 4,
+  userAttributeCategory: 1,
+  userAttributeValue: 4,
+  warehouse: 3,
+  warehouseTransfer: 3,
+  warehouseTransferLine: 3,
+  workCenter: 8,
+  workCenterProcess: 14,
+  workCenterReplacementPart: 3,
+  workCenterShift: 9,
+  workflow: 7,
+  workflowRun: 3,
+  workflowStepRun: 4,
+  workflowTriggerEvent: 1,
+  workflowVersion: 7
+};
+
+/**
+ * Floors for content only one dataset carries, added to `COVERAGE_FLOORS` for
+ * that dataset. The shared floors take the smallest count of any dataset, so a
+ * table only satellite seeds would floor at 0 there. Satellite's planning
+ * group (Projects Phase 3): 1 group, 4 plan-line materials, and 8 pegs (3
+ * Soft rows the receipt superseded, 3 Hard, 2 Soft on the open line).
+ * Satellite's indirect pools (Government contracting Phase 5b) likewise.
+ */
+export const DATASET_COVERAGE_FLOORS: Record<string, Record<string, number>> = {
+  satellite: {
+    // Government contracting Phase 5b: 3 pools, 7 mappings, and a Provisional
+    // and a Target rate for each of the 12 periods of the current year.
+    indirectPool: 3,
+    indirectPoolAccount: 7,
+    indirectRate: 72,
+    planningGroup: 1,
+    // The ORBSEC Block 2 earned value baseline.
+    projectBaseline: 1,
+    projectElementMaterial: 4,
+    projectPeg: 8
+  }
+};
+
+/**
+ * The floors one dataset must meet. A walkthrough dataset (`Dataset.walkthrough`)
+ * is a single product by design, so it has none: the drift check still applies
+ * it and rolls it back, but counts nothing.
+ */
+export function coverageFloorsFor(dataset: Dataset): Record<string, number> {
+  if (dataset.walkthrough) return {};
+  return { ...COVERAGE_FLOORS, ...DATASET_COVERAGE_FLOORS[dataset.key] };
+}
+
+/**
+ * `$1` = scratch company id. Group-scoped dimension rows are exact: the scratch
+ * company gets a fresh group.
+ */
+export const COVERAGE_SCOPES: Record<string, string> = {
+  companyAccountsPayableBillingAddress: `id = $1`,
+  companyAccountsReceivableBillingAddress: `id = $1`,
+  dimension: `"companyGroupId" = (SELECT "companyGroupId" FROM company WHERE id = $1)`,
+  dimensionValue: `"companyGroupId" = (SELECT "companyGroupId" FROM company WHERE id = $1)`,
+  jobFavorite: `"jobId" IN (SELECT id FROM job WHERE "companyId" = $1)`,
+  quoteFavorite: `"quoteId" IN (SELECT id FROM quote WHERE "companyId" = $1)`,
+  salesOrderFavorite: `"salesOrderId" IN (SELECT id FROM "salesOrder" WHERE "companyId" = $1)`,
+  userAttribute: `"userAttributeCategoryId" IN (SELECT id FROM "userAttributeCategory" WHERE "companyId" = $1)`,
+  userAttributeValue: `"userAttributeId" IN (SELECT ua.id FROM "userAttribute" ua JOIN "userAttributeCategory" c ON c.id = ua."userAttributeCategoryId" WHERE c."companyId" = $1)`
+};

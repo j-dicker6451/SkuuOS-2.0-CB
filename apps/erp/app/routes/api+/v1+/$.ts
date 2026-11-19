@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+// Carbon API v1 — the HTTP transport for the service layer.
+//
+//   POST /api/v1/{module}/{operation}
+//
+// Every operation is a POST. The splat forwards the request to the oRPC OpenAPIHandler
+// after resolving the API key into context. No CORS: keys must not live in browsers.
+
+import { nameRequestSpan } from "@carbon/logger/span";
+import type { ActionFunctionArgs } from "react-router";
+import { resolveApiKeyContext } from "./lib/authenticate.server";
+
+const PREFIX = "/api/v1";
+
+export async function action({ request }: ActionFunctionArgs) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204 });
+  }
+
+  // Throws a 401/403/429 Response on auth failure, which propagates as the response.
+  const context = await resolveApiKeyContext(request);
+
+  // Loaded per request rather than at module scope (Node caches it after the
+  // first): the handler builds the router over the whole operation catalog
+  // (tool-metadata.json, ~20 MB), and the dev server evaluates every route
+  // module up front.
+  const { openApiHandler } = await import("./lib/handler.server");
+
+  const { matched, response } = await openApiHandler.handle(request, {
+    prefix: PREFIX,
+    context
+  });
+
+  if (matched && response) {
+    // The route pattern is `/api/v1/*`; a matched path names a real operation.
+    nameRequestSpan(`POST ${new URL(request.url).pathname}`);
+    return response;
+  }
+  return Response.json({ error: "Operation not found" }, { status: 404 });
+}
+
+export function loader() {
+  return new Response("Method Not Allowed", {
+    status: 405,
+    headers: { Allow: "POST, OPTIONS" }
+  });
+}

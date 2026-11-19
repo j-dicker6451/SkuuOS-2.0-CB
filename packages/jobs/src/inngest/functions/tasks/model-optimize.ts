@@ -1,0 +1,323 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { getCarbonServiceRole } from "@carbon/auth/client.server";
+import type { Json } from "@carbon/database";
+import { storage, TEMP_STAGING_BUCKET } from "@carbon/files";
+import { modelPathOptimizeFormat } from "@carbon/files/cad";
+import { datetime, round } from "@carbon/utils";
+import { NonRetriableError } from "inngest";
+import { inngest } from "../../client";
+import {
+  ASSEMBLER_CONCURRENCY,
+  AssemblerJobError,
+  assemblerEnabled,
+  internalizeStorageUrl,
+  requireModelSourceBucket,
+  runAssemblerJob,
+  signSourceUrl,
+  signUploadUrls
+} from "./assembler-client";
+import {
+  compactTarget,
+  relocateRaw,
+  settleCompactedRaw
+} from "./model-compact";
+import {
+  getModelUpload,
+  type ModelUploadRow,
+  updateModelUpload
+} from "./model-rows";
+
+const SIGNED_URL_EXPIRY = 60 * 60; // seconds — the source (read) URL only.
+const MAX_OPTIMIZE_WAIT_MS = 15 * 60 * 1000;
+
+type IngestOutputs = {
+  glb?: { bytes?: number };
+  raw?: { bytes?: number };
+  thumbnail?: { bytes?: number };
+  pmi?: { bytes?: number; items?: number; views?: number };
+};
+
+/**
+ * Model ingest on upload: one assembler job reads the raw once and writes the
+ * optimised GLB (`optimizedModelPath`, the preview), the raw's compact form
+ * (STEP → BinXCAF `.xbf.zst`, mesh → `.zst`), the preview thumbnail, and —
+ * for a STEP with PMI (dimensions, tolerances, datums, saved views) — the
+ * `pmi.json` the viewer draws (`pmiPath`; null when the model has none). Before
+ * this they were three jobs, each downloading and parsing the raw again.
+ * Separate from assembly-convert, which produces the lossless GLB and graph
+ * the assembly viewer needs, and only on demand.
+ *
+ * Compaction is asked for only while the raw is still in `temp-staging`; a
+ * raw already in the company bucket (or already `.zst`) is final. A failed
+ * compaction copies the raw as it is instead, so the raw always leaves staging.
+ */
+export const modelOptimizeFunction = inngest.createFunction(
+  {
+    id: "model-optimize",
+    retries: 2,
+    concurrency: ASSEMBLER_CONCURRENCY,
+    // Collapse the viewer's per-view auto-fire: while one optimise for a model is
+    // in flight, duplicate triggers (repeated views, drag re-attach) are skipped
+    // rather than spawning redundant runs. A later Retry after it settles still
+    // runs (nothing in flight). The `alreadyOptimized` guard covers re-fires on an
+    // already-optimised model; this covers the in-flight duplicates.
+    singleton: { key: "event.data.modelUploadId", mode: "skip" },
+    onFailure: async ({ event }) => {
+      const { modelUploadId, companyId } = event.data.event.data;
+      await updateModelUpload(companyId, modelUploadId, {
+        optimizeStatus: "Failed",
+        optimizeError: event.data.error.message
+      });
+      // A failed optimise must not strand the raw in staging — compact is
+      // cheaper than optimise (no simplify ladder) and often still succeeds.
+      await inngest.send({
+        name: "carbon/model-compact",
+        data: { modelUploadId, companyId }
+      });
+    }
+  },
+  { event: "carbon/model-optimize" },
+  async ({ event, step, logger }) => {
+    const { modelUploadId, companyId } = event.data;
+    const force = event.data.force === true;
+
+    // Feature-gated: no assembler configured -> skip before touching the row,
+    // so the viewer just serves the raw model tier (optimizeStatus stays Idle).
+    // model-compact still copies the raw out of staging (no assembler needed).
+    if (!assemblerEnabled()) {
+      await step.sendEvent("compact", {
+        name: "carbon/model-compact",
+        data: { modelUploadId, companyId }
+      });
+      logger.info("model optimise skipped — assembler is not configured", {
+        modelUploadId
+      });
+      return { modelUploadId, status: "Skipped" as const };
+    }
+
+    const queued = await step.run("queue", async () => {
+      const model = await getModelUpload(companyId, modelUploadId);
+      if (!model?.modelPath) {
+        throw new NonRetriableError(
+          `Model upload ${modelUploadId} not found or has no file`
+        );
+      }
+      // Already optimised → reuse it, never redo. An optimise is deterministic,
+      // so a successful one is final; only a Failed row is worth re-firing
+      // (that's what the viewer's Retry does).
+      if (
+        !force &&
+        model.optimizeStatus === "Success" &&
+        model.optimizedModelPath
+      ) {
+        return { kind: "alreadyOptimized" as const };
+      }
+      // Derive the source format from the stored file, not the caller, so
+      // every attach point triggers with just the id. Strips a `.zst` suffix,
+      // so a re-optimise of a compacted raw resolves too.
+      const format = modelPathOptimizeFormat(model.modelPath);
+      if (!format) return { kind: "notOptimizable" as const };
+
+      const sourceBucket = await requireModelSourceBucket(
+        companyId,
+        model.modelPath
+      );
+      await updateModelUpload(companyId, modelUploadId, {
+        optimizeStatus: "Processing",
+        optimizeError: null
+      });
+      return {
+        kind: "optimize" as const,
+        model,
+        format,
+        sourceBucket,
+        compact:
+          sourceBucket === TEMP_STAGING_BUCKET
+            ? compactTarget(companyId, model)
+            : null
+      };
+    });
+
+    if (queued.kind !== "optimize") {
+      // Still compact: a row optimised before ingest, or a format the
+      // optimiser does not read, may still hold its raw in staging.
+      await step.sendEvent("compact", {
+        name: "carbon/model-compact",
+        data: { modelUploadId, companyId }
+      });
+      logger.info("Model optimise skipped", {
+        reason: queued.kind,
+        modelUploadId
+      });
+      return {
+        modelUploadId,
+        status:
+          queued.kind === "alreadyOptimized"
+            ? ("AlreadyOptimized" as const)
+            : ("Skipped" as const)
+      };
+    }
+    const { format, sourceBucket, compact } = queued;
+    const model = queued.model as ModelUploadRow;
+
+    const optimizedPath = `${companyId}/models/${modelUploadId}/optimized.glb`;
+    // Unique per triggering event: the preview is served from a STABLE proxy
+    // URL, so reusing a path would keep showing the browser-cached image.
+    const run = event.id ?? event.ts ?? "run";
+    const thumbnailPath = `${companyId}/thumbnails/${modelUploadId}/${modelUploadId}-${run}.png`;
+    // Unique per run, like the thumbnail: two runs of one model (a forced
+    // regen beside a retry) never write, or remove, each other's file.
+    const pmiPath = `${companyId}/models/${modelUploadId}/pmi-${run}.json`;
+    // Idempotent per model — a re-run attaches to the in-flight optimise. A
+    // FORCED regen must not: the assembler's job store keeps completed results
+    // (24h TTL), so the stable id would attach to the previous run's result.
+    const jobId = force
+      ? `optimize-${modelUploadId}-${run}`
+      : `optimize-${modelUploadId}`;
+
+    const optimize = await runAssemblerJob(step, {
+      idPrefix: "optimize",
+      action: "optimize",
+      jobId,
+      maxWaitMs: MAX_OPTIMIZE_WAIT_MS,
+      logger,
+      buildBody: async () => {
+        const signedUrl = await signSourceUrl(
+          getCarbonServiceRole(),
+          sourceBucket,
+          model.modelPath,
+          SIGNED_URL_EXPIRY
+        );
+        return {
+          source: { url: internalizeStorageUrl(signedUrl), format },
+          output: { path: optimizedPath },
+          ...(compact ? { compact: { path: compact.path } } : {}),
+          thumbnail: { path: thumbnailPath },
+          // Written only when the model carries PMI.
+          pmi: { path: pmiPath }
+          // quality omitted → the service applies its size-adaptive policy.
+        };
+      },
+      mintUploadUrls: () => {
+        const client = getCarbonServiceRole();
+        const bucket = storage(client).company(companyId);
+        return signUploadUrls({
+          glb: { bucket, path: optimizedPath },
+          thumbnail: { bucket, path: thumbnailPath },
+          pmi: { bucket, path: pmiPath },
+          ...(compact
+            ? {
+                raw: {
+                  bucket: client.storage.from(TEMP_STAGING_BUCKET),
+                  path: compact.path
+                }
+              }
+            : {})
+        });
+      }
+    }).catch((error) => {
+      // The stored error names the file's format and size.
+      if (!(error instanceof AssemblerJobError)) throw error;
+      const size =
+        model.size === null
+          ? "size unknown"
+          : `${round(Number(model.size) / 1024 ** 2, 0)} MB`;
+      throw new AssemblerJobError(
+        `${error.message} [${format}, ${size}]`,
+        error.code
+      );
+    });
+    const { outputs = {}, warnings = [] } = (optimize.result ?? {}) as {
+      outputs?: IngestOutputs;
+      warnings?: string[];
+    };
+    if (warnings.length > 0) {
+      logger.warn("Model optimise finished with warnings", {
+        modelUploadId,
+        warnings
+      });
+    }
+    const stats: Json = optimize.stats;
+
+    await step.run("persist", async () => {
+      // Read the row now, not at queue time: an earlier run's thumbnail is
+      // superseded too.
+      const current = await getModelUpload(companyId, modelUploadId);
+      const superseded = outputs.thumbnail ? current?.thumbnailPath : null;
+      // An earlier run's pmi.json is superseded either way: by this run's, or
+      // by "no PMI" (the model has none, or this run could not read it).
+      const stalePmi =
+        current?.pmiPath && current.pmiPath !== pmiPath
+          ? current.pmiPath
+          : null;
+      await updateModelUpload(companyId, modelUploadId, {
+        optimizeStatus: "Success",
+        optimizeError: null,
+        optimizedModelPath: optimizedPath,
+        optimizedSize: outputs.glb?.bytes ?? null,
+        optimizedAt: datetime.timestamp(),
+        ...(outputs.thumbnail ? { thumbnailPath } : {}),
+        pmiPath: outputs.pmi ? pmiPath : null
+      });
+      // Drop the superseded thumbnail (best-effort — never fail the run over it).
+      if (superseded && superseded !== thumbnailPath) {
+        const removed = await storage(getCarbonServiceRole())
+          .company(companyId)
+          .remove([superseded]);
+        if (removed.error) {
+          logger.warn("failed to remove the superseded thumbnail", {
+            modelUploadId,
+            path: superseded,
+            error: removed.error
+          });
+        }
+      }
+      if (stalePmi) {
+        const removed = await storage(getCarbonServiceRole())
+          .company(companyId)
+          .remove([stalePmi]);
+        if (removed.error) {
+          logger.warn("failed to remove the superseded pmi.json", {
+            modelUploadId,
+            path: stalePmi,
+            error: removed.error
+          });
+        }
+      }
+    });
+
+    if (outputs.pmi) {
+      // The model carries PMI: every item on it gets an inspection plan made
+      // from it (once per item and model — a re-optimise makes none).
+      await step.sendEvent("pmi-inspection-plan", {
+        name: "carbon/pmi-inspection-plan",
+        data: { companyId, modelUploadId }
+      });
+    }
+
+    if (compact) {
+      // The preview now exists, which is what lets an oversized raw be pruned.
+      const settled = {
+        ...model,
+        optimizeStatus: "Success" as const,
+        optimizedModelPath: optimizedPath
+      };
+      await step.run("keep-raw", () =>
+        outputs.raw
+          ? settleCompactedRaw(
+              settled,
+              compact,
+              outputs.raw.bytes ?? null,
+              logger
+            )
+          : relocateRaw(settled, logger)
+      );
+    }
+
+    logger.info("model optimise finalized", { modelUploadId, stats });
+    return { modelUploadId, status: "Success" as const };
+  }
+);

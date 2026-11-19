@@ -1,0 +1,41 @@
+# @carbon/notifications
+
+Notification event taxonomy — enums and topic mapping shared across app routes, jobs, and Inngest functions.
+
+## Always
+
+- **Import `NotificationEvent` from `@carbon/notifications`** — this is the single source of truth for event types
+- **Map new events to a `NotificationTopic` in `getNotificationTopic()`** — every event must belong to exactly one topic
+- **Remember topic strings are persisted** — `NotificationTopic` values are stored in the `notification.topic` DB column; renaming is a migration
+- **Dispatch via `trigger("notify", payload)` from `@carbon/lib`** — the `carbon/notify` Inngest function handles fan-out (inApp / email / Slack; browser push mirrors inApp)
+
+## Ask First
+
+- Renaming any `NotificationTopic` enum value (requires a DB migration)
+- Adding a new `NotificationDestination` beyond inApp/email/Slack
+
+## Never
+
+- Put fan-out logic in this package — it's enum-only; fan-out lives in `packages/jobs`
+- Send notifications directly — always go through the `trigger("notify", ...)` pathway
+
+## Validation Commands
+
+```bash
+pnpm --filter @carbon/notifications typecheck  # tsc --noEmit
+```
+
+## Key Patterns
+
+- **Enums + pure mapping helpers, no I/O** — `NotificationEvent`, `NotificationTopic`, `NotificationDestination`; `getNotificationTopic`, email heading/CTA helpers, and `USER_FACING_NOTIFICATION_TOPICS` (display order for the account notification-settings page — when adding a `NotificationTopic`, add it here too or it won't appear on that page), plus `getNotificationTopicChannels` (which switches a topic's row offers) and `isNotificationTopicEnabledByDefault` (what no preference row means — `false` only for the opt-in, email-only `Changelog` newsletter), `getNotificationTopicScope` (`account` only for `Changelog`: one setting across all the user's companies) and `notificationPreferenceCompanyId` (the `companyId` a topic's `notificationPreference` row is stored under — `null` for an account topic — used by every reader and writer: `users.service.ts` and the `notify` fan-out). Both take a `NotificationTopic`; narrow a stored `topic` (a TEXT column) with `isNotificationTopic` first. **Making a topic account-level** is one arm in `getNotificationTopicScope` plus a data migration that folds its per-company rows into one NULL row per user (copy the backfill in `20261019124417_account-notification-preferences.sql`); no schema, RLS or reader change. The changelog dispatcher is the one reader that names its topic
+- **Body rendering lives here, all three renditions together** — `renderInlineLinks` (the strict `[label](https://origin/…)` matcher; a security boundary, since a workflow's message body is customer-authored) plus `renderSlackMrkdwn` / `escapeSlackText` for the Slack rendition. The in-app topbar and `NotificationEmail.tsx` consume the segments directly. A fourth channel adds its rendition beside these, not in the fan-out job
+- **`NotificationEvent.Workflow` is the payload-text kind** — every other event's content is read from its source document; this one carries `title` / `body` on the `carbon/notify` payload and reads nothing. Raised by the workflows notify action (`packages/jobs/src/workflows/actions/notify.ts`), topic `General`
+- **inApp is always included** — regardless of caller-specified destinations
+- **Browser push mirrors inApp** — it is neither a `NotificationDestination` nor a `NotificationPreferenceChannel`: `notify` pushes every notification to every recipient's enabled browsers, with no per-topic switch
+- **Single export**: `@carbon/notifications` barrel from `src/index.ts`
+
+## Cross-References
+
+- `packages/lib/src/events.ts` — typed `Events["carbon/notify"]` payload
+- `packages/lib/src/trigger.ts` — `trigger("notify", ...)` dispatch helper
+- `packages/jobs/` — Inngest `notify` function (fan-out implementation)

@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { Database } from "@carbon/database";
+import type { JSONContent } from "@carbon/react";
+import type {
+  DocumentBlock,
+  DocumentTheme,
+  DocumentValues,
+  HeaderOptions,
+  ResolvedSection
+} from "../../../template";
+import type { Company } from "../../../types";
+
+/** One rental unit on a Delivery Ticket, or one delivered contract line on a
+ *  Receiving Report. */
+export type PackingSlipRentalUnit = {
+  id: string;
+  name: string;
+  assetReadableId: string | null;
+  serialNumber: string | null;
+  /** The delivered quantity with its unit; a rental unit is always 1. */
+  quantity?: string;
+};
+
+export type PackingSlipDocumentType =
+  | "packingSlip"
+  | "deliveryTicket"
+  | "receivingReport";
+
+/** Everything a Packing Slip block renderer might need. */
+export interface PackingSlipData {
+  /** The printed document title: the packing slip or the rental delivery ticket title. */
+  documentTitle: string;
+  /** The number printed in the header, from the template's document texts. */
+  documentNumber?: string;
+  company: Company;
+  locale: string;
+  customer:
+    | Database["public"]["Tables"]["customer"]["Row"]
+    | Database["public"]["Tables"]["supplier"]["Row"];
+  customerReference?: string;
+  /** A Receiving Report calls `customerReference` the contract number. */
+  documentType: PackingSlipDocumentType;
+  sourceDocument?: string;
+  sourceDocumentId?: string;
+  shipment: Database["public"]["Tables"]["shipment"]["Row"];
+  shipmentLines: Database["public"]["Views"]["shipmentLines"]["Row"][];
+  shippingAddress: Database["public"]["Tables"]["address"]["Row"] | null;
+  paymentTerm: { id: string; name: string };
+  shippingMethod: { id: string; name: string };
+  terms: JSONContent;
+  trackedEntities: Database["public"]["Tables"]["trackedEntity"]["Row"][];
+  /** A rental shipment's units; when present they replace the shipment lines. */
+  rentalUnits?: PackingSlipRentalUnit[];
+  thumbnails?: Record<string, string | null>;
+  theme: DocumentTheme;
+  sections: Record<string, ResolvedSection>;
+  vars: Record<string, string>;
+  values: DocumentValues;
+  headerOptions: HeaderOptions;
+}
+
+export type BlockRenderer = (args: {
+  block: DocumentBlock;
+  data: PackingSlipData;
+}) => JSX.Element | null;

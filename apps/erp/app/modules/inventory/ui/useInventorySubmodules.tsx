@@ -1,0 +1,218 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useLingui } from "@lingui/react/macro";
+import {
+  LuArrowDownUp,
+  LuArrowRightLeft,
+  LuClipboardCheck,
+  LuClipboardList,
+  LuClipboardX,
+  LuHandCoins,
+  LuListChecks,
+  LuNetwork,
+  LuPackageCheck,
+  LuPackageMinus,
+  LuQrCode,
+  LuScanQrCode,
+  LuShieldCheck,
+  LuTag,
+  LuTally5,
+  LuTruck,
+  LuWarehouse
+} from "react-icons/lu";
+import { GroupedContentSidebar } from "~/components/Layout";
+import { usePermissions } from "~/hooks";
+import { useSavedViews } from "~/hooks/useSavedViews";
+import type { AuthenticatedRouteGroup } from "~/types";
+import { path } from "~/utils/path";
+import type { receiptInspectionStatusType } from "../inventory.models";
+
+const receiptsByInspectionStatus = (
+  statuses: (typeof receiptInspectionStatusType)[number][]
+) =>
+  `${path.to.receipts}?filter=${encodeURIComponent(
+    `inspectionStatus:in:${statuses.join(",")}`
+  )}`;
+
+const receiptsRejectedAtInspection = `${path.to.receipts}?filter=${encodeURIComponent(
+  "rejectedAtInspection:eq:true"
+)}`;
+
+export default function useInventorySubmodules() {
+  const permissions = usePermissions();
+  const { t } = useLingui();
+  const { addSavedViewsToRoutes } = useSavedViews();
+
+  const inventoryRoutes: AuthenticatedRouteGroup[] = [
+    {
+      name: t`Stock`,
+      routes: [
+        {
+          name: t`Quantities`,
+          to: path.to.inventory,
+          role: "employee",
+          icon: <LuTally5 />,
+          table: "inventory"
+        },
+        {
+          name: t`Movements`,
+          to: path.to.stockMovements,
+          role: "employee",
+          icon: <LuArrowDownUp />,
+          table: "itemLedger"
+        },
+        {
+          name: t`Inventory Count`,
+          to: path.to.inventoryCounts,
+          icon: <LuClipboardCheck />,
+          table: "inventoryCount"
+        },
+        {
+          name: t`Issue to Project`,
+          to: path.to.projectIssue,
+          icon: <LuPackageMinus />
+        },
+        {
+          name: t`Kanbans`,
+          to: path.to.kanbans,
+          role: "employee",
+          icon: <LuScanQrCode />
+        }
+      ]
+    },
+    {
+      name: t`Shipping & Receiving`,
+      routes: [
+        {
+          name: t`Receipts`,
+          to: path.to.receipts,
+          icon: <LuHandCoins />,
+          table: "receipt"
+        },
+        {
+          name: t`Pending inspection`,
+          to: receiptsByInspectionStatus([
+            "Pending Inspection",
+            "Inspection In Progress"
+          ]),
+          icon: <LuClipboardCheck />
+        },
+        {
+          name: t`Ready for putaway`,
+          to: receiptsByInspectionStatus([
+            "Inspection Passed",
+            "Partially Passed"
+          ]),
+          icon: <LuPackageCheck />
+        },
+        {
+          name: t`Inspection failed`,
+          // Not a status filter: a receipt with a Partial lot reads Put Away
+          // once its passed stock is put away, and must stay listed here.
+          to: receiptsRejectedAtInspection,
+          icon: <LuClipboardX />
+        },
+        {
+          name: t`Shipments`,
+          to: path.to.shipments,
+          icon: <LuTruck />,
+          table: "shipment"
+        }
+      ]
+    },
+    {
+      name: t`Transfers`,
+      routes: [
+        {
+          name: t`Picking Lists`,
+          to: path.to.pickingLists,
+          icon: <LuClipboardList />
+        },
+        {
+          name: t`Stock Transfers`,
+          to: path.to.stockTransfers,
+          icon: <LuListChecks />,
+          table: "stockTransfer"
+        },
+        {
+          name: t`Warehouse Transfers`,
+          to: path.to.warehouseTransfers,
+          icon: <LuArrowRightLeft />,
+          table: "warehouseTransfer"
+        }
+      ]
+    },
+    {
+      name: t`Traceability`,
+      routes: [
+        {
+          name: t`Tracked Entities`,
+          to: path.to.trackedEntities,
+          role: "employee",
+          icon: <LuQrCode />
+        },
+        {
+          name: t`Traceability`,
+          to: path.to.traceability,
+          role: "employee",
+          icon: <LuNetwork />
+        }
+      ]
+    },
+    {
+      name: t`Configure`,
+      routes: [
+        {
+          name: t`Storage Units`,
+          to: path.to.storageUnits,
+          role: "employee",
+          icon: <LuWarehouse />,
+          table: "storageUnit"
+        },
+        {
+          name: t`Storage Types`,
+          to: path.to.storageTypes,
+          role: "employee",
+          icon: <LuTag />,
+          table: "storageType"
+        },
+        {
+          name: t`Storage Rules`,
+          to: path.to.storageRules,
+          role: "employee",
+          icon: <LuShieldCheck />
+        },
+        {
+          name: t`Shipping Methods`,
+          to: path.to.shippingMethods,
+          role: "employee",
+          icon: <LuTruck />
+        }
+      ]
+    }
+  ];
+
+  const isVisible = (route: AuthenticatedRouteGroup["routes"][number]) => {
+    if (route.role) return permissions.is(route.role);
+    if (route.permission) return permissions.can("view", route.permission);
+    return true;
+  };
+
+  return {
+    groups: inventoryRoutes
+      .map((group) => ({
+        ...group,
+        routes: group.routes.filter(isVisible).map(addSavedViewsToRoutes)
+      }))
+      .filter((group) => group.routes.length > 0)
+  };
+}
+
+/** Phones: the module's section switcher, for routes outside the module's
+ *  own layout (`handle.compactSidebar`). */
+export function InventorySections() {
+  const { groups } = useInventorySubmodules();
+  return <GroupedContentSidebar groups={groups} />;
+}

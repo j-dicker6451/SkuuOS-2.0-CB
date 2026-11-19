@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import {
+  InMemorySpanExporter,
+  NodeTracerProvider,
+  SimpleSpanProcessor
+} from "@opentelemetry/sdk-trace-node";
+import { beforeEach, expect, it, vi } from "vitest";
+
+// Tracing is decided when the module loads, and the global provider registers once.
+vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318");
+const exporter = new InMemorySpanExporter();
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(exporter)]
+});
+provider.register();
+
+beforeEach(() => exporter.reset());
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+it("records each middleware's own time on the request span, not what runs after it", async () => {
+  const { routerInstrumentation, timedMiddleware } = await import(
+    "./tracing.server"
+  );
+
+  type Handle = () => Promise<{ error?: Error }>;
+  let request: (handle: Handle, info: never) => Promise<void> = async () =>
+    undefined;
+  routerInstrumentation(provider.getTracer("test")).handler?.({
+    instrument: (handlers: { request?: typeof request }) => {
+      if (handlers.request) request = handlers.request;
+    }
+  } as never);
+
+  const [slow, quick] = timedMiddleware<Response>({
+    // 30 ms of its own before the rest of the request, which takes 60 ms.
+    slow: async (_args, next) => {
+      await sleep(30);
+      return next();
+    },
+    quick: (_args, next) => next()
+  });
+
+  // A fake clock, because real sleeps overrun on a busy CI machine.
+  vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
+  try {
+    const finished = request(
+      async () => {
+        await slow?.({} as never, () =>
+          Promise.resolve(
+            quick?.({} as never, async () => {
+              await sleep(60);
+              return new Response();
+            }) as Response
+          )
+        );
+        return {};
+      },
+      { request: { method: "GET", url: "http://erp.test/x" } } as never
+    );
+    await vi.advanceTimersByTimeAsync(90);
+    await finished;
+  } finally {
+    vi.useRealTimers();
+  }
+
+  const spans = exporter.getFinishedSpans();
+  expect(spans.map((span) => span.name)).toEqual(["GET"]);
+  const attributes = spans[0]?.attributes ?? {};
+  expect(attributes["carbon.middleware.slow.ms"]).toBe(30);
+  expect(attributes["carbon.middleware.quick.ms"]).toBe(0);
+});
+
+it("names the request span after what a shared route served", async () => {
+  const { routerInstrumentation } = await import("./tracing.server");
+  const { nameRequestSpan } = await import("./span");
+
+  type Handle = () => Promise<{ error?: Error }>;
+  let wrap: (handle: Handle, info: never) => Promise<void> = async () =>
+    undefined;
+  routerInstrumentation(provider.getTracer("test")).handler?.({
+    instrument: (handlers: { request?: typeof wrap }) => {
+      if (handlers.request) wrap = handlers.request;
+    }
+  } as never);
+
+  await wrap(
+    async () => {
+      nameRequestSpan("POST /api/inngest carbon-event-queue");
+      return {};
+    },
+    {
+      request: new Request("http://localhost/api/inngest", { method: "POST" })
+    } as never
+  );
+
+  expect(exporter.getFinishedSpans().map((span) => span.name)).toEqual([
+    "POST /api/inngest carbon-event-queue"
+  ]);
+});

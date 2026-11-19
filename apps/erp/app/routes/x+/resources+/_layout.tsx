@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { RecordOutlet, VStack } from "@carbon/react";
+import { msg } from "@lingui/core/macro";
+
+import { GroupedContentSidebar } from "~/components/Layout";
+import { useResourcesSubmodules } from "~/modules/resources/ui";
+import type { Handle } from "~/utils/handle";
+import { moduleMeta } from "~/utils/meta";
+import { path } from "~/utils/path";
+
+export { RouteErrorBoundary as ErrorBoundary } from "@carbon/react/ErrorBoundary";
+
+export const meta = moduleMeta("Resources");
+
+function ResourcesSidebar() {
+  const { groups } = useResourcesSubmodules();
+  return <GroupedContentSidebar groups={groups} />;
+}
+
+export const handle: Handle = {
+  breadcrumb: msg`Resources`,
+  to: path.to.resources,
+  module: "resources",
+  sidebar: ResourcesSidebar
+};
+
+export default function ResourcesRoute() {
+  return (
+    <VStack spacing={0} className="h-full">
+      <RecordOutlet />
+    </VStack>
+  );
+}

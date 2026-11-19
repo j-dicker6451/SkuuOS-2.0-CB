@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { Database } from "@carbon/database";
+import type {
+  getBatchProperties,
+  getInventoryCountGroupSummaries,
+  getInventoryCountGroups,
+  getInventoryCountLines,
+  getInventoryCounts,
+  getInventoryItems,
+  getInventoryValuation,
+  getInventoryValuationTieOut,
+  getItemLedgerPage,
+  getKanbanItems,
+  getReceiptLines,
+  getReceipts,
+  getShipmentLines,
+  getShipments,
+  getShippingMethods,
+  getStockMovements,
+  getStockTransferLines,
+  getStockTransfers,
+  getTrackedEntities,
+  getWarehouseTransferLines,
+  getWarehouseTransfers,
+  PickingListLiveBin
+} from "./inventory.service";
+import type {
+  getReceiptTracking,
+  getShipmentTracking
+} from "./inventory.utils";
+
+export type BatchProperty = NonNullable<
+  Awaited<ReturnType<typeof getBatchProperties>>["data"]
+>[number];
+
+export type InventoryItem = NonNullable<
+  Awaited<ReturnType<typeof getInventoryItems>>["data"]
+>[number];
+
+export type InventoryValuationRow = NonNullable<
+  Awaited<ReturnType<typeof getInventoryValuation>>["data"]
+>[number];
+
+export type InventoryTieOutRow = NonNullable<
+  Awaited<ReturnType<typeof getInventoryValuationTieOut>>["data"]
+>[number];
+
+export type ItemLedger = NonNullable<
+  Awaited<ReturnType<typeof getItemLedgerPage>>["data"]
+>[number];
+
+export type ItemTracking = NonNullable<
+  Awaited<ReturnType<typeof getReceiptTracking>>["data"]
+>[number];
+
+export type KanbanItem = NonNullable<
+  Awaited<ReturnType<typeof getKanbanItems>>["data"]
+>[number];
+
+export type { KanbanSummary } from "./inventory.service";
+
+export type InventoryCount = NonNullable<
+  Awaited<ReturnType<typeof getInventoryCounts>>["data"]
+>[number];
+
+export type InventoryCountLine = NonNullable<
+  Awaited<ReturnType<typeof getInventoryCountLines>>["data"]
+>[number];
+
+export type InventoryCountGroup = NonNullable<
+  Awaited<ReturnType<typeof getInventoryCountGroups>>["data"]
+>[number];
+
+export type InventoryCountGroupSummary = Awaited<
+  ReturnType<typeof getInventoryCountGroupSummaries>
+>[number];
+
+export type Receipt = NonNullable<
+  Awaited<ReturnType<typeof getReceipts>>["data"]
+>[number];
+
+export type ReceiptLine = NonNullable<
+  Awaited<ReturnType<typeof getReceiptLines>>["data"]
+>[number];
+
+export type ReceiptLineItem = Omit<
+  ReceiptLine,
+  "id" | "updatedBy" | "createdAt" | "updatedAt"
+>;
+
+export type ReceiptSourceDocument =
+  Database["public"]["Enums"]["receiptSourceDocument"];
+
+export type Shipment = NonNullable<
+  Awaited<ReturnType<typeof getShipments>>["data"]
+>[number];
+
+export type StockMovement = NonNullable<
+  Awaited<ReturnType<typeof getStockMovements>>["data"]
+>[number];
+
+export type ShipmentLine = NonNullable<
+  Awaited<ReturnType<typeof getShipmentLines>>["data"]
+>[number];
+
+export type ShipmentLineTracking = NonNullable<
+  Awaited<ReturnType<typeof getShipmentTracking>>["data"]
+>[number];
+
+export type ShippingCarrier = Database["public"]["Enums"]["shippingCarrier"];
+
+export type ShippingMethod = NonNullable<
+  Awaited<ReturnType<typeof getShippingMethods>>["data"]
+>[number];
+
+export type ShipmentSourceDocument =
+  Database["public"]["Enums"]["shipmentSourceDocument"];
+
+export type RentalShipmentLine = {
+  id: string;
+  rentalAgreementLineId: string;
+  shipped: boolean;
+  meter: number | null;
+  unitName: string;
+  thumbnailPath: string | null;
+  itemType: Database["public"]["Enums"]["itemType"] | null;
+  assetReadableId: string | null;
+  serialNumber: string | null;
+  lineStatus: Database["public"]["Enums"]["rentalAgreementLineStatus"];
+};
+
+export type RentalReceiptLine = Omit<RentalShipmentLine, "shipped"> & {
+  received: boolean;
+  notes: string | null;
+  takeOutOfService: boolean;
+  outOfServiceReason: string | null;
+  residualDestination: "Fleet" | "Inventory" | null;
+  lessorClassification:
+    | Database["public"]["Enums"]["lessorClassification"]
+    | null;
+};
+
+export type StockTransfer = NonNullable<
+  Awaited<ReturnType<typeof getStockTransfers>>["data"]
+>[number];
+
+export type StockTransferLine = NonNullable<
+  Awaited<ReturnType<typeof getStockTransferLines>>["data"]
+>[number] & {
+  /** The bins that hold the line's stock now (the transfer page loads them). */
+  liveStorageUnits?: PickingListLiveBin[];
+};
+
+export type TrackedEntity = NonNullable<
+  Awaited<ReturnType<typeof getTrackedEntities>>["data"]
+>[number];
+
+export type WarehouseTransfer = NonNullable<
+  Awaited<ReturnType<typeof getWarehouseTransfers>>["data"]
+>[number];
+
+export type WarehouseTransferLine = NonNullable<
+  Awaited<ReturnType<typeof getWarehouseTransferLines>>["data"]
+>[number];
+
+export interface Activity {
+  id: string;
+  type: string;
+  sourceDocument?: string;
+  sourceDocumentId?: string;
+  sourceDocumentReadableId?: string;
+  attributes: Record<string, any>;
+  /** Present when loaded from trackedActivity (select *); orders lot states. */
+  createdAt?: string;
+}
+
+export interface ActivityInput {
+  trackedActivityId: string;
+  trackedEntityId: string;
+  quantity: number;
+}
+
+export interface ActivityOutput {
+  trackedActivityId: string;
+  trackedEntityId: string;
+  quantity: number;
+}
+
+export interface GraphNode {
+  id: string;
+  type: "entity" | "activity";
+  data: TrackedEntity | Activity;
+  x?: number;
+  y?: number;
+  depth?: number;
+  parentId: string | null;
+}
+
+export interface GraphLink {
+  source: string;
+  target: string;
+  type: "input" | "output";
+  quantity: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
+}
+
+export type StepRecord = {
+  id: string;
+  jobOperationStepId: string;
+  index: number;
+  type: string;
+  name: string;
+  value: string | null;
+  numericValue: number | null;
+  booleanValue: boolean | null;
+  userValue: string | null;
+  unitOfMeasureCode: string | null;
+  minValue: number | null;
+  maxValue: number | null;
+  operationId: string;
+  operationDescription: string | null;
+  itemId: string | null;
+  itemReadableId: string | null;
+  createdAt: string;
+  createdBy: string | null;
+};
+
+export type IssueContainmentStatus = "Contained" | "Uncontained";
+
+export type IssueContainment = {
+  id: string;
+  readableId: string | null;
+  containmentStatus: IssueContainmentStatus;
+  status: string;
+  priority: string | null;
+  trackedEntityId: string;
+};

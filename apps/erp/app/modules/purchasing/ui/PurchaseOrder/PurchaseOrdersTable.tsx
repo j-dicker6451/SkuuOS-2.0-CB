@@ -1,0 +1,680 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useLoaderQuery } from "@carbon/query";
+import {
+  BarProgress,
+  Checkbox,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  HStack,
+  MENU_ITEM_SHORTCUTS,
+  MenuIcon,
+  MenuItem,
+  useDisclosure
+} from "@carbon/react";
+import { getLocalTimeZone, today } from "@internationalized/date";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ColumnDef } from "@tanstack/react-table";
+import { memo, useCallback, useMemo, useState } from "react";
+import {
+  LuBookMarked,
+  LuCalendar,
+  LuCheckCheck,
+  LuContainer,
+  LuCopy,
+  LuCreditCard,
+  LuDollarSign,
+  LuHandCoins,
+  LuPackageCheck,
+  LuPencil,
+  LuQrCode,
+  LuStar,
+  LuTrash,
+  LuTruck,
+  LuUser
+} from "react-icons/lu";
+import { useFetcher } from "react-router";
+import {
+  DateTime,
+  EmployeeAvatar,
+  Hyperlink,
+  ItemThumbnail,
+  New,
+  RevisionSuffix,
+  SupplierAvatar,
+  Table
+} from "~/components";
+import { Enumerable } from "~/components/Enumerable";
+import { usePaymentTerm } from "~/components/Form/PaymentTerm";
+import { useShippingMethod } from "~/components/Form/ShippingMethod";
+import { useLineItemRows } from "~/components/LineItemRows";
+import { ConfirmDelete } from "~/components/Modals";
+import type { BulkActionScope, InfiniteOptions } from "~/components/Table";
+import { useCurrencyFormatter, usePermissions, useRealtime } from "~/hooks";
+import { useBulkFormAction } from "~/hooks/useBulkAction";
+import { useCustomColumns } from "~/hooks/useCustomColumns";
+import {
+  isPurchaseOrderBulkDeletable,
+  purchaseOrderStatusType
+} from "~/modules/purchasing/purchasing.models";
+import type { PurchaseOrderListItem } from "~/modules/purchasing/types";
+import type { loader as finalizeDefaultsLoader } from "~/routes/api+/purchasing.purchase-order.$id.finalize";
+import { usePeople, useSuppliers } from "~/stores";
+import { path } from "~/utils/path";
+import PurchaseOrderFinalizeModal from "./PurchaseOrderFinalizeModal";
+import PurchasingStatus from "./PurchasingStatus";
+import { usePurchaseOrder } from "./usePurchaseOrder";
+
+type PurchaseOrdersTableProps = {
+  data: PurchaseOrderListItem[];
+  count: number;
+  infinite: InfiniteOptions;
+};
+
+const PurchaseOrdersTable = memo(
+  ({ data, count, infinite }: PurchaseOrdersTableProps) => {
+    useRealtime("purchaseOrder");
+
+    const { t } = useLingui();
+    const permissions = usePermissions();
+    const currencyFormatter = useCurrencyFormatter();
+
+    const [selectedPurchaseOrder, setSelectedPurchaseOrder] =
+      useState<PurchaseOrderListItem | null>(null);
+    const [finalizeOrderId, setFinalizeOrderId] = useState<string | null>(null);
+    const finalizeFetcher = useFetcher();
+
+    const deletePurchaseOrderModal = useDisclosure();
+    const finalizePurchaseOrderModal = useDisclosure();
+
+    const [people] = usePeople();
+    const [suppliers] = useSuppliers();
+    const shippingMethods = useShippingMethod();
+    const paymentTerms = usePaymentTerm();
+
+    const { edit, receive } = usePurchaseOrder();
+
+    const customColumns =
+      useCustomColumns<PurchaseOrderListItem>("purchaseOrder");
+
+    const columns = useMemo<ColumnDef<PurchaseOrderListItem>[]>(() => {
+      const defaultColumns: ColumnDef<PurchaseOrderListItem>[] = [
+        {
+          accessorKey: "purchaseOrderId",
+          header: t`PO Number`,
+          cell: ({ row }) => (
+            <HStack>
+              <ItemThumbnail
+                size="sm"
+                thumbnailPath={row.original.thumbnailPath}
+                // @ts-expect-error
+                type={row.original.itemType}
+              />
+              <Hyperlink to={path.to.purchaseOrderDetails(row.original.id!)}>
+                <div className="flex justify-start items-center gap-0">
+                  <span>{row.original.purchaseOrderId}</span>
+                  <RevisionSuffix revisionId={row.original.revisionId} />
+                </div>
+              </Hyperlink>
+            </HStack>
+          ),
+          meta: {
+            mobile: "P1",
+            icon: <LuBookMarked />
+          }
+        },
+        {
+          id: "supplierId",
+          header: t`Supplier`,
+          cell: ({ row }) => {
+            return <SupplierAvatar supplierId={row.original.supplierId} />;
+          },
+          meta: {
+            mobile: "P3",
+            filter: {
+              type: "static",
+              options: suppliers?.map((supplier) => ({
+                value: supplier.id,
+                label: supplier.name
+              }))
+            },
+            icon: <LuContainer />,
+            exportValue: (row: PurchaseOrderListItem) =>
+              suppliers?.find((supplier) => supplier.id === row.supplierId)
+                ?.name ?? row.supplierId
+          }
+        },
+        {
+          accessorKey: "status",
+          header: t`Status`,
+          cell: (item) => {
+            const status =
+              item.getValue<(typeof purchaseOrderStatusType)[number]>();
+            return <PurchasingStatus status={status} />;
+          },
+          meta: {
+            mobile: "P2",
+            filter: {
+              type: "static",
+              options: purchaseOrderStatusType.map((status) => ({
+                value: status,
+                label: <PurchasingStatus status={status} />
+              }))
+            },
+            pluralHeader: t`Statuses`,
+            icon: <LuStar />
+          }
+        },
+        {
+          id: "received",
+          header: t`Received`,
+          cell: ({ row }) => {
+            const receivable = row.original.receivableQuantity ?? 0;
+            const received = row.original.receivedQuantity ?? 0;
+            if (receivable <= 0) return null;
+            return (
+              <BarProgress
+                progress={(received / receivable) * 100}
+                value={`${received}/${receivable}`}
+              />
+            );
+          },
+          meta: {
+            filterHeader: t`Received`,
+            icon: <LuPackageCheck />,
+            exportValue: (row: PurchaseOrderListItem) =>
+              (row.receivableQuantity ?? 0) > 0
+                ? `${row.receivedQuantity ?? 0}/${row.receivableQuantity}`
+                : null
+          }
+        },
+        {
+          accessorKey: "supplierReference",
+          header: t`Supplier Ref.`,
+          cell: (item) => item.getValue(),
+          meta: {
+            icon: <LuQrCode />
+          }
+        },
+        {
+          accessorKey: "orderDate",
+          header: t`Order Date`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            filter: {
+              type: "dateRange"
+            },
+            icon: <LuCalendar />
+          }
+        },
+        {
+          accessorKey: "receiptRequestedDate",
+          header: t`Receipt Requested Date`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            filter: {
+              type: "dateRange"
+            },
+            icon: <LuCalendar />
+          }
+        },
+        {
+          accessorKey: "receiptPromisedDate",
+          header: t`Receipt Promised Date`,
+          cell: ({ row }) => {
+            const isReceivedOnTime =
+              row.original.deliveryDate &&
+              row.original.receiptPromisedDate &&
+              row.original.deliveryDate <= row.original.receiptPromisedDate;
+
+            const isOverdue =
+              ["Cancelled", "Draft"].includes(row.original.status ?? "") &&
+              row.original.receiptPromisedDate &&
+              row.original.receiptPromisedDate <
+                today(getLocalTimeZone()).toString();
+
+            return (
+              <span
+                className={
+                  isReceivedOnTime
+                    ? "text-emerald-500"
+                    : isOverdue
+                      ? "text-red-500"
+                      : ""
+                }
+              >
+                <DateTime
+                  value={row.original.receiptPromisedDate}
+                  variant="date"
+                />
+              </span>
+            );
+          },
+          meta: {
+            filter: {
+              type: "dateRange"
+            },
+            icon: <LuCalendar />
+          }
+        },
+        {
+          accessorKey: "shippedDate",
+          header: t`Shipped Date`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            filter: {
+              type: "dateRange"
+            },
+            icon: <LuCalendar />
+          }
+        },
+        {
+          accessorKey: "expectedReceiptDate",
+          header: t`Expected Receipt Date`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            filter: {
+              type: "dateRange"
+            },
+            icon: <LuCalendar />
+          }
+        },
+        {
+          accessorKey: "orderTotal",
+          header: t`Order Total`,
+          cell: (item) => currencyFormatter.format(item.getValue<number>()),
+          meta: {
+            mobile: "P2",
+            icon: <LuDollarSign />,
+            formatter: currencyFormatter.format,
+            renderTotal: true
+          }
+        },
+        {
+          id: "assignee",
+          header: t`Assignee`,
+          cell: ({ row }) => (
+            <EmployeeAvatar employeeId={row.original.assignee} />
+          ),
+          meta: {
+            filter: {
+              type: "static",
+              options: people.map((employee) => ({
+                value: employee.id,
+                label: employee.name
+              }))
+            },
+            icon: <LuUser />,
+            exportValue: (row) => row.assigneeFullName
+          }
+        },
+
+        {
+          accessorKey: "shippingMethodId",
+          header: t`Shipping Method`,
+          cell: (item) => (
+            <Enumerable
+              value={
+                shippingMethods.find(
+                  (sm) => sm.value === item.getValue<string>()
+                )?.label ?? null
+              }
+            />
+          ),
+          meta: {
+            icon: <LuTruck />,
+            exportValue: (row) =>
+              shippingMethods.find((sm) => sm.value === row.shippingMethodId)
+                ?.label ?? null
+          }
+        },
+        {
+          accessorKey: "paymentTermId",
+          header: t`Payment Terms`,
+          cell: (item) => (
+            <Enumerable
+              value={
+                paymentTerms.find((pt) => pt.value === item.getValue<string>())
+                  ?.label ?? null
+              }
+            />
+          ),
+          meta: {
+            icon: <LuCreditCard />,
+            exportValue: (row) =>
+              paymentTerms.find((pt) => pt.value === row.paymentTermId)
+                ?.label ?? null
+          }
+        },
+        {
+          accessorKey: "dropShipment",
+          header: t`Drop Shipment`,
+          cell: (item) => (
+            <Checkbox
+              aria-label={t`Drop Shipment`}
+              isChecked={item.getValue<boolean>()}
+            />
+          ),
+          meta: {
+            filter: {
+              type: "static",
+              options: [
+                { value: "true", label: t`Yes` },
+                { value: "false", label: t`No` }
+              ]
+            },
+            pluralHeader: t`Drop Shipment Statuses`,
+            icon: <LuTruck />
+          }
+        },
+        {
+          id: "createdBy",
+          header: t`Created By`,
+          cell: ({ row }) => (
+            <EmployeeAvatar employeeId={row.original.createdBy} />
+          ),
+          meta: {
+            filter: {
+              type: "static",
+              options: people.map((employee) => ({
+                value: employee.id,
+                label: employee.name
+              }))
+            },
+            icon: <LuUser />,
+            exportValue: (row) => row.createdByFullName
+          }
+        },
+        {
+          accessorKey: "createdAt",
+          header: t`Created At`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            icon: <LuCalendar />
+          }
+        },
+        {
+          id: "updatedBy",
+          header: t`Updated By`,
+          cell: ({ row }) => (
+            <EmployeeAvatar employeeId={row.original.updatedBy} />
+          ),
+          meta: {
+            filter: {
+              type: "static",
+              options: people.map((employee) => ({
+                value: employee.id,
+                label: employee.name
+              }))
+            },
+            icon: <LuUser />,
+            exportValue: (row: PurchaseOrderListItem) =>
+              people.find((employee) => employee.id === row.updatedBy)?.name ??
+              row.updatedBy
+          }
+        },
+        {
+          accessorKey: "updatedAt",
+          header: t`Updated At`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            icon: <LuCalendar />
+          }
+        }
+      ];
+
+      return [...defaultColumns, ...customColumns];
+    }, [
+      suppliers,
+      people,
+      customColumns,
+      currencyFormatter,
+      shippingMethods,
+      paymentTerms,
+      t
+    ]);
+
+    const { submit: submitBulk, fetcher } = useBulkFormAction();
+    const onBulkUpdate = useCallback(
+      (
+        selectedRows: typeof data,
+        field: "delete",
+        value?: string,
+        scope?: BulkActionScope
+      ) => {
+        submitBulk(
+          path.to.bulkUpdatePurchaseOrder,
+          { scope, idsField: "ids", ids: selectedRows.map((row) => row.id) },
+          { field, value }
+        );
+      },
+      [submitBulk]
+    );
+
+    const renderActions = useCallback(
+      (selectedRows: typeof data, scope?: BulkActionScope) => {
+        return (
+          <DropdownMenuContent align="end" className="min-w-[200px]">
+            <DropdownMenuLabel>Update</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                disabled={
+                  !permissions.can("delete", "purchasing") ||
+                  // Every matching row: the server deletes the Draft and
+                  // Planned orders and skips the rest.
+                  (!scope?.allMatching &&
+                    selectedRows.some(
+                      (row) => !isPurchaseOrderBulkDeletable(row.status)
+                    ))
+                }
+                destructive
+                onClick={() =>
+                  onBulkUpdate(selectedRows, "delete", undefined, scope)
+                }
+              >
+                <MenuIcon icon={<LuTrash />} />
+                <Trans>Delete Purchase Orders</Trans>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        );
+      },
+      [onBulkUpdate, permissions]
+    );
+
+    const renderContextMenu = useCallback(
+      (row: PurchaseOrderListItem) => (
+        <>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.edit}
+            disabled={!permissions.can("view", "purchasing")}
+            onClick={() => edit(row)}
+          >
+            <MenuIcon icon={<LuPencil />} />
+            <Trans>Edit</Trans>
+          </MenuItem>
+
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.duplicate}
+            disabled={!permissions.can("create", "purchasing") || !row.id}
+            onClick={() => {
+              if (!row.id) return;
+              fetcher.submit(null, {
+                method: "post",
+                action: path.to.purchaseOrderDuplicate(row.id)
+              });
+            }}
+          >
+            <MenuIcon icon={<LuCopy />} />
+            <Trans>Duplicate</Trans>
+          </MenuItem>
+
+          <MenuItem
+            disabled={
+              !row.id ||
+              !["Draft", "Planned"].includes(row.status ?? "") ||
+              !permissions.can("view", "purchasing") ||
+              !permissions.can("create", "purchasing") ||
+              !permissions.can("update", "purchasing")
+            }
+            onClick={() => {
+              if (!row.id) return;
+              setFinalizeOrderId(row.id);
+              finalizePurchaseOrderModal.onOpen();
+            }}
+          >
+            <MenuIcon icon={<LuCheckCheck />} />
+            <Trans>Finalize</Trans>
+          </MenuItem>
+
+          <MenuItem
+            disabled={
+              !["To Receive", "To Receive and Invoice"].includes(
+                row.status ?? ""
+              ) || !permissions.can("update", "inventory")
+            }
+            onClick={() => {
+              receive(row);
+            }}
+          >
+            <MenuIcon icon={<LuHandCoins />} />
+            <Trans>Receive</Trans>
+          </MenuItem>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.delete}
+            disabled={
+              !permissions.can("delete", "purchasing") ||
+              !["Draft", "Planned"].includes(row.status ?? "")
+            }
+            destructive
+            onClick={() => {
+              setSelectedPurchaseOrder(row);
+              deletePurchaseOrderModal.onOpen();
+            }}
+          >
+            <MenuIcon icon={<LuTrash />} />
+            <Trans>Delete</Trans>
+          </MenuItem>
+        </>
+      ),
+      [
+        deletePurchaseOrderModal,
+        edit,
+        fetcher,
+        finalizePurchaseOrderModal,
+        permissions,
+        receive
+      ]
+    );
+
+    const lineItemRows =
+      useLineItemRows<PurchaseOrderListItem>("purchase-orders");
+
+    return (
+      <>
+        <Table<PurchaseOrderListItem>
+          getRowLabel={(row) => row.purchaseOrderId ?? undefined}
+          count={count}
+          columns={columns}
+          data={data}
+          {...lineItemRows}
+          infinite={infinite}
+          defaultColumnPinning={{
+            left: ["purchaseOrderId"]
+          }}
+          defaultColumnVisibility={{
+            dropShipment: false,
+            createdBy: false,
+            createdAt: false,
+            updatedBy: false,
+            updatedAt: false
+          }}
+          primaryAction={
+            permissions.can("create", "purchasing") && (
+              <New label={t`Purchase Order`} to={path.to.newPurchaseOrder} />
+            )
+          }
+          renderContextMenu={renderContextMenu}
+          renderActions={renderActions}
+          title={t`Purchase Orders`}
+          table="purchaseOrder"
+          withSavedView
+          withSelectableRows
+        />
+
+        {finalizeOrderId && (
+          <ListFinalizeModal
+            purchaseOrderId={finalizeOrderId}
+            fetcher={finalizeFetcher}
+            open={finalizePurchaseOrderModal.isOpen}
+            onClose={finalizePurchaseOrderModal.onClose}
+          />
+        )}
+
+        {selectedPurchaseOrder && selectedPurchaseOrder.id && (
+          <ConfirmDelete
+            action={path.to.deletePurchaseOrder(selectedPurchaseOrder.id)}
+            isOpen={deletePurchaseOrderModal.isOpen}
+            name={selectedPurchaseOrder.purchaseOrderId!}
+            text={`Are you sure you want to delete ${selectedPurchaseOrder.purchaseOrderId!}? This cannot be undone.`}
+            onCancel={() => {
+              deletePurchaseOrderModal.onClose();
+            }}
+            onSubmit={() => {
+              deletePurchaseOrderModal.onClose();
+            }}
+          />
+        )}
+      </>
+    );
+  }
+);
+PurchaseOrdersTable.displayName = "PurchaseOrdersTable";
+
+function ListFinalizeModal({
+  purchaseOrderId,
+  fetcher,
+  open,
+  onClose
+}: {
+  purchaseOrderId: string;
+  fetcher: ReturnType<typeof useFetcher>;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const defaults = useLoaderQuery<typeof finalizeDefaultsLoader>(
+    path.to.api.purchaseOrderFinalize(purchaseOrderId)
+  );
+  if (!defaults.data?.purchaseOrder) return null;
+
+  return (
+    <PurchaseOrderFinalizeModal
+      purchaseOrderId={purchaseOrderId}
+      purchaseOrder={defaults.data.purchaseOrder}
+      defaultCc={defaults.data.defaultCc}
+      fetcher={fetcher}
+      open={open}
+      onClose={onClose}
+    />
+  );
+}
+
+export default PurchaseOrdersTable;

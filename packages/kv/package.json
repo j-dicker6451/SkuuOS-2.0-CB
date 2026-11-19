@@ -1,0 +1,39 @@
+{
+  "name": "@carbon/kv",
+  "dependencies": {
+    "@carbon/env": "workspace:*",
+    "@carbon/logger": "workspace:*",
+    "ioredis": "5.10.1"
+  },
+  "devDependencies": {
+    "@carbon/config": "workspace:*",
+    "@types/ioredis-mock": "8.2.8",
+    "@types/node": "20.19.39",
+    "cookie": "catalog:",
+    "dompurify": "catalog:",
+    "dotenv": "16.3.1",
+    "ioredis-mock": "8.13.1",
+    "nanoid": "catalog:",
+    "rimraf": "catalog:",
+    "sst": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "private": true,
+  "scripts": {
+    "clean": "rimraf .turbo node_modules dist",
+    "dev": "tsup --watch",
+    "lint": "biome lint --write ",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "sideEffects": false,
+  "version": "0.0.0"
+}

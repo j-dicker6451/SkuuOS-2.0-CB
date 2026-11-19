@@ -1,0 +1,354 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import {
+  Button,
+  DropdownMenuIcon,
+  DropdownMenuItem,
+  MENU_ITEM_SHORTCUTS,
+  useDisclosure
+} from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import {
+  LuCheckCheck,
+  LuCircleStop,
+  LuCreditCard,
+  LuFile,
+  LuFilePen,
+  LuGitCompare,
+  LuLoaderCircle,
+  LuPackageCheck,
+  LuTrash,
+  LuTruck
+} from "react-icons/lu";
+import {
+  Link,
+  useFetcher,
+  useNavigation,
+  useParams,
+  useSubmit
+} from "react-router";
+import { useDocumentEditModal } from "~/components/DocumentEditModal";
+import { usePanels } from "~/components/Layout";
+import { RecordAction, RecordHeader } from "~/components/Layout/RecordHeader";
+import Confirm from "~/components/Modals/Confirm/Confirm";
+import ConfirmDelete from "~/components/Modals/ConfirmDelete";
+import { usePermissions, useRouteData } from "~/hooks";
+import { path } from "~/utils/path";
+import { isServiceReturnLine, liveServiceJob } from "../../sales.models";
+import SalesReturnOrderCreditModal from "./SalesReturnOrderCreditModal";
+import SalesReturnOrderStatus from "./SalesReturnOrderStatus";
+import type { SalesReturnOrder, SalesReturnOrderLine } from "./types";
+
+const SalesReturnOrderHeader = () => {
+  const { t } = useLingui();
+  const { id } = useParams();
+  if (!id) throw new Error("id not found");
+  const documentEdit = useDocumentEditModal("salesReturnOrder", id);
+
+  const { toggleExplorer, toggleProperties } = usePanels();
+
+  const routeData = useRouteData<{
+    salesReturnOrder: SalesReturnOrder;
+    lines: SalesReturnOrderLine[];
+  }>(path.to.salesReturnOrder(id));
+
+  if (!routeData?.salesReturnOrder) {
+    throw new Error("Failed to load sales return order");
+  }
+
+  const permissions = usePermissions();
+  const salesReturnOrder = routeData.salesReturnOrder;
+  const status = salesReturnOrder.status;
+
+  const replacementFetcher = useFetcher<{ success: boolean }>();
+  const statusFetcher = useFetcher<{ success: boolean }>();
+  const submit = useSubmit();
+  const navigation = useNavigation();
+  const isCreatingDocument = navigation.state !== "idle";
+
+  // Same pattern as the PO header's receive/ship: POST the source document to
+  // the create route, which drafts the document and redirects into it.
+  const receive = () => {
+    const formData = new FormData();
+    formData.set("sourceDocument", "Sales Return Order");
+    formData.set("sourceDocumentId", id);
+    submit(formData, { method: "post", action: path.to.newReceipt });
+  };
+  const shipBack = () => {
+    const formData = new FormData();
+    formData.set("sourceDocument", "Sales Return Order");
+    formData.set("sourceDocumentId", id);
+    submit(formData, { method: "post", action: path.to.newShipment });
+  };
+
+  // What can go back out: a Return to Customer line, or a received serviced
+  // unit whose job is done or cancelled and that has not shipped or been
+  // scrapped.
+  const hasReturnToCustomerLine = routeData.lines.some((line) => {
+    if (!isServiceReturnLine(line.returnType)) {
+      return line.disposition === "Return to Customer";
+    }
+    const job = liveServiceJob(line.serviceJob);
+    return (
+      (job?.status === "Completed" ||
+        job?.status === "Invoiced" ||
+        job?.status === "Cancelled") &&
+      Number(line.quantityReceived ?? 0) > 0 &&
+      Number(line.quantityShipped ?? 0) === 0 &&
+      line.disposition !== "Scrap"
+    );
+  });
+  // Credit is capped at received quantity — the button is useless before
+  // anything has been received.
+  const hasReceivedQuantity = routeData.lines.some(
+    (line) => Number(line.quantityReceived) > 0
+  );
+
+  const confirmDisclosure = useDisclosure();
+  const cancelDisclosure = useDisclosure();
+  const creditDisclosure = useDisclosure();
+  const deleteDisclosure = useDisclosure();
+
+  const canUpdate = permissions.can("update", "sales");
+
+  const menuItems = (
+    <>
+      <DropdownMenuItem
+        disabled={
+          !["To Receive", "Cancelled"].includes(status ?? "") ||
+          statusFetcher.state !== "idle" ||
+          !canUpdate
+        }
+        onClick={() => {
+          statusFetcher.submit(
+            { status: "Draft" },
+            {
+              method: "post",
+              action: path.to.salesReturnOrderStatus(id)
+            }
+          );
+        }}
+      >
+        <DropdownMenuIcon icon={<LuLoaderCircle />} />
+        <Trans>Reopen</Trans>
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        shortcut={MENU_ITEM_SHORTCUTS.delete}
+        destructive
+        disabled={
+          !["Draft", "Cancelled"].includes(status ?? "") ||
+          !permissions.can("delete", "sales") ||
+          !permissions.is("employee")
+        }
+        onClick={deleteDisclosure.onOpen}
+      >
+        <DropdownMenuIcon icon={<LuTrash />} />
+        <Trans>Delete RMA</Trans>
+      </DropdownMenuItem>
+    </>
+  );
+  const statusBadge = <SalesReturnOrderStatus status={status} />;
+  return (
+    <>
+      <RecordHeader
+        title={salesReturnOrder.salesReturnOrderId}
+        titleTo={path.to.salesReturnOrderDetails(id)}
+        copyValue={salesReturnOrder.salesReturnOrderId ?? ""}
+        menu={menuItems}
+        status={statusBadge}
+        onToggleExplorer={toggleExplorer}
+        onToggleProperties={toggleProperties}
+        actions={
+          <>
+            {status !== "Draft" && (
+              <RecordAction slot="overflow">
+                <Button leftIcon={<LuFile />} variant="secondary" asChild>
+                  <a
+                    target="_blank"
+                    href={path.to.file.salesReturnOrder(id)}
+                    rel="noreferrer"
+                  >
+                    <Trans>PDF</Trans>
+                  </a>
+                </Button>
+              </RecordAction>
+            )}
+            {documentEdit.canEdit && (
+              <RecordAction slot="overflow">
+                <Button
+                  leftIcon={<LuFilePen />}
+                  variant="secondary"
+                  onClick={documentEdit.openEditor}
+                >
+                  <Trans>Edit document</Trans>
+                </Button>
+              </RecordAction>
+            )}
+
+            {status === "Draft" && (
+              <RecordAction slot="primary">
+                <Button
+                  leftIcon={<LuCheckCheck />}
+                  variant="primary"
+                  isDisabled={routeData.lines.length === 0 || !canUpdate}
+                  onClick={confirmDisclosure.onOpen}
+                >
+                  <Trans>Confirm</Trans>
+                </Button>
+              </RecordAction>
+            )}
+
+            {["Draft", "To Receive"].includes(status ?? "") && (
+              <RecordAction slot="overflow">
+                <Button
+                  variant="secondary"
+                  leftIcon={<LuCircleStop />}
+                  isDisabled={!canUpdate}
+                  onClick={cancelDisclosure.onOpen}
+                >
+                  <Trans>Cancel</Trans>
+                </Button>
+              </RecordAction>
+            )}
+
+            {status === "To Receive" && (
+              <RecordAction slot="primary">
+                <Button
+                  variant="primary"
+                  leftIcon={<LuPackageCheck />}
+                  isDisabled={
+                    isCreatingDocument ||
+                    !permissions.can("create", "inventory")
+                  }
+                  onClick={receive}
+                >
+                  <Trans>Receive</Trans>
+                </Button>
+              </RecordAction>
+            )}
+
+            {!["Draft", "Cancelled"].includes(status ?? "") &&
+              hasReceivedQuantity &&
+              hasReturnToCustomerLine && (
+                <RecordAction slot="overflow">
+                  <Button
+                    variant="secondary"
+                    leftIcon={<LuTruck />}
+                    isDisabled={
+                      isCreatingDocument ||
+                      !permissions.can("create", "inventory")
+                    }
+                    onClick={shipBack}
+                  >
+                    <Trans>Ship</Trans>
+                  </Button>
+                </RecordAction>
+              )}
+
+            {!["Draft", "Cancelled"].includes(status ?? "") && (
+              <>
+                {hasReceivedQuantity && (
+                  <RecordAction slot="overflow">
+                    <Button
+                      leftIcon={<LuCreditCard />}
+                      variant="secondary"
+                      isDisabled={!permissions.can("create", "invoicing")}
+                      onClick={creditDisclosure.onOpen}
+                    >
+                      <Trans>Issue Credit</Trans>
+                    </Button>
+                  </RecordAction>
+                )}
+
+                {salesReturnOrder.replacementSalesOrderId ? (
+                  <RecordAction slot="overflow">
+                    <Button
+                      leftIcon={<LuGitCompare />}
+                      variant="secondary"
+                      asChild
+                    >
+                      <Link
+                        to={path.to.salesOrder(
+                          salesReturnOrder.replacementSalesOrderId
+                        )}
+                      >
+                        <Trans>Replacement Order</Trans>
+                      </Link>
+                    </Button>
+                  </RecordAction>
+                ) : (
+                  <RecordAction slot="overflow">
+                    <Button
+                      leftIcon={<LuGitCompare />}
+                      variant="secondary"
+                      isLoading={replacementFetcher.state !== "idle"}
+                      isDisabled={
+                        replacementFetcher.state !== "idle" ||
+                        !permissions.can("create", "sales")
+                      }
+                      onClick={() => {
+                        replacementFetcher.submit(null, {
+                          method: "post",
+                          action: path.to.salesReturnOrderReplacement(id)
+                        });
+                      }}
+                    >
+                      <Trans>Create Replacement</Trans>
+                    </Button>
+                  </RecordAction>
+                )}
+              </>
+            )}
+          </>
+        }
+      />
+
+      <Confirm
+        action={path.to.salesReturnOrderConfirm(id)}
+        isOpen={confirmDisclosure.isOpen}
+        title={t`Confirm ${salesReturnOrder.salesReturnOrderId}`}
+        text={t`Are you sure you want to confirm this RMA? Confirming authorizes the customer to return the goods on the lines.`}
+        confirmText={t`Confirm`}
+        onCancel={confirmDisclosure.onClose}
+        onSubmit={confirmDisclosure.onClose}
+      />
+
+      <Confirm
+        action={path.to.salesReturnOrderStatus(id)}
+        isOpen={cancelDisclosure.isOpen}
+        title={t`Cancel ${salesReturnOrder.salesReturnOrderId}`}
+        text={t`Are you sure you want to cancel this RMA? This releases the authorized quantities back to the source documents.`}
+        confirmText={t`Cancel RMA`}
+        confirmVariant="destructive"
+        onCancel={cancelDisclosure.onClose}
+        onSubmit={cancelDisclosure.onClose}
+      >
+        <input type="hidden" name="status" value="Cancelled" />
+      </Confirm>
+
+      <SalesReturnOrderCreditModal
+        open={creditDisclosure.isOpen}
+        currencyCode={salesReturnOrder.currencyCode ?? undefined}
+        onClose={creditDisclosure.onClose}
+      />
+
+      <ConfirmDelete
+        action={path.to.deleteSalesReturnOrder(id)}
+        isOpen={deleteDisclosure.isOpen}
+        name={salesReturnOrder.salesReturnOrderId!}
+        text={t`Are you sure you want to delete ${salesReturnOrder.salesReturnOrderId!}? This cannot be undone.`}
+        onCancel={() => {
+          deleteDisclosure.onClose();
+        }}
+        onSubmit={() => {
+          deleteDisclosure.onClose();
+        }}
+      />
+      {documentEdit.modal}
+    </>
+  );
+};
+
+export default SalesReturnOrderHeader;

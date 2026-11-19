@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon, respond } from "@carbon/api/carbon.server";
+import { error, notFound } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { useRouteDialog } from "@carbon/react";
+import { redirect } from "@carbon/utils";
+import { useLingui } from "@lingui/react/macro";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useParams } from "react-router";
+import { ConfirmDelete } from "~/components/Modals";
+import { getShift } from "~/modules/people/people.service";
+import { path } from "~/utils/path";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client } = await requirePermissions(request, {
+    view: "people",
+    role: "employee"
+  });
+
+  const { shiftId } = params;
+  if (!shiftId) throw notFound("shiftId not found");
+
+  const shift = await getShift(client, shiftId);
+  if (shift.error) {
+    throw redirect(
+      path.to.shifts,
+      await flash(request, error(shift.error, "Failed to get shift"))
+    );
+  }
+
+  return {
+    shift: shift.data
+  };
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  const { shiftId } = params;
+  if (!shiftId) throw notFound("Shift ID was not found");
+  const api = await carbon(request);
+  const result = await api.people.deleteShift({ shiftId });
+  return respond(request, result).redirect(path.to.shifts, {
+    message: "Successfully deleted shift"
+  });
+}
+
+export default function DeleteShiftRoute() {
+  const { shiftId } = useParams();
+  const { shift } = useLoaderData<typeof loader>();
+  const dialog = useRouteDialog(path.to.shifts);
+  const { t } = useLingui();
+
+  if (!shift) return null;
+  if (!shiftId) throw notFound("shiftId not found");
+
+  const name = shift.name ?? "Shift";
+  const locationName = shift.locationName ?? t`unknown location`;
+  return (
+    <ConfirmDelete
+      action={path.to.deleteShift(shiftId)}
+      name={name}
+      text={t`Are you sure you want to delete the shift: ${name} from ${locationName}? This cannot be undone.`}
+      isOpen={dialog.open}
+      onCancel={dialog.close}
+    />
+  );
+}

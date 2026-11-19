@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { RecordOutlet } from "@carbon/react";
+import { msg } from "@lingui/core/macro";
+import type { LoaderFunctionArgs } from "react-router";
+import { getUnitOfMeasuresList } from "~/modules/items/items.service";
+import { getLocationsList } from "~/modules/resources/resources.service";
+import type { Handle } from "~/utils/handle";
+import { moduleMeta } from "~/utils/meta";
+import { path } from "~/utils/path";
+
+export { RouteErrorBoundary as ErrorBoundary } from "@carbon/react/ErrorBoundary";
+
+export const meta = moduleMeta("Part");
+
+export const handle: Handle = {
+  breadcrumb: msg`Items`,
+  to: path.to.items,
+  module: "items"
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "parts"
+  });
+
+  const [unitOfMeasures, locations] = await Promise.all([
+    getUnitOfMeasuresList(client, companyId),
+    getLocationsList(client, companyId)
+  ]);
+
+  return {
+    locations: locations?.data ?? [],
+    unitOfMeasures: unitOfMeasures?.data ?? []
+  };
+}
+
+export default function PartRoute() {
+  return <RecordOutlet />;
+}

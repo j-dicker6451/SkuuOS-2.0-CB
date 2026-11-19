@@ -1,0 +1,235 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { ManifestEntry } from "@carbon/api";
+import { EntitlementError } from "@carbon/ee/entitlements.server";
+import { createCatalogSearch, type McpServerDeps } from "@carbon/ee/mcp";
+import { serveMcpRequest } from "@carbon/ee/mcp.server";
+import { getAppUrl } from "@carbon/env";
+import { Ratelimit, redis } from "@carbon/kv";
+import { addLogContext } from "@carbon/logger/context.server";
+import { datetime, getRequestOrigin } from "@carbon/utils";
+import type { ActionFunctionArgs } from "react-router";
+import { getCompanyTimeZone } from "~/modules/shared/shared.service";
+import {
+  authenticateApiKey,
+  findOAuthToken,
+  oauthContext
+} from "../v1+/lib/authenticate.server";
+import type { AuthedContext } from "../v1+/lib/base.server";
+
+// The MCP engine lives in `@carbon/ee/mcp.server` and takes the dispatch, the
+// manifest and one catalog search index for the process as injected deps —
+// they derive from `~/modules/*` and cannot move into a package.
+//
+// They load on the first MCP request, not at module scope. The dev server
+// evaluates every route module on its first request, and the manifest
+// (tool-metadata.json, ~20 MB of JSON) plus the dispatcher it pulls in were
+// among the largest things it held — for a route most sessions never call.
+type McpDeps = McpServerDeps<AuthedContext>;
+let mcpDeps: Promise<McpDeps> | undefined;
+function loadMcpDeps(): Promise<McpDeps> {
+  if (mcpDeps) return mcpDeps;
+  const loading: Promise<McpDeps> = Promise.all([
+    import("../v1+/lib/call.server"),
+    import("../v1+/lib/operations.server"),
+    import("./lib/tool-metadata.json")
+  ]).then(
+    ([{ callOperation }, { isListOperation, operationsByName }, json]) => {
+      const toolMetadata = json.default;
+      return {
+        callOperation,
+        operationsByName,
+        isListOperation,
+        catalogSearch: createCatalogSearch(
+          toolMetadata.tools as unknown as ManifestEntry[]
+        ),
+        toolMetadata
+      };
+    }
+  );
+  // A transient failure (a chunk that did not load) is retried on the next
+  // request rather than cached; a module that throws while evaluating keeps
+  // throwing, as Node caches that failure.
+  loading.catch(() => {
+    mcpDeps = undefined;
+  });
+  mcpDeps = loading;
+  return loading;
+}
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Content-Type": "application/json"
+};
+
+function addCorsHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  return new Response(response.body, {
+    status: response.status,
+    headers
+  });
+}
+
+/**
+ * OAuth (connector) callers get 60 requests/minute — what a company's API keys
+ * get in total — but through the app's Redis limiter rather than the
+ * Postgres one: `apiKeyRateLimit` has an FK to `apiKey`, so it cannot count a
+ * synthetic per-user id, and this route only exists in the Node app where Redis
+ * is the house tool (the login limiter is the precedent). Keyed by USER, not by
+ * token, so minting extra tokens does not multiply the allowance. Without this,
+ * the OAuth branch was the one authenticated path with no rate limit at all —
+ * it never touches requirePermissions, where the API-key limit lives.
+ */
+const OAUTH_RATE_LIMIT = 60;
+const oauthRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(OAUTH_RATE_LIMIT, "1 m")
+});
+
+function make429Response(reset: number, remaining: number): Response {
+  const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+  return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+    status: 429,
+    headers: {
+      "X-RateLimit-Limit": OAUTH_RATE_LIMIT.toString(),
+      "X-RateLimit-Remaining": remaining.toString(),
+      "X-RateLimit-Reset": reset.toString(),
+      "Retry-After": retryAfterSeconds.toString(),
+      ...corsHeaders
+    }
+  });
+}
+
+// The MCP server is a commercial (Business+) feature. companyHasFeature returns
+// false on the Community edition and, on Cloud, for Starter-plan companies — so
+// this one gate makes the server unavailable to community/starter across BOTH
+// the OAuth-connector and carbon-key auth paths.
+function makeMcpDisabledResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      error:
+        "The MCP server is available on the Business plan. Upgrade to connect an agent to Carbon."
+    }),
+    {
+      status: 402,
+      headers: corsHeaders
+    }
+  );
+}
+
+function make401Response(request: Request): Response {
+  const origin =
+    getAppUrl() || getRequestOrigin(request) || new URL(request.url).origin;
+  return new Response(null, {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+      ...corsHeaders
+    }
+  });
+}
+
+async function resolveAuth(request: Request): Promise<{
+  ctx: AuthedContext;
+  request: Request;
+}> {
+  const authHeader = request.headers.get("Authorization");
+  const hasCarbonKey = request.headers.has("carbon-key");
+
+  if (authHeader?.startsWith("Bearer ") && !hasCarbonKey) {
+    const token = authHeader.slice(7);
+
+    // Try OAuth for non-API-key tokens
+    if (!token.startsWith("crbn_")) {
+      const identity = await findOAuthToken(token);
+      if (identity) {
+        const rl = await oauthRatelimit.limit(`mcp-oauth:${identity.userId}`);
+        if (!rl.success) {
+          throw make429Response(rl.reset, rl.remaining);
+        }
+
+        const ctx = await oauthContext(identity);
+        if (ctx) return { ctx, request };
+      }
+
+      throw make401Response(request);
+    }
+
+    // Fall back to carbon-key auth
+    const headers = new Headers(request.headers);
+    headers.set("carbon-key", token);
+    request = new Request(request, { headers });
+  }
+
+  // No Authorization header at all — return 401 for OAuth discovery
+  if (!authHeader && !hasCarbonKey) {
+    throw make401Response(request);
+  }
+
+  // `request` here carries the carbon-key header for both entry forms
+  // (`Bearer crbn_…` was rewritten above). Same helper as the v1 HTTP transport,
+  // so the requirePermissions-then-read-scopes dance exists once.
+  const rawKey = request.headers.get("carbon-key") ?? "";
+  return {
+    ctx: await authenticateApiKey(request.url, rawKey),
+    request
+  };
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const { ctx, request: authedRequest } = await resolveAuth(request);
+  addLogContext({
+    companyId: ctx.companyId,
+    userId: ctx.userId,
+    authKind: ctx.authKind
+  });
+
+  let response: Response;
+  try {
+    // The agent is told what "today" is; it has to be the company's day, not
+    // the server's, or every relative-date tool call it makes lands a day off.
+    // `serveMcpRequest` embeds the MCP entitlement LOCK (Business+), covering
+    // every auth path since both resolve to an authed context first — it
+    // throws `EntitlementError` for community/starter, caught below as 402.
+    response = await serveMcpRequest(
+      authedRequest,
+      ctx,
+      datetime
+        .today(await getCompanyTimeZone(ctx.client, ctx.companyId))
+        .toString(),
+      await loadMcpDeps()
+    );
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      return addCorsHeaders(makeMcpDisabledResponse());
+    }
+    throw err;
+  }
+
+  return addCorsHeaders(response);
+}
+
+export async function loader({ request }: { request: Request }) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Method not allowed. Use POST." },
+      id: null
+    }),
+    {
+      status: 405,
+      headers: corsHeaders
+    }
+  );
+}

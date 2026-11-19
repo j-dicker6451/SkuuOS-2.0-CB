@@ -1,0 +1,271 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useRouteData } from "@carbon/react";
+import { useLingui } from "@lingui/react/macro";
+import { useMemo } from "react";
+import {
+  LuBlocks,
+  LuBox,
+  LuCreditCard,
+  LuCrown,
+  LuFactory,
+  LuFiles,
+  LuFolderCheck,
+  LuFolderKanban,
+  LuHeadphones,
+  LuHeartHandshake,
+  LuLandmark,
+  LuSettings,
+  LuShield,
+  LuShoppingCart,
+  LuTvMinimalPlay,
+  LuUsers,
+  LuWorkflow
+} from "react-icons/lu";
+import { useUIStore } from "~/stores/ui";
+import type { Authenticated, NavItem } from "~/types";
+import { path } from "~/utils/path";
+import {
+  type SubmoduleLayout,
+  submoduleLayout
+} from "~/utils/submodule-visibility";
+import { usePermissions } from "./usePermissions";
+
+type ModuleDefinition = Authenticated<NavItem> & { key: string };
+
+type ModulePreference = {
+  module: string;
+  position: number;
+  hidden: boolean;
+  hiddenSubmodules: string[];
+  submoduleOrder: string[];
+};
+
+const NO_PREFERENCES: ModulePreference[] = [];
+
+function useModulePreferences() {
+  const routeData = useRouteData<{
+    modulePreferences: ModulePreference[];
+  }>(path.to.authenticatedRoot);
+  return routeData?.modulePreferences ?? NO_PREFERENCES;
+}
+
+/**
+ * The sub-modules this user hides and the order they put them in. While
+ * Customize is open it is the unsaved layout, so the sidebar previews it.
+ */
+export function useSubmoduleLayout(): SubmoduleLayout {
+  const modulePreferences = useModulePreferences();
+  const draft = useUIStore((state) => state.draftSubmoduleLayout);
+  return useMemo(
+    () => draft ?? submoduleLayout(modulePreferences),
+    [draft, modulePreferences]
+  );
+}
+
+function filterByPermissions(
+  modules: ModuleDefinition[],
+  permissions: ReturnType<typeof usePermissions>
+) {
+  return modules.filter((item) => {
+    if (item.permission) {
+      return permissions.can("view", item.permission);
+    } else if (item.role) {
+      return permissions.is(item.role);
+    } else {
+      return true;
+    }
+  });
+}
+
+function useModuleDefinitions(): ModuleDefinition[] {
+  const { t } = useLingui();
+  return [
+    {
+      key: "accounting",
+      permission: "accounting",
+      name: t`Accounting`,
+      to: path.to.accounting,
+      icon: LuLandmark
+    },
+    {
+      key: "documents",
+      permission: "documents",
+      name: t`Documents`,
+      to: path.to.documents,
+      icon: LuFiles
+    },
+    {
+      key: "inventory",
+      permission: "inventory",
+      name: t`Inventory`,
+      to: path.to.inventory,
+      icon: LuBox
+    },
+    {
+      key: "invoicing",
+      permission: "invoicing",
+      name: t`Invoicing`,
+      to: path.to.invoicing,
+      icon: LuCreditCard
+    },
+    {
+      key: "parts",
+      permission: "parts",
+      name: t`Items`,
+      to: path.to.parts,
+      icon: LuBlocks
+    },
+    {
+      key: "people",
+      permission: "people",
+      name: t`People`,
+      to: path.to.people,
+      icon: LuUsers
+    },
+    {
+      key: "production",
+      permission: "production",
+      name: t`Production`,
+      to: path.to.production,
+      icon: LuFactory
+    },
+    {
+      key: "projects",
+      permission: "projects",
+      name: t`Projects`,
+      to: path.to.projects,
+      icon: LuFolderKanban
+    },
+    {
+      key: "purchasing",
+      permission: "purchasing",
+      name: t`Purchasing`,
+      to: path.to.purchasing,
+      icon: LuShoppingCart
+    },
+    {
+      key: "quality",
+      permission: "quality",
+      name: t`Quality`,
+      to: path.to.quality,
+      icon: LuFolderCheck
+    },
+    {
+      key: "resources",
+      permission: "resources",
+      name: t`Resources`,
+      to: path.to.resources,
+      icon: LuHeartHandshake
+    },
+    {
+      key: "sales",
+      permission: "sales",
+      name: t`Sales`,
+      to: path.to.sales,
+      icon: LuCrown
+    },
+    {
+      key: "service",
+      permission: "service",
+      name: t`Service`,
+      to: path.to.serviceJobs,
+      icon: LuHeadphones
+    },
+    {
+      key: "settings",
+      permission: "settings",
+      name: t`Settings`,
+      to: path.to.company,
+      icon: LuSettings
+    },
+    {
+      key: "shopFloor",
+      name: t`Shop Floor`,
+      to: path.to.external.mes,
+      icon: LuTvMinimalPlay,
+      role: "employee",
+      external: true,
+      newTab: true
+    },
+    {
+      key: "users",
+      permission: "users",
+      name: t`Users`,
+      to: path.to.employeeAccounts,
+      icon: LuShield
+    },
+    {
+      key: "workflows",
+      permission: "workflows",
+      name: t`Workflows`,
+      to: path.to.workflows,
+      icon: LuWorkflow
+    }
+  ];
+}
+
+const PINNED_MODULES = new Set(["settings"]);
+
+export function useModules() {
+  const permissions = usePermissions();
+  const modules = useModuleDefinitions();
+  const modulePreferences = useModulePreferences();
+  const permitted = filterByPermissions(modules, permissions).filter(
+    (m) => !PINNED_MODULES.has(m.key)
+  );
+
+  const alphabetical = permitted.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (modulePreferences.length === 0) {
+    return alphabetical;
+  }
+
+  const prefMap = new Map(modulePreferences.map((p) => [p.module, p]));
+
+  const visible = alphabetical.filter((m) => {
+    const pref = prefMap.get(m.key);
+    return !pref?.hidden;
+  });
+
+  return visible.sort((a, b) => {
+    const posA = prefMap.get(a.key)?.position ?? Infinity;
+    const posB = prefMap.get(b.key)?.position ?? Infinity;
+    return posA - posB;
+  });
+}
+
+export function useSettingsModule() {
+  const permissions = usePermissions();
+  const modules = useModuleDefinitions();
+  const settings = modules.find((m) => m.key === "settings");
+  if (!settings) return null;
+  if (settings.permission && !permissions.can("view", settings.permission)) {
+    return null;
+  }
+  return settings;
+}
+
+export function useAllModules() {
+  const permissions = usePermissions();
+  const modules = useModuleDefinitions();
+  const modulePreferences = useModulePreferences();
+
+  const permitted = filterByPermissions(modules, permissions)
+    .filter((m) => !PINNED_MODULES.has(m.key))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const prefMap = new Map(modulePreferences.map((p) => [p.module, p]));
+
+  return permitted
+    .map((m, index) => ({
+      ...m,
+      position: prefMap.get(m.key)?.position ?? index + 1,
+      hidden: prefMap.get(m.key)?.hidden ?? false,
+      hiddenSubmodules: prefMap.get(m.key)?.hiddenSubmodules ?? [],
+      submoduleOrder: prefMap.get(m.key)?.submoduleOrder ?? []
+    }))
+    .sort((a, b) => a.position - b.position);
+}

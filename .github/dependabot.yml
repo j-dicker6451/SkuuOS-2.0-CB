@@ -1,0 +1,90 @@
+# Dependabot: security updates only.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Version updates are off everywhere (open-pull-requests-limit: 0). They
+# opened weekly bump PRs that were mostly closed unmerged, and npm's never
+# finished: Dependabot runs `pnpm update -r` per direct dependency (~340),
+# about 2.5 hours against a 55-minute job limit.
+#
+# Security updates come from the repository setting "Dependabot security
+# updates" (Settings → Code security), not from this file, and the limit
+# above does not apply to them. This file only groups them: one PR per
+# ecosystem for the advisories open at the time, not one PR per advisory.
+# There are no `ignore` rules, because they apply to security updates too
+# and would skip a fix that needs a major version.
+version: 2
+updates:
+  # JavaScript/TypeScript — the root pnpm-lock.yaml covers every package and app
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Rust — the root Cargo.lock covers every crate, the assembler included
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # GitHub Actions used by .github/workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/apps/assembler"
+      - "/packages/database/supabase/edge-runtime"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Images pinned in the dev and self-host compose files
+  - package-ecosystem: "docker-compose"
+    directories:
+      - "/packages/dev/docker"
+      - "/contrib/deploying/simple-docker-caddy"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+    groups:
+      compose-security:
+        applies-to: security-updates
+        patterns:
+          - "*"

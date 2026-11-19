@@ -1,0 +1,354 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { supportedLanguages } from "@carbon/locale";
+import { NotificationTopic } from "@carbon/notifications";
+import { z } from "zod";
+import { zfd } from "zod-form-data";
+
+export const modulePreferencesValidator = z.object({
+  preferences: z.array(
+    z.object({
+      module: z.string().min(1),
+      position: z.number(),
+      hidden: z.boolean(),
+      hiddenSubmodules: z.array(z.string()).optional(),
+      submoduleOrder: z.array(z.string()).optional()
+    })
+  )
+});
+
+export const bulkPermissionsValidator = z.object({
+  editType: z.string().min(1, { message: "Update type is required" }),
+  userIds: z
+    .array(z.string().min(1, { message: "Invalid selection" }))
+    .min(1, { message: "Group members are required" }),
+  data: z
+    .string()
+    .startsWith("{", { message: "Invalid JSON" })
+    .endsWith("}", { message: "Invalid JSON" })
+});
+
+export const createCustomerAccountValidator = z.object({
+  id: z.string().min(1, "Customer contact is required"),
+  customer: z.string().min(1, { message: "Customer is required" })
+});
+
+export const createEmployeeValidator = z.object({
+  email: z
+    .string()
+    .min(1, { message: "Email is required" })
+    .email("Must be a valid email"),
+  firstName: z.string().min(1, { message: "First name is required" }),
+  lastName: z.string().min(1, { message: "Last name is required" }),
+  employeeType: z.string().min(1, { message: "Employee type is required" }),
+  locationId: z.string().min(1, { message: "Location is required" }),
+  // Controlled environments (ITAR) require the inviter to attest a reasonable
+  // basis that the invitee is a U.S. person (22 CFR 120.62). Optional in the
+  // schema — the action enforces it only when CONTROLLED_ENVIRONMENT is on, so
+  // ordinary deployments (no checkbox rendered) still validate.
+  usPersonAttestation: zfd.checkbox()
+});
+
+/** `inviteEmployee`'s refusal of an invite without the attestation above. */
+export const US_PERSON_ATTESTATION_REQUIRED =
+  "You must confirm a reasonable basis that this individual is a U.S. person";
+
+// ITAR certification — Screen 1 (entity Rider acceptance). The two checkboxes
+// must be checked; z.literal(true) rejects an unchecked/absent box server-side
+// even though the browser also enforces `required`.
+export const itarEntityCertificationValidator = z.object({
+  authorityToBind: z.literal(true, {
+    error: "You must confirm your authority to bind"
+  }),
+  acceptRider: z.literal(true, {
+    error: "You must accept the Rider"
+  }),
+  fullLegalName: z
+    .string()
+    .trim()
+    .min(1, { message: "Full legal name is required" }),
+  title: z.string().trim().min(1, { message: "Title is required" }),
+  complianceContact: z
+    .string()
+    .trim()
+    .min(1, { message: "Export compliance contact is required" })
+});
+
+// ITAR certification — Screen 2 (user U.S.-Person attestation).
+export const itarUserCertificationValidator = z.object({
+  certifyUsPerson: z.literal(true, {
+    error: "You must certify that you are a U.S. Person"
+  }),
+  agreeNotify: z.literal(true, {
+    error: "You must agree to the notification requirement"
+  }),
+  understandPenalty: z.literal(true, {
+    error: "You must acknowledge the penalties"
+  }),
+  fullLegalName: z
+    .string()
+    .trim()
+    .min(1, { message: "Full legal name is required" })
+});
+
+export const createOperatorValidator = z.object({
+  firstName: z.string().min(1, { message: "First name is required" }),
+  lastName: z.string().min(1, { message: "Last name is required" }),
+  locationId: z.string().min(1, { message: "Location is required" })
+});
+
+export const convertOperatorValidator = z.object({
+  email: z
+    .string()
+    .min(1, { message: "Email is required" })
+    .email("Must be a valid email"),
+  employeeType: z.string().min(1, { message: "Employee type is required" })
+});
+
+export const createSupplierAccountValidator = z.object({
+  id: z.string().min(1, "Supplier contact is required"),
+  supplier: z.string().min(1, { message: "Supplier is required" })
+});
+
+export const deactivateUsersValidator = z.object({
+  redirectTo: z.string(),
+  users: z
+    .array(z.string().min(1, { message: "Invalid user id" }))
+    .min(1, { message: "Group members are required" })
+});
+
+export const employeeTypeValidator = z.object({
+  id: zfd.text(z.string().optional()),
+  name: z.string().trim().min(1, { message: "Name is required" }),
+  data: z
+    .string()
+    .startsWith("[", { message: "Invalid JSON" })
+    .endsWith("]", { message: "Invalid JSON" })
+});
+
+export const employeeTypePermissionsValidator = z.array(
+  z.object({
+    name: z.string(),
+    permission: z.object({
+      view: z.boolean(),
+      create: z.boolean(),
+      update: z.boolean(),
+      delete: z.boolean()
+    })
+  })
+);
+
+export const employeeValidator = z.object({
+  id: z.string(),
+  employeeType: z.string().min(1, { message: "Employee type is required" }),
+  data: z
+    .string()
+    .startsWith("{", { message: "Invalid JSON" })
+    .endsWith("}", { message: "Invalid JSON" })
+});
+
+export const groupValidator = z.object({
+  id: z.string(),
+  name: z.string().trim().min(1, { message: "Name is required" }),
+  selections: z
+    .array(z.string().min(1, { message: "Invalid selection" }))
+    .min(1, { message: "Group members are required" })
+});
+
+export const resendInviteValidator = z.object({
+  users: z
+    .array(z.string().min(1, { message: "Invalid user id" }))
+    .min(1, { message: "Users are required" })
+});
+
+export const revokeInviteValidator = z.object({
+  users: z
+    .array(z.string().min(1, { message: "Invalid user id" }))
+    .min(1, { message: "Users are required" })
+});
+
+export const userPermissionsValidator = z.object({
+  view: z.boolean(),
+  create: z.boolean(),
+  update: z.boolean(),
+  delete: z.boolean()
+});
+
+export const validUserFlags = [
+  "academy",
+  "training:quotes",
+  "training:salesOrders",
+  "training:salesInvoices",
+  "training:jobs",
+  "training:suppliers",
+  "training:purchaseOrders",
+  "training:parts",
+  "training:inventory",
+  "training:quality"
+] as const;
+
+// Dismissing the What's new panel sets `changelog:<entry slug>`; open-ended
+// because entries keep being published.
+const CHANGELOG_FLAG_PREFIX = "changelog:";
+export const changelogFlagKey = (slug: string) =>
+  `${CHANGELOG_FLAG_PREFIX}${slug}`;
+
+export type UserFlagKey = (typeof validUserFlags)[number];
+
+const userFlagKeyValidator = z.union([
+  z.enum(validUserFlags),
+  z.string().regex(/^changelog:[a-z0-9-]+$/)
+]);
+
+export const userFlagValidator = z.object({
+  flag: userFlagKeyValidator,
+  value: z.boolean()
+});
+
+export const userFlagsValidator = z.record(userFlagKeyValidator, z.boolean());
+
+// "Every matching row" in place of the selected users: the list and its URL
+// search as JSON (`allMatchingRequest`, `~/components/Table`).
+const allMatchingField = z.string().min(1, { message: "Invalid selection" });
+
+export const bulkPermissionsAllMatchingValidator = bulkPermissionsValidator
+  .omit({ userIds: true })
+  .extend({ allMatching: allMatchingField });
+
+export const deactivateUsersAllMatchingValidator = deactivateUsersValidator
+  .omit({ users: true })
+  .extend({ allMatching: allMatchingField });
+
+export const resendInviteAllMatchingValidator = z.object({
+  allMatching: allMatchingField
+});
+
+/** The Employees table's bulk actions on users. */
+export type BulkUserAction = "deactivate" | "invite" | "permissions";
+
+/**
+ * Whether a bulk action on the Employees table acts on this user: the rule
+ * the table applies to its selection, and the background job to every
+ * matching row. Edit Permissions takes active users, Deactivate active users
+ * other than the actor, and Send Invite inactive users with an email and no
+ * unrevoked invite.
+ */
+export function canBulkActOnUser(
+  action: BulkUserAction,
+  user: { id: string | null; active: boolean | null; email: string | null },
+  context: { actorId: string; unrevokedInviteEmails: ReadonlySet<string> }
+): boolean {
+  switch (action) {
+    case "permissions":
+      return user.active === true;
+    case "deactivate":
+      return user.active === true && user.id !== context.actorId;
+    case "invite":
+      return (
+        user.active === false &&
+        !!user.email &&
+        !context.unrevokedInviteEmails.has(user.email)
+      );
+  }
+}
+
+export const notificationPreferenceValidator = z.object({
+  topic: z.nativeEnum(NotificationTopic),
+  channel: z.enum(["email", "slack"]),
+  enabled: z.enum(["true", "false"])
+});
+
+// The browser's PushSubscription.toJSON(), plus the endpoint it replaces when
+// the service worker re-subscribes after a pushsubscriptionchange.
+export const pushSubscriptionValidator = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1)
+  }),
+  oldEndpoint: z.string().url().optional()
+});
+
+export const pushSubscriptionEndpointValidator = z.object({
+  endpoint: z.string().url()
+});
+
+export const onboardingUserValidator = z.object({
+  firstName: z.string().min(1, { message: "First name is required" }),
+  lastName: z.string().min(1, { message: "Last name is required" }),
+  // about: zfd.text(z.string().optional()),
+  next: z.string().min(1, { message: "Next is required" })
+});
+
+export const accountLanguageValidator = z.object({
+  locale: z.enum(supportedLanguages)
+});
+
+export const accountPasswordValidator = z
+  .object({
+    currentPassword: z
+      .string()
+      .min(6, { message: "Current password is required" }),
+    password: z.string().min(6, { message: "Password is required" }),
+    confirmPassword: z
+      .string()
+      .min(6, { message: "Confirm password is required" })
+  })
+  .superRefine(({ confirmPassword, password }, ctx) => {
+    if (confirmPassword !== password) {
+      ctx.addIssue({
+        code: "custom",
+        message: "The passwords did not match"
+      });
+    }
+  });
+
+export const accountPersonalDataValidator = z.object({});
+
+const attributeDefaults = {
+  type: z.string().min(1, { message: "Type is required" }),
+  userAttributeId: z.string().min(20),
+  userAttributeValueId: zfd.text(z.string().optional())
+};
+
+export const attributeBooleanValidator = z.object({
+  ...attributeDefaults,
+  value: zfd.checkbox()
+});
+
+export const attributeNumericValidator = z.object({
+  ...attributeDefaults,
+  value: zfd.numeric(z.number())
+});
+
+export const attributeTextValidator = z.object({
+  ...attributeDefaults,
+  value: z.string().min(1, { message: "Value is required" })
+});
+
+export const attributeUserValidator = z.object({
+  ...attributeDefaults,
+  value: z.string().min(1, { message: "User is required" })
+});
+
+export const attributeCustomerValidator = z.object({
+  ...attributeDefaults,
+  value: z.string().min(1, { message: "Customer is required" })
+});
+
+export const attributeSupplierValidator = z.object({
+  ...attributeDefaults,
+  value: z.string().min(1, { message: "Supplier is required" })
+});
+
+export const attributeFileValidator = z.object({
+  ...attributeDefaults,
+  value: z.string().min(1, { message: "File is required" })
+});
+
+export const deleteUserAttributeValueValidator = z.object({
+  userAttributeId: z.string().min(20),
+  userAttributeValueId: z.string().min(20)
+});

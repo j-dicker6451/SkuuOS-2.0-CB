@@ -1,0 +1,231 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { CalendarDate } from "@internationalized/date";
+import { useLingui } from "@lingui/react/macro";
+import { useDatePicker } from "@react-aria/datepicker";
+import { useDatePickerState } from "@react-stately/datepicker";
+import type { DatePickerProps } from "@react-types/datepicker";
+import type { ReactNode } from "react";
+import { useId, useRef } from "react";
+import { LuBan, LuCalendarClock, LuInfo } from "react-icons/lu";
+import { cn } from "..";
+import { Button } from "../Button";
+import { useClearLabel, useFormControl } from "../Form/useFormControl";
+import { HStack } from "../HStack";
+import { IconButton } from "../IconButton";
+import { InlineTrigger } from "../InlineTrigger";
+import { InputGroup } from "../Input";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverFooter,
+  PopoverTrigger
+} from "../Popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../Tooltip";
+import { FieldButton } from "./components/Button";
+import { Calendar } from "./components/Calendar";
+import DateField from "./components/DateField";
+
+const DatePicker = (
+  props: DatePickerProps<CalendarDate> & {
+    inline?: ReactNode;
+    /** Inline mode: what the empty field reads, "Add start date". */
+    inlinePlaceholder?: ReactNode;
+    isPreviewInline?: boolean;
+    helperText?: string;
+    closeOnSelect?: boolean;
+    size?: "sm" | "md" | "lg";
+    /** Days to flag with a dot in the calendar, e.g. days that have work due. */
+    isDateMarked?: (date: CalendarDate) => boolean;
+    /** The field's name for assistive tech; defaults to `label`. */
+    "aria-label"?: string;
+  }
+) => {
+  const { t } = useLingui();
+  const state = useDatePickerState({
+    ...props,
+    shouldCloseOnSelect: props.closeOnSelect ?? false
+  });
+
+  const ref = useRef<HTMLDivElement>(null);
+  // The form variant opens from an anchor, not a Radix trigger, so Radix has
+  // no trigger to return focus to on close: this holds the calendar button.
+  const anchorRef = useRef<HTMLDivElement>(null);
+  // Set when the popover closes from a click or focus outside it: focus then
+  // stays where the user put it, as Radix does for a trigger. A click on
+  // nothing focusable (a sheet's overlay) still returns it to the button.
+  const closedFromOutside = useRef(false);
+  // The label is drawn by the form field, not here, so name the group with it
+  // directly; a label react-aria points at but nothing renders names nothing.
+  const fieldName =
+    props["aria-label"] ??
+    (typeof props.label === "string" ? props.label : undefined);
+  // Inside a FormControl the field's error, helper text and glossary
+  // definition describe it.
+  const { ariaProps } = useFormControl(props);
+  const { groupProps, fieldProps, buttonProps, dialogProps, calendarProps } =
+    useDatePicker(
+      {
+        ...props,
+        label: undefined,
+        "aria-label": fieldName,
+        "aria-describedby": ariaProps["aria-describedby"]
+      },
+      state,
+      ref
+    );
+  // The inline variants render no group, so the button's labelledby (and the
+  // dialog's, which points at the button) would name it only "Calendar". Name
+  // it "Calendar <field>" as react-aria does when the group is drawn.
+  const inlineButtonLabel = fieldName
+    ? {
+        "aria-label": `${buttonProps["aria-label"]} ${fieldName}`,
+        "aria-labelledby": undefined
+      }
+    : {};
+  const clearLabel = useClearLabel(fieldName);
+  // The preview button also reads out the date it shows: its own label, then
+  // the visible value.
+  const previewValueId = useId();
+
+  return (
+    <Popover open={state.isOpen} onOpenChange={state.setOpen}>
+      <div className="relative inline-flex flex-col w-full">
+        <HStack className="w-full" spacing={0}>
+          {props.inline ? (
+            <>
+              {props.isPreviewInline && typeof props.inline !== "boolean" ? (
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-1.5"
+                    aria-label="Open date picker"
+                    isDisabled={props.isDisabled}
+                    {...buttonProps}
+                    {...inlineButtonLabel}
+                    aria-labelledby={`${buttonProps.id} ${previewValueId}`}
+                  >
+                    <span id={previewValueId} className="contents">
+                      {props.inline}
+                    </span>
+                    <LuCalendarClock />
+                  </Button>
+                </PopoverTrigger>
+              ) : (
+                <div className="flex w-full min-w-0 items-center gap-1">
+                  <PopoverTrigger asChild>
+                    <InlineTrigger
+                      isEmpty={!state.value}
+                      placeholder={props.inlinePlaceholder ?? t`Add`}
+                      isDisabled={props.isDisabled}
+                    >
+                      {props.inline}
+                    </InlineTrigger>
+                  </PopoverTrigger>
+                  {props.helperText && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconButton
+                          icon={<LuInfo />}
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Helper information"
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>{props.helperText}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <InputGroup
+                {...groupProps}
+                ref={ref}
+                size={props.size}
+                className="w-full inline-flex"
+                isDisabled={props.isDisabled || props.isReadOnly}
+              >
+                <div
+                  className={
+                    props.size === "sm"
+                      ? "flex w-full items-center px-3 py-1"
+                      : "flex w-full px-4 py-2"
+                  }
+                >
+                  <DateField {...fieldProps} size={props.size} />
+                  {state.isInvalid && (
+                    <LuBan className="!text-destructive-foreground ml-auto shrink-0 self-center" />
+                  )}
+                </div>
+                {/* Anchor (not Trigger) so the calendar button isn't wrapped
+                    in a second <button>; the popover open state is driven by
+                    react-aria's buttonProps on FieldButton. */}
+                {/* -mt/-mr let the button overlay the group's own 1px border
+                    exactly — without -mr-px its rounded corner sits 1px inside
+                    the group's corner and both edges show. The sm field is
+                    shorter, so the button needs a deeper pull-up. */}
+                <PopoverAnchor asChild>
+                  <div
+                    ref={anchorRef}
+                    className={cn(
+                      "flex-shrink-0 -mr-px",
+                      props.size === "sm" ? "mt-[-3px]" : "-mt-px"
+                    )}
+                  >
+                    <FieldButton
+                      {...buttonProps}
+                      size={props.size}
+                      isPressed={state.isOpen}
+                    />
+                  </div>
+                </PopoverAnchor>
+              </InputGroup>
+            </>
+          )}
+        </HStack>
+        <PopoverContent
+          align="end"
+          {...dialogProps}
+          onInteractOutside={() => {
+            closedFromOutside.current = true;
+          }}
+          onCloseAutoFocus={
+            props.inline
+              ? undefined
+              : (event) => {
+                  const fromOutside = closedFromOutside.current;
+                  closedFromOutside.current = false;
+                  const focused = document.activeElement;
+                  if (fromOutside && focused && focused !== document.body) {
+                    return;
+                  }
+                  const button = anchorRef.current?.querySelector("button");
+                  if (!button) return;
+                  event.preventDefault();
+                  button.focus();
+                }
+          }
+        >
+          <Calendar {...calendarProps} isDateMarked={props.isDateMarked} />
+          <PopoverFooter>
+            <Button
+              onClick={() => state.setValue(null)}
+              variant="secondary"
+              aria-label={clearLabel}
+            >
+              Clear
+            </Button>
+          </PopoverFooter>
+        </PopoverContent>
+      </div>
+    </Popover>
+  );
+};
+
+export default DatePicker;

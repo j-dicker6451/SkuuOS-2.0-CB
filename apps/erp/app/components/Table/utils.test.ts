@@ -1,0 +1,350 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { ColumnDef } from "@tanstack/react-table";
+import { describe, expect, it } from "vitest";
+import {
+  bodyRowPositions,
+  buildColumnMaps,
+  exportOnlyColumn,
+  getColumnLabel,
+  hasUniqueRowIds,
+  isServerSortable,
+  selectExportColumns,
+  serverExportLinks
+} from "./utils";
+
+describe("serverExportLinks", () => {
+  it("keeps list filters and view columns but starts the download at the first page", () => {
+    const links = serverExportLinks({
+      search: "?filter=status:eq:Posted&sort=dateDue:asc&after=old&count=exact",
+      urls: { csv: "/x/invoicing/sales.csv", xlsx: "/x/invoicing/sales.xlsx" },
+      columns: [{ key: "invoiceId", label: "Invoice Number" }]
+    });
+    for (const href of [links.csv, links.xlsx]) {
+      const params = new URL(href, "http://localhost").searchParams;
+      expect(params.get("filter")).toBe("status:eq:Posted");
+      expect(params.get("sort")).toBe("dateDue:asc");
+      expect(params.has("after")).toBe(false);
+      expect(params.has("count")).toBe(false);
+      expect(JSON.parse(params.get("columns") ?? "null")).toEqual([
+        { key: "invoiceId", label: "Invoice Number" }
+      ]);
+    }
+  });
+});
+
+type Row = {
+  id: string;
+  supplierTypeId: string;
+  type: string;
+  tags: string[];
+};
+
+const cols = (...columns: ColumnDef<Row, unknown>[]) => columns;
+
+describe("buildColumnMaps", () => {
+  it("keeps today's behavior: accessorKey + string header -> accessors + sortKey", () => {
+    const { accessors, exportValues, sortKeyToLabel } = buildColumnMaps(
+      cols({ accessorKey: "type", header: "Type" })
+    );
+    expect(accessors).toEqual({ type: "Type" });
+    expect(exportValues).toEqual({});
+    expect(sortKeyToLabel).toEqual({ type: "Type" });
+  });
+
+  it("throws when an accessorKey contains an underscore", () => {
+    expect(() =>
+      buildColumnMaps(cols({ accessorKey: "a_b", header: "X" }))
+    ).toThrow(/Cannot contain '_'/);
+  });
+
+  it("allows an underscore in a custom-field accessor (generated id)", () => {
+    const { accessors } = buildColumnMaps(
+      cols({ accessorKey: "customFields->>qzAx_-vk3", header: "Color" })
+    );
+    expect(accessors).toEqual({ "customFields->>qzAx_-vk3": "Color" });
+  });
+
+  it("includes a display column (id, no accessor) that has exportValue", () => {
+    const exportValue = (row: Row) => row.tags.join(", ");
+    const { accessors, exportValues, sortKeyToLabel } = buildColumnMaps(
+      cols({ id: "labels", header: "Labels", meta: { exportValue } })
+    );
+    expect(accessors).toEqual({ labels: "Labels" });
+    expect(exportValues.labels).toBe(exportValue);
+    // a display column is not sortable on the server
+    expect(sortKeyToLabel).toEqual({});
+  });
+
+  it("uses filterHeader as the export label for a JSX-header column", () => {
+    const exportValue = (row: Row) => row.type;
+    const { accessors, sortKeyToLabel } = buildColumnMaps(
+      cols({
+        id: "week1",
+        header: () => null,
+        meta: { filterHeader: "Week 1", exportValue }
+      })
+    );
+    expect(accessors).toEqual({ week1: "Week 1" });
+    // JSX-header columns never enter the sort picker
+    expect(sortKeyToLabel).toEqual({});
+  });
+
+  it("falls back to filterHeader when the string header is empty", () => {
+    const exportValue = (row: Row) => row.type;
+    const { accessors, sortKeyToLabel } = buildColumnMaps(
+      cols({
+        accessorKey: "type",
+        header: "",
+        meta: { filterHeader: "Unit of Measure", exportValue }
+      })
+    );
+    expect(accessors).toEqual({ type: "Unit of Measure" });
+    // an empty string header still yields a (blank) sort-picker label, unchanged
+    expect(sortKeyToLabel).toEqual({ type: "" });
+  });
+
+  it("ignores a JSX-header column with no exportValue and no filterHeader", () => {
+    const { accessors, exportValues, sortKeyToLabel } = buildColumnMaps(
+      cols({ id: "week1", header: () => null })
+    );
+    expect(accessors).toEqual({});
+    expect(exportValues).toEqual({});
+    expect(sortKeyToLabel).toEqual({});
+  });
+
+  it("decouples sort/export from the accessor (supplier-type class)", () => {
+    const exportValue = (row: Row) => row.type;
+    const { accessors, exportValues, sortKeyToLabel } = buildColumnMaps(
+      cols({
+        accessorKey: "supplierTypeId",
+        header: "Type",
+        meta: { sortBy: "type", exportValue }
+      })
+    );
+    // value + filter stay on the id; export + sort move to the name
+    expect(accessors).toEqual({ supplierTypeId: "Type" });
+    expect(exportValues.supplierTypeId).toBe(exportValue);
+    expect(sortKeyToLabel).toEqual({ type: "Type" });
+  });
+
+  it("leaves a sort on another table's column out of the sort picker", () => {
+    const { accessors, sortKeyToLabel } = buildColumnMaps(
+      cols(
+        { accessorKey: "customer.name", header: "Customer" },
+        {
+          accessorKey: "supplierTypeId",
+          header: "Type",
+          meta: { sortBy: "supplierType.name" }
+        },
+        { accessorKey: "type", header: "Kind" }
+      )
+    );
+    // the columns still export
+    expect(accessors).toEqual({
+      "customer.name": "Customer",
+      supplierTypeId: "Type",
+      type: "Kind"
+    });
+    expect(sortKeyToLabel).toEqual({ type: "Kind" });
+  });
+
+  it("leaves an enableSorting: false column out of the sort picker", () => {
+    const { accessors, sortKeyToLabel } = buildColumnMaps(
+      cols({ accessorKey: "type", header: "Type", enableSorting: false })
+    );
+    expect(accessors).toEqual({ type: "Type" });
+    expect(sortKeyToLabel).toEqual({});
+  });
+});
+
+describe("getColumnLabel", () => {
+  it("names a column by its string header, else its filterHeader", () => {
+    const col = (c: ColumnDef<Row>) => c as ColumnDef<Row, unknown>;
+    expect(getColumnLabel(col({ accessorKey: "type", header: "Type" }))).toBe(
+      "Type"
+    );
+    expect(
+      getColumnLabel(
+        col({
+          accessorKey: "type",
+          header: () => null,
+          meta: { filterHeader: "Type" }
+        })
+      )
+    ).toBe("Type");
+    expect(
+      getColumnLabel(
+        col({ accessorKey: "type", header: "", meta: { filterHeader: "Type" } })
+      )
+    ).toBe("Type");
+    expect(
+      getColumnLabel(col({ accessorKey: "type", header: () => null }))
+    ).toBe(undefined);
+  });
+});
+
+describe("isServerSortable", () => {
+  it("is true for a plain accessor column", () => {
+    expect(isServerSortable<Row>({ accessorKey: "type", header: "Type" })).toBe(
+      true
+    );
+  });
+
+  it("is false for a display column, a dotted sort key and enableSorting: false", () => {
+    expect(isServerSortable<Row>({ id: "labels", header: "Labels" })).toBe(
+      false
+    );
+    expect(
+      isServerSortable<Row>({ accessorKey: "customer.id", header: "Customer" })
+    ).toBe(false);
+    expect(
+      isServerSortable<Row>({
+        accessorKey: "supplierTypeId",
+        header: "Type",
+        meta: { sortBy: "supplierType.name" }
+      })
+    ).toBe(false);
+    expect(
+      isServerSortable<Row>({
+        accessorKey: "type",
+        header: "Type",
+        enableSorting: false
+      })
+    ).toBe(false);
+  });
+});
+
+describe("exportOnlyColumn", () => {
+  it("exports under filterHeader, is flagged export-only, and never sorts", () => {
+    const value = (row: Row) => row.type;
+    const column = exportOnlyColumn<Row>({
+      id: "itemName",
+      header: "Item Name",
+      value
+    });
+
+    const { accessors, exportValues, sortKeyToLabel, exportOnlyColumns } =
+      buildColumnMaps(cols(column));
+
+    expect(accessors).toEqual({ itemName: "Item Name" });
+    expect(exportValues.itemName).toBe(value);
+    expect(exportOnlyColumns).toEqual(["itemName"]);
+    // no accessorKey, so it can never reach the server-sort picker
+    expect(sortKeyToLabel).toEqual({});
+  });
+});
+
+describe("selectExportColumns", () => {
+  const columnAccessors = { type: "Type", itemName: "Item Name" };
+
+  it("falls back to accessor order when the view has no column order", () => {
+    expect(
+      selectExportColumns({
+        columnAccessors,
+        columnOrder: [],
+        columnVisibility: {},
+        exportOnlyColumns: ["itemName"]
+      })
+    ).toEqual(["type", "itemName"]);
+  });
+
+  it("appends an export-only column a stale saved view's order omits", () => {
+    expect(
+      selectExportColumns({
+        columnAccessors,
+        // saved before itemName existed
+        columnOrder: ["type"],
+        columnVisibility: {},
+        exportOnlyColumns: ["itemName"]
+      })
+    ).toEqual(["type", "itemName"]);
+  });
+
+  it("keeps export-only columns despite being hidden, drops hidden normal ones", () => {
+    expect(
+      selectExportColumns({
+        columnAccessors,
+        columnOrder: ["type", "itemName"],
+        columnVisibility: { type: false, itemName: false },
+        exportOnlyColumns: ["itemName"]
+      })
+    ).toEqual(["itemName"]);
+  });
+
+  it("drops ids with no accessor (selection, expand, actions)", () => {
+    expect(
+      selectExportColumns({
+        columnAccessors,
+        columnOrder: ["select", "type", "actions"],
+        columnVisibility: {},
+        exportOnlyColumns: []
+      })
+    ).toEqual(["type"]);
+  });
+});
+
+describe("hasUniqueRowIds", () => {
+  it("is true when every row has its own id", () => {
+    expect(hasUniqueRowIds([{ id: "a" }, { id: "b" }, { id: 3 }])).toBe(true);
+    expect(hasUniqueRowIds([])).toBe(true);
+  });
+
+  it("is false when an id repeats, is missing or is null", () => {
+    expect(hasUniqueRowIds([{ id: "a" }, { id: "a" }])).toBe(false);
+    expect(hasUniqueRowIds([{ id: "a" }, { name: "b" }])).toBe(false);
+    expect(hasUniqueRowIds([{ id: null }])).toBe(false);
+  });
+
+  it("reads another id column", () => {
+    expect(hasUniqueRowIds([{ itemId: "a" }, { itemId: "b" }], "itemId")).toBe(
+      true
+    );
+    expect(hasUniqueRowIds([{ itemId: "a" }, { itemId: "a" }], "itemId")).toBe(
+      false
+    );
+  });
+});
+
+describe("bodyRowPositions", () => {
+  const plain = { groupHeader: false, hidden: false, expanded: false };
+
+  it("numbers plain rows one after another", () => {
+    expect(bodyRowPositions([plain, plain, plain])).toEqual({
+      starts: [0, 1, 2],
+      total: 3
+    });
+  });
+
+  it("counts an expanded row after its row", () => {
+    expect(
+      bodyRowPositions([plain, { ...plain, expanded: true }, plain])
+    ).toEqual({ starts: [0, 1, 3], total: 4 });
+  });
+
+  it("counts a group header before the row that starts the group", () => {
+    expect(
+      bodyRowPositions([
+        { ...plain, groupHeader: true },
+        plain,
+        { ...plain, groupHeader: true }
+      ])
+    ).toEqual({ starts: [0, 2, 3], total: 5 });
+  });
+
+  it("counts only the header of a collapsed group, even when its rows are expanded", () => {
+    expect(
+      bodyRowPositions([
+        { groupHeader: true, hidden: true, expanded: true },
+        { groupHeader: false, hidden: true, expanded: false },
+        { ...plain, groupHeader: true }
+      ])
+    ).toEqual({ starts: [0, 1, 1], total: 3 });
+  });
+
+  it("is empty for no rows", () => {
+    expect(bodyRowPositions([])).toEqual({ starts: [], total: 0 });
+  });
+});

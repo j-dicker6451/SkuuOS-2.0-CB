@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon, respond } from "@carbon/api/carbon.server";
+import { assertIsPost, error, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { getErrorMessage, redirect } from "@carbon/utils";
+import type { ActionFunctionArgs } from "react-router";
+import { z } from "zod";
+import {
+  invoiceSettlementBase,
+  invoiceSettlementValidator
+} from "~/modules/invoicing/invoicing.models";
+import { replaceInvoiceSettlements } from "~/modules/invoicing/invoicing.service";
+import { getDatabaseClient } from "~/services/database.server";
+import { path } from "~/utils/path";
+
+// Apply-table submits the full list of applications as one JSON payload.
+// Each row is validated against invoiceSettlementValidator (with the
+// paymentId injected from the URL), then replaceInvoiceSettlements
+// validates authoritative parents and replaces normalized rows in a transaction.
+const setApplicationsValidator = z.object({
+  applications: z.string() // JSON-encoded array
+});
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  assertIsPost(request);
+  const { companyId, userId } = await requirePermissions(request, {
+    update: "invoicing"
+  });
+
+  const { paymentId } = params;
+  if (!paymentId) throw redirect(path.to.payments);
+
+  const formData = await request.formData();
+  const raw = setApplicationsValidator.safeParse({
+    applications: formData.get("applications")
+  });
+  if (!raw.success) {
+    throw redirect(
+      path.to.payment(paymentId),
+      await flash(request, error(raw.error, "Invalid payload"))
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.data.applications);
+  } catch (e) {
+    throw redirect(
+      path.to.payment(paymentId),
+      await flash(request, error(e, "Applications payload is not valid JSON"))
+    );
+  }
+
+  // Per-row validation through the shared zod validator. paymentId is
+  // injected so the validator's required-field check passes without
+  // depending on the client to send it on every row.
+  const rowsValidator = z.array(
+    invoiceSettlementBase.omit({ paymentId: true }).strict()
+  );
+  const rowsResult = rowsValidator.safeParse(parsed);
+  if (!rowsResult.success) {
+    throw redirect(
+      path.to.payment(paymentId),
+      await flash(request, error(rowsResult.error, "Invalid applications"))
+    );
+  }
+
+  // Re-validate each row through the full refined validator now that
+  // paymentId is present.
+  const applications = [];
+  for (const row of rowsResult.data) {
+    const validated = invoiceSettlementValidator.safeParse({
+      ...row,
+      paymentId
+    });
+    if (!validated.success) {
+      throw redirect(
+        path.to.payment(paymentId),
+        await flash(
+          request,
+          error(validated.error, "Application failed validation")
+        )
+      );
+    }
+    const { id: _omit, paymentId: _omit2, ...rest } = validated.data;
+    applications.push(rest);
+  }
+
+  try {
+    await replaceInvoiceSettlements(getDatabaseClient(), {
+      paymentId,
+      companyId,
+      createdBy: userId,
+      applications
+    });
+  } catch (e) {
+    throw redirect(
+      path.to.payment(paymentId),
+      await flash(request, {
+        ...error(e, "Failed to save applications"),
+        message: getErrorMessage(e, "Failed to save applications")
+      })
+    );
+  }
+
+  // Save and Post: a failed post keeps the saved applications, and its
+  // reason stays on the payment.
+  if (formData.get("intent") === "post") {
+    const api = await carbon(request);
+    const posted = await api.invoicing.postPayment({ paymentId });
+    return respond(request, posted).redirect(path.to.payment(paymentId), {
+      message: "Applications saved and payment posted",
+      onError: path.to.payment(paymentId)
+    });
+  }
+
+  throw redirect(
+    path.to.payment(paymentId),
+    await flash(request, success("Applications saved"))
+  );
+}

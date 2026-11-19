@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error, notFound, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { getCarbonServiceRole } from "@carbon/auth/client.server";
+import { flash } from "@carbon/auth/session.server";
+import { flags } from "@carbon/env/flags.server";
+import { useRouteDialog } from "@carbon/react";
+import { isInternalEmail, redirect } from "@carbon/utils";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useParams } from "react-router";
+import { ConfirmDelete } from "~/components/Modals";
+import {
+  deleteSubsidiary,
+  getSubsidiary
+} from "~/modules/settings/settings.service";
+import { path } from "~/utils/path";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId, email } = await requirePermissions(request, {
+    view: "settings"
+  });
+
+  // Multi-company management: Carbon staff, and the companies the
+  // `multi-company-management` flag turns it on for.
+  if (
+    !isInternalEmail(email) &&
+    !(await flags.bool("multi-company-management", { companyId, email }))
+  ) {
+    throw redirect(path.to.settings);
+  }
+
+  const { id } = params;
+  if (!id) throw notFound("Subsidiary not found");
+
+  const subsidiary = await getSubsidiary(client, id);
+  if (subsidiary.error) {
+    throw redirect(
+      path.to.companies,
+      await flash(request, error(subsidiary.error, "Failed to get subsidiary"))
+    );
+  }
+
+  return { subsidiary: subsidiary.data };
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  const { companyGroupId, companyId, email } = await requirePermissions(
+    request,
+    {
+      delete: "settings"
+    }
+  );
+
+  // Multi-company management: Carbon staff, and the companies the
+  // `multi-company-management` flag turns it on for.
+  if (
+    !isInternalEmail(email) &&
+    !(await flags.bool("multi-company-management", { companyId, email }))
+  ) {
+    throw redirect(path.to.settings);
+  }
+
+  const { id } = params;
+  if (!id) {
+    throw redirect(
+      path.to.companies,
+      await flash(request, error(null, "Failed to get subsidiary id"))
+    );
+  }
+
+  const serviceRole = getCarbonServiceRole();
+
+  // The delete runs as the service role on a URL id: prove the company is in
+  // the caller's own group first, or any company id could be deleted.
+  const subsidiary = await serviceRole
+    .from("company")
+    .select("id")
+    .eq("id", id)
+    .eq("companyGroupId", companyGroupId)
+    .maybeSingle();
+  if (subsidiary.error || !subsidiary.data) {
+    throw redirect(
+      path.to.companies,
+      await flash(
+        request,
+        error(subsidiary.error, "Subsidiary not found", {
+          companyGroupId,
+          subsidiaryId: id
+        })
+      )
+    );
+  }
+
+  const { error: deleteError } = await deleteSubsidiary(serviceRole, id);
+  if (deleteError) {
+    throw redirect(
+      path.to.companies,
+      await flash(request, error(deleteError, "Failed to delete subsidiary"))
+    );
+  }
+
+  throw redirect(
+    path.to.companies,
+    await flash(request, success("Successfully deleted subsidiary"))
+  );
+}
+
+export default function DeleteSubsidiaryRoute() {
+  const { id } = useParams();
+  const { subsidiary } = useLoaderData<typeof loader>();
+  const dialog = useRouteDialog(path.to.companies);
+
+  if (!id || !subsidiary) return null;
+
+  return (
+    <ConfirmDelete
+      action={path.to.deleteCompany(id)}
+      name={subsidiary.name}
+      text={`Are you sure you want to delete ${subsidiary.name}? Any child companies will be promoted to this company's parent level. This cannot be undone.`}
+      isOpen={dialog.open}
+      onCancel={dialog.close}
+    />
+  );
+}

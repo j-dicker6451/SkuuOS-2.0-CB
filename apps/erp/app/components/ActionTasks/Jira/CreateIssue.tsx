@@ -1,0 +1,191 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { SyncedEntityType } from "@carbon/ee/issue-sync";
+import type { JiraIssueType, JiraProject, JiraUser } from "@carbon/ee/jira";
+import {
+  Hidden,
+  Input,
+  Select,
+  Submit,
+  TextArea,
+  ValidatedForm
+} from "@carbon/form";
+import { Button, ModalBody, ModalFooter, VStack } from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { useEffect, useId, useMemo, useState } from "react";
+import z from "zod";
+import { useAsyncFetcher } from "~/hooks/useAsyncFetcher";
+import { path } from "~/utils/path";
+
+type Props = {
+  entityType: SyncedEntityType;
+  taskId: string;
+  linkedIssue: unknown;
+  onClose: () => void;
+};
+
+const createIssueValidator = z.object({
+  actionId: z.string(),
+  entityType: z.string(),
+  projectKey: z.string().min(1, "Project is required"),
+  issueTypeId: z.string().min(1, "Issue type is required"),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional()
+});
+
+export const CreateIssue = (props: Props) => {
+  const { t } = useLingui();
+  const id = useId();
+  const [projectKey, setProjectKey] = useState<string | undefined>();
+
+  const { projects, issueTypes, members, defaults, fetcher } = useJiraProjects(
+    projectKey,
+    props
+  );
+  const initial = useInitialDefaults(defaults);
+
+  const projectOptions = useMemo(
+    () =>
+      projects.map((p) => ({ label: `${p.key} - ${p.name}`, value: p.key })),
+    [projects]
+  );
+
+  const issueTypeOptions = useMemo(
+    () => issueTypes.map((t) => ({ label: t.name, value: t.id })),
+    [issueTypes]
+  );
+
+  const memberOptions = useMemo(
+    () =>
+      members.map((m) => ({
+        label: m.displayName,
+        value: m.accountId
+      })),
+    [members]
+  );
+
+  const isLoading = fetcher.state === "loading";
+
+  return (
+    <ValidatedForm
+      className="flex min-h-0 flex-col"
+      // Remount once the record's title and description arrive, so they fill
+      // the form.
+      key={initial ? "defaults" : "empty"}
+      defaultValues={{
+        title: initial?.title ?? "",
+        description: initial?.description ?? ""
+      }}
+      id={id}
+      method="post"
+      action={path.to.api.jiraCreateIssue}
+      validator={createIssueValidator}
+      // @ts-expect-error TS2322 - TODO: fix type
+      fetcher={fetcher}
+      resetAfterSubmit
+      onAfterSubmit={() => props.onClose()}
+    >
+      {/* Outside the stack: a hidden input in a spaced stack still takes a gap. */}
+      <Hidden name="actionId" value={props.taskId} />
+      <Hidden name="entityType" value={props.entityType} />
+      <ModalBody>
+        <VStack spacing={4}>
+          <Select
+            isLoading={isLoading}
+            label={t`Project`}
+            name="projectKey"
+            placeholder={t`Select a project`}
+            value={projectKey}
+            onChange={(e) => setProjectKey(e?.value)}
+            options={projectOptions}
+          />
+          <Select
+            isLoading={isLoading}
+            label={t`Issue Type`}
+            name="issueTypeId"
+            placeholder={t`Select an issue type`}
+            options={issueTypeOptions}
+            isDisabled={!projectKey || issueTypes.length === 0}
+          />
+          <Input
+            label={t`Title`}
+            name="title"
+            placeholder={t`Issue title`}
+            required
+          />
+          <TextArea
+            label={t`Description`}
+            name="description"
+            placeholder={t`Issue description`}
+          />
+          <Select
+            label={t`Assign To`}
+            name="assignee"
+            placeholder={t`Select an assignee`}
+            isOptional
+            options={memberOptions}
+            isDisabled={!projectKey || members.length === 0}
+          />
+        </VStack>
+      </ModalBody>
+      <ModalFooter>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            props.onClose();
+          }}
+        >
+          <Trans>Cancel</Trans>
+        </Button>
+        <Submit>
+          <Trans>Create</Trans>
+        </Submit>
+      </ModalFooter>
+    </ValidatedForm>
+  );
+};
+
+CreateIssue.displayName = "CreateIssue";
+
+type IssueDefaults = { title: string; description: string };
+
+/** The first defaults the loader returns; later loads do not overwrite edits. */
+const useInitialDefaults = (defaults: IssueDefaults | null | undefined) => {
+  const [initial, setInitial] = useState<IssueDefaults | null>(null);
+  useEffect(() => {
+    if (!initial && defaults) setInitial(defaults);
+  }, [defaults, initial]);
+  return initial;
+};
+
+const useJiraProjects = (
+  projectKey: string | undefined,
+  record: { taskId: string; entityType: SyncedEntityType }
+) => {
+  const fetcher = useAsyncFetcher<{
+    projects: JiraProject[];
+    issueTypes: JiraIssueType[];
+    members: JiraUser[];
+    defaults?: IssueDefaults | null;
+  }>();
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: not necessary
+  useEffect(() => {
+    const params = new URLSearchParams({
+      actionId: record.taskId,
+      entityType: record.entityType
+    });
+    if (projectKey) params.set("projectKey", projectKey);
+    fetcher.load(`${path.to.api.jiraCreateIssue}?${params}`);
+  }, [projectKey]);
+
+  return {
+    projects: fetcher.data?.projects || [],
+    issueTypes: fetcher.data?.issueTypes || [],
+    members: fetcher.data?.members || [],
+    defaults: fetcher.data?.defaults,
+    fetcher
+  };
+};

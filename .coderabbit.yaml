@@ -1,0 +1,73 @@
+# CodeRabbit configuration for Carbon.
+#
+# On demand and quiet. CodeRabbit reviews a PR only when asked: comment
+# `@coderabbitai review`, or open the PR with `@coderabbitai` in its
+# description (adding it to an open PR's description, or marking a draft ready,
+# triggers nothing: comment instead). It reviews once, not again on each
+# push. It posts only the important comments and skips the walkthrough extras.
+# /self-review is the default review; this is a second opinion.
+#
+# Repo conventions come from AGENTS.md, CLAUDE.md and .claude/rules/**, which
+# CodeRabbit reads by default (knowledge_base.code_guidelines). Do not copy them
+# here: a second copy drifts and the reviews start to disagree.
+language: en-US
+tone_instructions: "Be brief. Skip style, naming, formatting, lint-level nits and praise. Flag only correctness, missing companyId scoping, security and data loss."
+
+reviews:
+  profile: quiet
+  poem: false
+  review_status: false
+  high_level_summary: false
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+
+  auto_review:
+    enabled: false
+    description_keyword: "@coderabbitai"
+    auto_incremental_review: false
+    drafts: false
+    # Stacked PRs: any branch may be a base, not only main.
+    base_branches:
+      - ".*"
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+
+  # Biome already runs in the pre-commit hook; prose and markdown linting is noise.
+  tools:
+    biome:
+      enabled: false
+    languagetool:
+      enabled: false
+    markdownlint:
+      enabled: false
+
+  path_filters:
+    # Generated — regenerate, never hand-edit.
+    - "!packages/database/src/types.ts"
+    - "!packages/database/src/constants.ts"
+    - "!packages/database/src/swagger-docs-schema.ts"
+    - "!packages/jobs/manifests/schema.json"
+    - "!apps/erp/app/routes/api+/mcp+/lib/tool-manifest.digest.json"
+    - "!**/pnpm-lock.yaml"
+    # Machine-filled translation catalogs (the /translate skill writes these).
+    - "!packages/locale/locales/**/*.po"
+    # Agent-facing context, not shipped code.
+    - "!.ai/**"
+    - "!.claude/**"
+    - "!.codex/**"
+    # Bundled demo artwork and CAD assemblies — binary/vector, reviewed visually.
+    - "!packages/database/src/datasets/assets/**"
+
+chat:
+  auto_reply: false

@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { getLogger } from "@carbon/logger";
+import { useEffect } from "react";
+import { isRouteErrorResponse, useNavigate } from "react-router";
+import { ErrorScreen, type ErrorScreenProps } from "./ErrorScreen";
+import { isNetworkError } from "./routeErrorCopy";
+import { useNetworkRetry } from "./useNetworkRetry";
+
+const logger = getLogger("react", "error-boundary");
+
+/**
+ * VOID//SYS — drop-in root ErrorBoundary for React Router v7 (framework mode).
+ *
+ * Usage in app/root.tsx:
+ *
+ *   import { RootErrorBoundary } from "@carbon/react/ErrorBoundary";
+ *   import type { Route } from "./+types/root";
+ *
+ *   export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+ *     return <RootErrorBoundary error={error} />;
+ *   }
+ *
+ * It handles four cases:
+ *   1. Route error responses (thrown `Response` / `data()` — includes 404s and
+ *      any other HTTP status like 401 / 403 / 500).
+ *   2. Real `Error` instances thrown during render / loaders / actions.
+ *   3. A request that never reached the server (offline, asleep): it retries
+ *      on its own once the connection or the tab is back.
+ *   4. Anything else that got thrown (strings, unknown values).
+ */
+export function RootErrorBoundary({ error }: { error: unknown }) {
+  const navigate = useNavigate();
+  const { offline, unavailable, retry } = useNetworkRetry(error);
+
+  // Route errors (e.g. an unmatched fetcher.load) are otherwise invisible —
+  // React Router hands them to the boundary without logging anywhere.
+  useEffect(() => {
+    const summary = isRouteErrorResponse(error)
+      ? `${error.status} ${error.statusText || "route error response"}`
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    logger.error("Root error boundary caught an error", { summary, error });
+  }, [error]);
+
+  const config = resolveConfig(
+    error,
+    offline || unavailable ? retry : () => navigate(0)
+  );
+  return <ErrorScreen {...config} />;
+}
+
+function resolveConfig(error: unknown, retry: () => void): ErrorScreenProps {
+  // 1. Route error responses (thrown Response / data() results)
+  if (isRouteErrorResponse(error)) {
+    if (error.status === 404) {
+      return {
+        code: "404",
+        eyebrow: "— coordinates unresolved",
+        title: "This page slipped through the cracks.",
+        message:
+          "The resource you requested has drifted out of range, been renamed, or never existed in this dimension to begin with.",
+        highlightIndex: 3,
+        logLines: [
+          "> initiating trace_route.exe",
+          "> pinging requested resource ...",
+          "> resource returned: NULL",
+          "> status_code: 404 / NOT_FOUND",
+          "> signal strength: 0.0%",
+          "> location: /dev/void",
+          "> recommendation: return to known coordinates"
+        ],
+        actions: [{ label: "return home", to: "/" }]
+      };
+    }
+
+    // Thrown by `maintenanceMiddleware` while MAINTENANCE_MODE is on. A 503
+    // from anywhere else (a gateway, an overloaded upstream) is not maintenance.
+    if (error.status === 503 && error.data?.message === "maintenance") {
+      return {
+        code: "503",
+        eyebrow: "— scheduled maintenance",
+        title: "Carbon is down for maintenance.",
+        message:
+          "We are working on the system and will be back shortly. Nothing you saved is lost; try again in a few minutes.",
+        highlightIndex: 3,
+        logLines: [
+          "> opening channel to server ...",
+          "> maintenance window in progress",
+          "> requests paused, data intact",
+          "> status_code: 503 / SERVICE_UNAVAILABLE",
+          "> retry_after: 300s",
+          "> recommendation: retry shortly"
+        ],
+        actions: [{ label: "retry", onClick: retry }]
+      };
+    }
+
+    // Any other 503: a service briefly away, usually restarting under a
+    // deploy. The boundary retries it on its own (useNetworkRetry).
+    if (error.status === 503) {
+      return {
+        code: "503",
+        eyebrow: "— briefly unavailable",
+        title: "Carbon is briefly unavailable.",
+        message:
+          typeof error.data === "string"
+            ? `${error.data} You are still signed in; this page retries on its own.`
+            : "A service is restarting. You are still signed in; this page retries on its own.",
+        highlightIndex: 3,
+        logLines: [
+          "> opening channel to server ...",
+          "> upstream restarting",
+          "> session intact",
+          "> status_code: 503 / SERVICE_UNAVAILABLE",
+          "> retrying every 5s",
+          "> recommendation: wait a moment"
+        ],
+        actions: [{ label: "retry", onClick: retry }]
+      };
+    }
+
+    // Any other HTTP status thrown as a route response
+    const detail =
+      typeof error.data === "string"
+        ? error.data
+        : (error.data?.message ?? error.statusText);
+
+    return {
+      code: String(error.status),
+      eyebrow: "— request refused",
+      title: "The server turned this request away.",
+      message:
+        "This route responded with an error status. You may not have access, or the request was malformed in transit.",
+      highlightIndex: 3,
+      logLines: [
+        "> opening channel to server ...",
+        "> transmitting request payload",
+        "> awaiting acknowledgement",
+        `> status_code: ${error.status} / ${error.statusText || "ERROR"}`,
+        `> detail: ${detail || "no additional detail"}`,
+        "> channel closed by remote host",
+        "> recommendation: verify access or retry"
+      ],
+      actions: [
+        { label: "retry", onClick: retry },
+        { label: "return home", to: "/", variant: "ghost" }
+      ]
+    };
+  }
+
+  // 2. The request never reached the server. `retry` reloads the data in
+  // place: a full reload while offline would land on the browser's own page.
+  if (isNetworkError(error)) {
+    return {
+      code: "000",
+      eyebrow: "— connection lost",
+      title: "Carbon could not reach the server.",
+      message:
+        "The connection dropped or the computer was asleep. Nothing you saved is lost; Carbon tries again when the connection returns or when you come back to this tab.",
+      highlightIndex: 3,
+      logLines: [
+        "> opening channel to server ...",
+        "> transmitting request payload",
+        "> no response from remote host",
+        "> status_code: 000 / NO_RESPONSE",
+        "> waiting for the connection",
+        "> recommendation: retry once online"
+      ],
+      actions: [{ label: "retry", onClick: retry }]
+    };
+  }
+
+  // 3. Real Error instances thrown during render / loaders / actions.
+  // SI-11: never reveal internal error detail (message / source location) to end
+  // users in production — it aids reconnaissance. Show it only in development.
+  // Vite replaces `import.meta.env.DEV` at build; this shared package has no Vite
+  // client types, so read it through a narrow cast.
+  const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+  const message = error instanceof Error ? error.message : "unknown error";
+  const stack =
+    error instanceof Error && error.stack
+      ? error.stack.split("\n")[1]?.trim()
+      : undefined;
+
+  return {
+    code: "500",
+    eyebrow: "— unhandled exception",
+    title: "Something broke on our end.",
+    message:
+      "The application hit an unexpected fault while rendering this route. You can retry the operation or head back to safe ground.",
+    highlightIndex: 3,
+    logLines: [
+      "> executing render pipeline ...",
+      "> exception thrown mid-stream",
+      isDev ? `> message: ${message}` : "> message: [redacted]",
+      "> status_code: 500 / INTERNAL_ERROR",
+      isDev && stack ? `> at: ${stack}` : "> stack: unavailable",
+      "> stack unwound to nearest boundary",
+      "> recommendation: retry or return home"
+    ],
+    actions: [
+      { label: "retry", onClick: retry },
+      { label: "return home", to: "/", variant: "ghost" }
+    ]
+  };
+}

@@ -1,0 +1,264 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+// Must load before any function module pulls in pdfjs (extract-document), whose
+// init runs `new DOMMatrix()` — undefined in the Node worker without this shim.
+import "@carbon/lib/shims";
+import { Edition } from "@carbon/utils";
+
+// Re-export the inngest client and helpers
+
+export { MAX_BULK_PROBLEMS } from "../table-jobs/bulk.ts";
+export type {
+  TableBulkAction,
+  TableBulkActionCarry,
+  TableBulkActionCounts,
+  TableBulkActionResult,
+  TableJobContext,
+  TableJobHandlers,
+  TableJobKind,
+  TableJobPage
+} from "../table-jobs/handlers.ts";
+export { setTableJobHandlers } from "../table-jobs/handlers.ts";
+export type { TableJobLock } from "../table-jobs/lock.ts";
+export {
+  releaseTableJobLock,
+  takeTableJobLock
+} from "../table-jobs/lock.ts";
+export { TABLE_JOB_PAGE_SIZE } from "../table-jobs/paging.ts";
+export {
+  tableExportStorageKey,
+  tempStagingStorage
+} from "../table-jobs/storage.ts";
+// Server-only on purpose: the app bundle imports `@carbon/jobs`, not this subpath.
+export type {
+  DispatchContext,
+  DispatchResult,
+  WorkflowDispatch
+} from "../workflows/actions/dispatcher.ts";
+export { setWorkflowDispatch } from "../workflows/actions/dispatcher.ts";
+export type { ManualRunResult } from "../workflows/engine/index.ts";
+export {
+  executeManualWorkflowRun,
+  noAccess
+} from "../workflows/engine/index.ts";
+export { inngest } from "./client.ts";
+
+import {
+  auditFunction,
+  embeddingFunction,
+  embeddingQueueFunction,
+  eventQueueFunction,
+  issueSyncFunction,
+  issueSyncPushFunction,
+  searchFunction,
+  syncFunction,
+  webhookFunction,
+  workflowFunction
+} from "./functions/events";
+import { extractDocumentFunction } from "./functions/extraction";
+import {
+  accountingConsolidationFunction,
+  accountingJournalBackfillFunction,
+  accountingMasterSyncFunction,
+  accountingOutboundSweepFunction,
+  accountingPullSweepFunction,
+  accountingReconciliationFunction,
+  jiraSyncFunction,
+  linearSyncFunction,
+  mountPublishFunction,
+  mountSweepFunction,
+  oeeDeviceSyncFunction,
+  oeeSweepFunction,
+  oeeSyncFunction,
+  onshapeBackfillFunction,
+  onshapeDrawingSyncFunction,
+  onshapeElementSyncFunction,
+  onshapeFetchFunction,
+  onshapePanelAssetBatchFunction,
+  onshapePanelAssetExportFunction,
+  onshapePanelAssetsFunction,
+  onshapePanelSyncFunction,
+  onshapeRevisionSyncFunction,
+  paperlessPartsFunction,
+  rampSweepFunction,
+  rampSyncFunction,
+  slackDocumentAssignmentUpdateFunction,
+  slackDocumentCreatedFunction,
+  slackDocumentStatusUpdateFunction,
+  slackDocumentTaskUpdateFunction,
+  stripeConnectPullSweepFunction,
+  syncExternalAccountingFunction,
+  timeCardAutoCloseFunction
+} from "./functions/integrations";
+// Import all functions
+import {
+  notifyFunction,
+  sendEmailFunction,
+  sendPushFunction,
+  sendSlackFunction
+} from "./functions/notifications";
+import {
+  auditArchiveFunction,
+  cleanupFunction,
+  dispatchFunction,
+  generateMaintenanceForScheduleFunction,
+  markScheduleStaleFunction,
+  mrpFunction,
+  nightlyReplanFunction,
+  notificationDigestFunction,
+  purgeInactiveCompaniesFunction,
+  recurringBillingFunction,
+  revenueRecognitionProposalFunction,
+  scheduleReplanWaveFunction,
+  timesheetMissingTimeFunction,
+  updateExchangeRatesFunction,
+  weeklyFunction,
+  workflowRunRetentionFunction
+} from "./functions/scheduled";
+import {
+  assemblyConvertFunction,
+  assemblyPlanFunction,
+  changelogDispatchFunction,
+  companyExportFunction,
+  companyImportFunction,
+  companyRestoreFinalizeFunction,
+  companyRestoreFunction,
+  companyRestoreRevertFunction,
+  companyTemplateFinalizeFunction,
+  companyTemplateFunction,
+  companyTemplateRevertFunction,
+  indirectRatesFunction,
+  invoiceAutomateFunction,
+  kanbanLevelCheckFunction,
+  modelCompactFunction,
+  modelOptimizeFunction,
+  modelThumbnailFunction,
+  onboardFunction,
+  pmiInspectionPlanFunction,
+  postTransactionFunction,
+  printJobDeliverFunction,
+  printJobFunction,
+  recalculateFunction,
+  salesOrderDeliveryDateCheckFunction,
+  tableBulkActionFunction,
+  tableExportFunction,
+  updatePermissionsFunction,
+  userAdminFunction
+} from "./functions/tasks";
+import {
+  workflowMomentFunction,
+  workflowRunFunction,
+  workflowSchedulerBackstopFunction,
+  workflowSchedulerFunction
+} from "./functions/workflows";
+
+// Export all functions for serving via serve() or connect()
+export const functions = [
+  // Notifications
+  notifyFunction,
+  sendEmailFunction,
+  sendPushFunction,
+  sendSlackFunction,
+  // Event handlers
+  auditFunction,
+  eventQueueFunction,
+  searchFunction,
+  syncFunction,
+  webhookFunction,
+  workflowFunction,
+  embeddingFunction,
+  embeddingQueueFunction,
+  issueSyncFunction,
+  issueSyncPushFunction,
+  // Workflows
+  workflowMomentFunction,
+  workflowRunFunction,
+  workflowSchedulerFunction,
+  workflowSchedulerBackstopFunction,
+  // Tasks
+  assemblyConvertFunction,
+  assemblyPlanFunction,
+  companyExportFunction,
+  companyImportFunction,
+  companyRestoreFunction,
+  companyRestoreFinalizeFunction,
+  companyRestoreRevertFunction,
+  companyTemplateFinalizeFunction,
+  companyTemplateFunction,
+  companyTemplateRevertFunction,
+  invoiceAutomateFunction,
+  kanbanLevelCheckFunction,
+  salesOrderDeliveryDateCheckFunction,
+  modelCompactFunction,
+  modelOptimizeFunction,
+  modelThumbnailFunction,
+  pmiInspectionPlanFunction,
+  updatePermissionsFunction,
+  recalculateFunction,
+  indirectRatesFunction,
+  userAdminFunction,
+  postTransactionFunction,
+  onboardFunction,
+  printJobFunction,
+  printJobDeliverFunction,
+  changelogDispatchFunction,
+  tableExportFunction,
+  tableBulkActionFunction,
+  // Scheduled
+  cleanupFunction,
+  dispatchFunction,
+  generateMaintenanceForScheduleFunction,
+  auditArchiveFunction,
+  mrpFunction,
+  markScheduleStaleFunction,
+  nightlyReplanFunction,
+  scheduleReplanWaveFunction,
+  weeklyFunction,
+  updateExchangeRatesFunction,
+  notificationDigestFunction,
+  // Not registered off Cloud, so a self-hosted Inngest has nothing to invoke.
+  ...(process.env.CARBON_EDITION === Edition.Cloud
+    ? [purgeInactiveCompaniesFunction]
+    : []),
+  workflowRunRetentionFunction,
+  timesheetMissingTimeFunction,
+  revenueRecognitionProposalFunction,
+  recurringBillingFunction,
+  // Integrations
+  jiraSyncFunction,
+  linearSyncFunction,
+  paperlessPartsFunction,
+  accountingJournalBackfillFunction,
+  accountingMasterSyncFunction,
+  accountingConsolidationFunction,
+  accountingOutboundSweepFunction,
+  accountingReconciliationFunction,
+  accountingPullSweepFunction,
+  mountPublishFunction,
+  mountSweepFunction,
+  onshapeBackfillFunction,
+  onshapeDrawingSyncFunction,
+  onshapeElementSyncFunction,
+  onshapeFetchFunction,
+  onshapePanelAssetBatchFunction,
+  onshapePanelAssetExportFunction,
+  onshapePanelAssetsFunction,
+  onshapePanelSyncFunction,
+  onshapeRevisionSyncFunction,
+  rampSyncFunction,
+  rampSweepFunction,
+  oeeDeviceSyncFunction,
+  oeeSweepFunction,
+  oeeSyncFunction,
+  syncExternalAccountingFunction,
+  slackDocumentCreatedFunction,
+  slackDocumentStatusUpdateFunction,
+  slackDocumentTaskUpdateFunction,
+  slackDocumentAssignmentUpdateFunction,
+  stripeConnectPullSweepFunction,
+  timeCardAutoCloseFunction,
+  // Document extraction
+  extractDocumentFunction
+];

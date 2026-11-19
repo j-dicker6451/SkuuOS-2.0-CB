@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { RecordOutlet, VStack } from "@carbon/react";
+import { msg } from "@lingui/core/macro";
+import type { LoaderFunctionArgs } from "react-router";
+import { getShippingTermsList } from "~/modules/inventory/inventory.service";
+import { getSupplierTypes } from "~/modules/purchasing/purchasing.service";
+import type { Handle } from "~/utils/handle";
+import { moduleMeta } from "~/utils/meta";
+import { path } from "~/utils/path";
+
+export { RouteErrorBoundary as ErrorBoundary } from "@carbon/react/ErrorBoundary";
+
+export const meta = moduleMeta("Supplier");
+
+export const handle: Handle = {
+  breadcrumb: msg`Purchasing`,
+  to: path.to.purchasing,
+  module: "purchasing"
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "purchasing"
+  });
+
+  const [
+    supplierTypes
+    // shippingTerms,
+  ] = await Promise.all([
+    getSupplierTypes(client, companyId),
+    getShippingTermsList(client, companyId)
+  ]);
+
+  return {
+    supplierTypes: supplierTypes.data ?? []
+    // shippingTerms: shippingTerms.data ?? [],
+  };
+}
+
+export default function SupplierRoute() {
+  return (
+    <div className="flex h-full w-full justify-center bg-card">
+      <VStack spacing={4} className="h-full p-4 w-full max-w-[80rem]">
+        <RecordOutlet />
+      </VStack>
+    </div>
+  );
+}

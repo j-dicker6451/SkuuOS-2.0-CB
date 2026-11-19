@@ -1,0 +1,699 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { getBrowserEnv } from "@carbon/auth";
+import { convertKbToString } from "@carbon/files";
+import { useRevalidator } from "@carbon/query";
+import {
+  Badge,
+  BadgeCloseButton,
+  Command,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  cn,
+  HStack,
+  MENU_ITEM_SHORTCUTS,
+  MenuIcon,
+  MenuItem,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  PrefetchLink,
+  useDisclosure,
+  useViewport
+} from "@carbon/react";
+import { filterEmpty } from "@carbon/utils";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ColumnDef } from "@tanstack/react-table";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { IoMdAdd } from "react-icons/io";
+import {
+  LuBookMarked,
+  LuCircleX,
+  LuDownload,
+  LuExternalLink,
+  LuFileText,
+  LuPencil,
+  LuPin,
+  LuRuler,
+  LuTag,
+  LuTrash,
+  LuUser,
+  LuUsers
+} from "react-icons/lu";
+import { RxCheck } from "react-icons/rx";
+import { DateTime, EmployeeAvatar, Hyperlink, Table } from "~/components";
+import DocumentIcon from "~/components/DocumentIcon";
+import { Enumerable } from "~/components/Enumerable";
+import { Confirm, ConfirmDelete } from "~/components/Modals";
+import type { InfiniteOptions } from "~/components/Table";
+import {
+  applyRowEdits,
+  type RowEdits,
+  tick
+} from "~/components/Table/rowEdits";
+import { useInfiniteRows } from "~/components/Table/useInfiniteRows";
+import { usePermissions, useUrlParams } from "~/hooks";
+import { documentTypes } from "~/modules/shared/shared.models";
+import { usePeople } from "~/stores";
+import { path } from "~/utils/path";
+import { documentSourceTypes } from "../../documents.models";
+import type { Document, DocumentLabel } from "../../types";
+import DocumentCreateForm from "./DocumentCreateForm";
+import { useDocument } from "./useDocument";
+
+const documentId = (row: Document) => row.id ?? "";
+
+type DocumentsTableProps = {
+  data: Document[];
+  count: number;
+  // Its list is "documents", or "recent-documents" for the Recent view.
+  infinite: InfiniteOptions;
+  labels: DocumentLabel[];
+  extensions: (string | null)[];
+};
+
+const DocumentsTable = memo(
+  ({ data, count, infinite, labels, extensions }: DocumentsTableProps) => {
+    const { t } = useLingui();
+    const { isPhone } = useViewport();
+    const permissions = usePermissions();
+    const revalidator = useRevalidator();
+    const [params] = useUrlParams();
+    const filter = params.get("q");
+
+    const infiniteRows = useInfiniteRows<Document>({
+      initialRows: data,
+      infinite
+    });
+    // The user's star and label changes by document id, laid over the loaded
+    // rows until a load that started after the write (`rowEdits.ts`).
+    const [overrides, setOverrides] = useState<RowEdits>({});
+    const rows = useMemo(() => {
+      const edited = applyRowEdits(
+        infiniteRows.rows,
+        overrides,
+        documentId,
+        infiniteRows.syncedAt
+      );
+      return filter === "starred"
+        ? edited.filter((item) => item.favorite === true)
+        : edited;
+    }, [infiniteRows.rows, infiniteRows.syncedAt, overrides, filter]);
+
+    const {
+      canUpdate,
+      canDelete,
+      deleteLabel,
+      download,
+      edit,
+      view,
+      favorite,
+      label,
+      setLabel
+    } = useDocument();
+
+    const [people] = usePeople();
+    // Client-safe origin for building absolute download URLs in the CSV export.
+    // ERP_URL is in the getBrowserEnv() allowlist (unlike server-only getAppUrl).
+    const { ERP_URL } = getBrowserEnv();
+    const moveDocumentModal = useDisclosure();
+    const deleteDocumentModal = useDisclosure();
+
+    const [selectedDocument, setSelectedDocument] = useState<Document | null>(
+      null
+    );
+
+    const labelOptions = useMemo(
+      () =>
+        labels.map(({ label }) => ({
+          value: label as string,
+          label: label as string
+        })) ?? [],
+      [labels]
+    );
+
+    // Shows the change at once, writes it, then reloads the rows. The change
+    // stays until a load that started after the write. `row` is the row on
+    // screen, so an earlier change that is still showing is kept.
+    const writesRef = useRef(new Map<string, number>());
+    const writeOverride = useCallback(
+      async (
+        row: Document,
+        values: Partial<Pick<Document, "favorite" | "labels">>,
+        mutate: () => PromiseLike<unknown> | undefined
+      ) => {
+        const id = documentId(row);
+        const write = (writesRef.current.get(id) ?? 0) + 1;
+        writesRef.current.set(id, write);
+        setOverrides((prev) => ({
+          ...prev,
+          [id]: {
+            values: { favorite: row.favorite, labels: row.labels, ...values },
+            at: Number.POSITIVE_INFINITY
+          }
+        }));
+        try {
+          await mutate();
+        } finally {
+          // Only the last write of a row dates its change.
+          if (writesRef.current.get(id) === write) {
+            const at = tick();
+            setOverrides((prev) =>
+              prev[id] ? { ...prev, [id]: { ...prev[id], at } } : prev
+            );
+          }
+          revalidator.revalidate();
+        }
+      },
+      [revalidator]
+    );
+
+    const onDeleteLabel = useCallback(
+      async (
+        e: React.MouseEvent<HTMLButtonElement, MouseEvent>,
+        row: Document,
+        label: string
+      ) => {
+        e.stopPropagation();
+        await writeOverride(
+          row,
+          { labels: (row.labels ?? []).filter((item) => item !== label) },
+          () => deleteLabel(row, label)
+        );
+      },
+      [deleteLabel, writeOverride]
+    );
+
+    const onLabel = useCallback(
+      (row: Document, labels: string[]) =>
+        writeOverride(row, { labels: [...labels].sort() }, () =>
+          label(row, labels)
+        ),
+      [label, writeOverride]
+    );
+
+    const onFavorite = useCallback(
+      (row: Document) =>
+        writeOverride(row, { favorite: !row.favorite }, () => favorite(row)),
+      [favorite, writeOverride]
+    );
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: suppressed due to migration
+    const columns = useMemo<ColumnDef<Document>[]>(() => {
+      return [
+        {
+          accessorKey: "name",
+          header: t`Name`,
+          cell: ({ row }) => (
+            <HStack>
+              {row.original.favorite ? (
+                <LuPin
+                  className="cursor-pointer w-4 h-4 outline-foreground fill-foreground flex-shrink-0"
+                  onClick={() => onFavorite(row.original)}
+                />
+              ) : (
+                <LuPin
+                  className="cursor-pointer w-4 h-4 text-muted-foreground flex-shrink-0"
+                  onClick={() => onFavorite(row.original)}
+                />
+              )}
+              <DocumentIcon
+                className="flex-shrink-0"
+                type={row.original.type!}
+              />
+              <Hyperlink
+                onClick={() => view(row.original)}
+                className="max-w-[260px] truncate"
+              >
+                <>{row.original.name}</>
+              </Hyperlink>
+            </HStack>
+          ),
+          meta: {
+            mobile: "P1",
+            icon: <LuBookMarked />
+          }
+        },
+        {
+          accessorKey: "sourceDocument",
+          header: t`Source Document`,
+          cell: ({ row }) =>
+            row.original.sourceDocument &&
+            row.original.sourceDocumentId && (
+              <PrefetchLink
+                to={getDocumentLocation(
+                  row.original
+                    .sourceDocument as (typeof documentSourceTypes)[number],
+                  row.original.sourceDocumentId
+                )}
+                className="group flex items-center gap-1"
+              >
+                <Enumerable value={row.original.sourceDocument} />{" "}
+                <span className="group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 md:opacity-0 transition-opacity duration-150 w-4 h-4 text-foreground">
+                  <LuExternalLink />
+                </span>
+              </PrefetchLink>
+            ),
+          meta: {
+            icon: <LuFileText />,
+            filter: {
+              type: "static",
+              options: documentSourceTypes?.map((type) => ({
+                value: type,
+                label: <Enumerable value={type} />
+              }))
+            }
+          }
+        },
+        {
+          id: "labels",
+          header: t`Labels`,
+          cell: ({ row }) => (
+            <HStack spacing={1}>
+              {row.original.labels?.map((label: string) => (
+                <Badge
+                  key={label}
+                  variant="secondary"
+                  className="cursor-pointer"
+                  onClick={() => setLabel(label)}
+                >
+                  {label}
+                  <BadgeCloseButton
+                    aria-label={t`Remove label ${label}`}
+                    onClick={(e) => onDeleteLabel(e, row.original, label)}
+                  />
+                </Badge>
+              ))}
+              <Popover>
+                <PopoverTrigger>
+                  <Badge variant="secondary" className="cursor-pointer px-1">
+                    <IoMdAdd />
+                  </Badge>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0">
+                  {/* TODO: we should have a CreateableMultiSelect component for this */}
+
+                  <CreatableCommand
+                    options={labelOptions}
+                    selected={row.original.labels ?? []}
+                    onChange={(newValue) =>
+                      onLabel(row.original, [
+                        ...(row.original.labels ?? []),
+                        newValue
+                      ])
+                    }
+                    onCreateOption={(newValue) =>
+                      onLabel(row.original, [
+                        ...(row.original.labels ?? []),
+                        newValue
+                      ])
+                    }
+                  />
+                </PopoverContent>
+              </Popover>
+            </HStack>
+          ),
+          meta: {
+            icon: <LuTag />,
+            exportValue: (row) => row.labels?.join(", "),
+            filter: {
+              type: "static",
+              options: labelOptions,
+              isArray: true
+            }
+          }
+        },
+        {
+          accessorKey: "size",
+          header: t`Size`,
+          cell: ({ row }) => convertKbToString(row.original.size ?? 0),
+          meta: {
+            mobile: "P2",
+            icon: <LuRuler />
+          }
+        },
+        {
+          accessorKey: "type",
+          header: t`Type`,
+          cell: (item) => <Enumerable value={item.getValue<string>()} />,
+          meta: {
+            icon: <LuFileText />,
+            filter: {
+              type: "static",
+              options: documentTypes.map((type) => ({
+                label: (
+                  <HStack spacing={2}>
+                    <DocumentIcon type={type} />
+                    <span>{type}</span>
+                  </HStack>
+                ),
+                value: type
+              }))
+            }
+          }
+        },
+        {
+          accessorKey: "extension",
+          header: t`File Extension`,
+          cell: (item) => item.getValue(),
+          meta: {
+            icon: <LuFileText />,
+            filter: {
+              type: "static",
+              options: filterEmpty(extensions).map((extension) => ({
+                label: extension,
+                value: extension
+              }))
+            }
+          }
+        },
+        {
+          id: "createdBy",
+          header: t`Created By`,
+          cell: ({ row }) => (
+            <EmployeeAvatar employeeId={row.original.createdBy} />
+          ),
+          meta: {
+            icon: <LuUser />,
+            exportValue: (row) =>
+              people.find((employee) => employee.id === row.createdBy)?.name ??
+              row.createdBy,
+            filter: {
+              type: "static",
+              options: people.map((employee) => ({
+                value: employee.id,
+                label: employee.name
+              }))
+            }
+          }
+        },
+        {
+          accessorKey: "createdAt",
+          header: t`Created At`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            icon: <LuFileText />
+          }
+        },
+        {
+          id: "updatedBy",
+          header: t`Updated By`,
+          cell: ({ row }) => (
+            <EmployeeAvatar employeeId={row.original.updatedBy} />
+          ),
+          meta: {
+            icon: <LuUsers />,
+            filter: {
+              type: "static",
+              options: people.map((employee) => ({
+                value: employee.id,
+                label: employee.name
+              }))
+            }
+          }
+        },
+        {
+          accessorKey: "updatedAt",
+          header: t`Updated At`,
+          cell: (item) => (
+            <DateTime value={item.getValue<string>()} variant="date" />
+          ),
+          meta: {
+            mobile: "P3",
+            icon: <LuFileText />
+          }
+        },
+        {
+          id: "downloadLink",
+          header: "",
+          cell: () => null,
+          meta: {
+            exportOnly: true,
+            filterHeader: t`Download Link`,
+            exportValue: (row) =>
+              row.downloadToken
+                ? `${ERP_URL}${path.to.download(row.downloadToken)}`
+                : ""
+          }
+        }
+      ];
+    }, [
+      ERP_URL,
+      extensions,
+      labelOptions,
+      onDeleteLabel,
+      onFavorite,
+      onLabel,
+      people,
+      setLabel,
+      view
+    ]);
+
+    const defaultColumnVisibility = {
+      type: false,
+      extension: false,
+      createdAt: false,
+      updatedAt: false,
+      updatedBy: false
+    };
+
+    const renderContextMenu = useMemo(() => {
+      return (row: Document) => (
+        <>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.edit}
+            disabled={canUpdate(row)}
+            onClick={() => edit(row)}
+          >
+            <MenuIcon icon={<LuPencil />} />
+            <Trans>Edit</Trans>
+          </MenuItem>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.download}
+            onClick={() => download(row)}
+          >
+            <MenuIcon icon={<LuDownload />} />
+            <Trans>Download</Trans>
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              onFavorite(row);
+            }}
+          >
+            <MenuIcon icon={<LuPin />} />
+            <Trans>Favorite</Trans>
+          </MenuItem>
+          <MenuItem
+            disabled={canDelete(row)}
+            onClick={() => {
+              setSelectedDocument(row);
+              moveDocumentModal.onOpen();
+            }}
+          >
+            <MenuIcon icon={<LuTrash />} />
+            {filter !== "trash" ? (
+              <Trans>Move to Trash</Trans>
+            ) : (
+              <Trans>Restore from Trash</Trans>
+            )}
+          </MenuItem>
+          <MenuItem
+            disabled={canDelete(row)}
+            destructive
+            onClick={() => {
+              setSelectedDocument(row);
+              deleteDocumentModal.onOpen();
+            }}
+          >
+            <MenuIcon icon={<LuCircleX />} />
+            <Trans>Permanently Delete</Trans>
+          </MenuItem>
+        </>
+      );
+    }, [
+      canUpdate,
+      canDelete,
+      filter,
+      edit,
+      download,
+      onFavorite,
+      moveDocumentModal,
+      deleteDocumentModal
+    ]);
+
+    return (
+      <>
+        <Table<Document>
+          count={count}
+          columns={columns}
+          data={data}
+          infiniteRows={{ ...infiniteRows, rows }}
+          defaultColumnVisibility={defaultColumnVisibility}
+          primaryAction={
+            permissions.can("create", "documents") &&
+            // Phones: uploading neither pins a file nor fills the trash.
+            !(isPhone && (filter === "starred" || filter === "trash")) && (
+              <DocumentCreateForm />
+            )
+          }
+          renderContextMenu={renderContextMenu}
+          title={t`Documents`}
+        />
+
+        {selectedDocument && selectedDocument.id && (
+          <>
+            <ConfirmDelete
+              action={path.to.deleteDocument(selectedDocument.id)}
+              isOpen={moveDocumentModal.isOpen && filter !== "trash"}
+              name={selectedDocument.name ?? ""}
+              text={`Are you sure you want to move ${selectedDocument.name} to the trash?`}
+              onCancel={moveDocumentModal.onClose}
+              onSubmit={moveDocumentModal.onClose}
+            />
+
+            <Confirm
+              action={path.to.documentRestore(selectedDocument.id)}
+              isOpen={moveDocumentModal.isOpen && filter === "trash"}
+              title={`Restore ${selectedDocument.name}`}
+              text={`Are you sure you want to restore ${selectedDocument.name} from the trash?`}
+              confirmText="Restore"
+              onCancel={moveDocumentModal.onClose}
+              onSubmit={moveDocumentModal.onClose}
+            />
+
+            <ConfirmDelete
+              action={path.to.deleteDocumentPermanently(selectedDocument.id)}
+              isOpen={deleteDocumentModal.isOpen}
+              name={selectedDocument.name ?? ""}
+              text={`Are you sure you want to delete ${selectedDocument.name} permanently? This cannot be undone.`}
+              onCancel={deleteDocumentModal.onClose}
+              onSubmit={deleteDocumentModal.onClose}
+            />
+          </>
+        )}
+      </>
+    );
+  }
+);
+
+type CreatableCommandProps = {
+  options: {
+    label: string;
+    value: string;
+  }[];
+  selected: string[];
+  onChange: (selected: string) => void;
+  onCreateOption: (inputValue: string) => void;
+};
+
+const CreatableCommand = ({
+  options,
+  selected,
+  onChange,
+  onCreateOption
+}: CreatableCommandProps) => {
+  const { t } = useLingui();
+  const [search, setSearch] = useState("");
+  const isExactMatch = options.some(
+    (option) => option.value.toLowerCase() === search.toLowerCase()
+  );
+
+  return (
+    <Command>
+      <CommandInput
+        value={search}
+        onValueChange={setSearch}
+        placeholder={t`Search...`}
+        className="h-9"
+      />
+      <CommandGroup>
+        {options.map((option) => {
+          const isSelected = !!selected?.includes(option.value);
+          return (
+            <CommandItem
+              value={option.label}
+              key={option.value}
+              onSelect={() => {
+                if (!isSelected) onChange(option.value);
+              }}
+            >
+              {option.label}
+              <RxCheck
+                className={cn(
+                  "ml-auto h-4 w-4",
+                  isSelected ? "opacity-100" : "opacity-0"
+                )}
+              />
+            </CommandItem>
+          );
+        })}
+        {!isExactMatch && !!search && (
+          <CommandItem
+            onSelect={() => {
+              onCreateOption(search);
+            }}
+            value={search}
+          >
+            <span>
+              <Trans>Create</Trans>
+            </span>
+            <span className="ml-1 font-bold">{search}</span>
+          </CommandItem>
+        )}
+      </CommandGroup>
+    </Command>
+  );
+};
+
+DocumentsTable.displayName = "DocumentsTable";
+
+export default DocumentsTable;
+
+function getDocumentLocation(
+  sourceDocument: (typeof documentSourceTypes)[number],
+  sourceDocumentId: string
+) {
+  switch (sourceDocument) {
+    case "Part":
+      return path.to.part(sourceDocumentId);
+    case "Material":
+      return path.to.material(sourceDocumentId);
+    case "Tool":
+      return path.to.tool(sourceDocumentId);
+    case "Consumable":
+      return path.to.consumable(sourceDocumentId);
+    case "Gauge Calibration Record":
+      return path.to.gaugeCalibrationRecord(sourceDocumentId);
+    case "Job":
+      return path.to.job(sourceDocumentId);
+    case "Service":
+      return path.to.service(sourceDocumentId);
+    case "Purchase Order":
+      return path.to.purchaseOrder(sourceDocumentId);
+    case "Purchasing Request for Quote":
+      return path.to.purchasingRfqDetails(sourceDocumentId);
+    case "Purchase Invoice":
+      return path.to.purchaseInvoice(sourceDocumentId);
+    case "Quote":
+      return path.to.quote(sourceDocumentId);
+    case "Request for Quote":
+      return path.to.salesRfq(sourceDocumentId);
+    case "Sales Order":
+      return path.to.salesOrder(sourceDocumentId);
+    case "Sales Invoice":
+      return path.to.salesInvoice(sourceDocumentId);
+    case "Supplier Quote":
+      return path.to.supplierQuote(sourceDocumentId);
+    case "Supplier":
+      return path.to.supplierDetails(sourceDocumentId);
+    case "Customer":
+      return path.to.customerDetails(sourceDocumentId);
+    default:
+      return "#";
+  }
+}

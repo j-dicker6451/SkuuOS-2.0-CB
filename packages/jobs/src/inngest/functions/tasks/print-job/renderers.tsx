@@ -1,0 +1,309 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+// This module is .tsx because the built-in renderers render React PDF
+// components (ProductLabelPDF, StorageUnitLabelPDF, KanbanLabelPDF).
+
+import type { Database } from "@carbon/database";
+import { resolveLabelLogo } from "@carbon/documents/labels";
+import {
+  KanbanLabelPDF,
+  ProductLabelPDF,
+  StorageUnitLabelPDF
+} from "@carbon/documents/pdf";
+import { toDocumentTemplate } from "@carbon/documents/template";
+import {
+  canHoldKanbanLabel,
+  generateKanbanLabelZPL,
+  generateProductLabelZPL,
+  generateStorageUnitLabelZPL,
+  type KanbanLabelItem
+} from "@carbon/documents/zpl";
+import { ERP_URL, SUPABASE_INTERNAL_URL } from "@carbon/env";
+import { storage } from "@carbon/files";
+import { renderPdfToBuffer } from "@carbon/lib/document-data.server";
+import {
+  type PackingSlipPDFProps,
+  renderPackingSlipPdf
+} from "@carbon/lib/packing-slip-document.server";
+import {
+  renderSalesInvoicePdf,
+  type SalesInvoicePDFProps
+} from "@carbon/lib/sales-invoice-document.server";
+import { renderWithBinderyPress } from "@carbon/printing/printing.server";
+import type { LabelSize, ProductLabelItem } from "@carbon/utils";
+import { labelSizes } from "@carbon/utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReactElement } from "react";
+import type { KanbanCardItem, StorageUnitItem } from "./resolvers";
+
+export type GeneratedContent = {
+  content: string;
+  contentType: "zpl" | "pdf";
+};
+
+/** A single resolved item tagged with the document type that renders it. */
+export type PrintableDocumentItem =
+  | { type: "productLabel"; item: ProductLabelItem }
+  | { type: "kanbanCard"; item: KanbanCardItem }
+  | { type: "storageUnitLabel"; item: StorageUnitItem }
+  | { type: "packingSlip"; item: PackingSlipPDFProps }
+  | { type: "salesInvoice"; item: SalesInvoicePDFProps };
+
+export async function renderItemWithTemplate(
+  doc: PrintableDocumentItem,
+  templateId: string,
+  apiKey: string,
+  format: "zpl" | "pdf"
+): Promise<GeneratedContent> {
+  const result = await renderWithBinderyPress({
+    apiKey,
+    templateId,
+    data: { ...doc.item },
+    format
+  });
+
+  return {
+    content: result.content,
+    contentType: result.contentType
+  };
+}
+
+export async function renderItemBuiltIn(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  doc: PrintableDocumentItem,
+  format: "zpl" | "pdf",
+  mediaSizeId: string
+): Promise<GeneratedContent> {
+  switch (doc.type) {
+    case "productLabel": {
+      const mediaSize = requireMediaSize(mediaSizeId);
+      // Apply the company's tracking-label template + logo, same as the
+      // interactive download routes — otherwise queued jobs print a layout
+      // that doesn't match what the customizer shows.
+      const { template, logo, labelCompany } = await loadProductLabelContext(
+        client,
+        companyId,
+        mediaSize
+      );
+      if (format === "pdf") {
+        return renderPdfContent(
+          <ProductLabelPDF
+            items={[doc.item]}
+            labelSize={mediaSize}
+            template={template}
+            company={labelCompany}
+            logo={logo}
+          />
+        );
+      }
+      requireZplCapable(mediaSize);
+      return {
+        content: generateProductLabelZPL(
+          doc.item,
+          mediaSize,
+          template,
+          logo,
+          labelCompany
+        ),
+        contentType: "zpl"
+      };
+    }
+    case "kanbanCard":
+      return renderKanbanCard(client, companyId, doc.item, format, mediaSizeId);
+    case "storageUnitLabel": {
+      const mediaSize = requireMediaSize(mediaSizeId);
+      if (format === "pdf") {
+        return renderPdfContent(
+          <StorageUnitLabelPDF items={[doc.item]} labelSize={mediaSize} />
+        );
+      }
+      requireZplCapable(mediaSize);
+      return {
+        content: generateStorageUnitLabelZPL(doc.item, mediaSize),
+        contentType: "zpl"
+      };
+    }
+    case "packingSlip":
+      requirePdf(format, "packing slip");
+      return pdfContent(await renderPackingSlipPdf(doc.item));
+    case "salesInvoice":
+      requirePdf(format, "sales invoice");
+      return pdfContent(await renderSalesInvoicePdf(doc.item));
+  }
+}
+
+function requirePdf(format: "zpl" | "pdf", documentName: string): void {
+  if (format !== "pdf") {
+    throw new Error(
+      `A ${documentName} prints on a PDF printer; this printer takes ZPL.`
+    );
+  }
+}
+
+function pdfContent(body: Buffer): GeneratedContent {
+  return { content: body.toString("base64"), contentType: "pdf" };
+}
+
+function requireMediaSize(mediaSizeId: string): LabelSize {
+  const mediaSize = labelSizes.find((s) => s.id === mediaSizeId);
+  if (!mediaSize) {
+    throw new Error(`Unknown media size ${mediaSizeId}`);
+  }
+  return mediaSize;
+}
+
+// Not the public storage prefix: nothing here reaches a browser. The expanded
+// logo path is fetched server-side by `resolveLabelLogo`, so this uses the
+// internal URL.
+const INTERNAL_STORAGE_URL_PREFIX = `${SUPABASE_INTERNAL_URL}/storage/v1/object/public/public/`;
+
+/**
+ * Resolve the company's tracking-label template + logo for a built-in render.
+ * Mirrors the interactive label routes (which use `getDocumentTemplateConfig`
+ * + `resolveLabelLogo`) so queued print jobs honor the customizer layout. The
+ * jobs package can't import app modules, so it reads the row directly here.
+ */
+async function loadProductLabelContext(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  labelSize: LabelSize
+) {
+  const [templateRow, companyRow] = await Promise.all([
+    client
+      .from("documentTemplate")
+      .select("*")
+      .eq("companyId", companyId)
+      .eq("documentType", "trackingLabel")
+      .maybeSingle(),
+    client
+      .from("company")
+      .select("logoLight, logoLightIcon, name, city, countryCode")
+      .eq("id", companyId)
+      .maybeSingle()
+  ]);
+
+  const template = toDocumentTemplate(templateRow.data, "trackingLabel");
+
+  const expand = (path: string | null | undefined) =>
+    path ? `${INTERNAL_STORAGE_URL_PREFIX}${path}` : null;
+  const company = companyRow.data
+    ? {
+        logoLight: expand(companyRow.data.logoLight),
+        logoLightIcon: expand(companyRow.data.logoLightIcon)
+      }
+    : null;
+
+  const logo = await resolveLabelLogo(company, template, labelSize);
+
+  return {
+    template,
+    logo,
+    labelCompany:
+      companyRow.data && company ? { ...companyRow.data, ...company } : null
+  };
+}
+
+function requireZplCapable(mediaSize: LabelSize): void {
+  if (!mediaSize.zpl) {
+    throw new Error(`Media size ${mediaSize.id} does not support ZPL`);
+  }
+}
+
+async function renderPdfContent(
+  element: ReactElement
+): Promise<GeneratedContent> {
+  return pdfContent(await renderPdfToBuffer(element));
+}
+
+/**
+ * One kanban card, for the item's action (Create, Start or Complete), at the
+ * printer's media size when the medium holds one
+ * (3" x 2" and up): ZPL for a Zebra, else a one-card PDF. A PDF printer with
+ * a smaller or no medium (an office printer) prints the company's Kanban
+ * Label Size setting, the letter sheet by default.
+ */
+async function renderKanbanCard(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  item: KanbanCardItem,
+  format: "zpl" | "pdf",
+  mediaSizeId: string
+): Promise<GeneratedContent> {
+  const mediaSize = labelSizes.find((s) => s.id === mediaSizeId);
+  const cardSize =
+    mediaSize && canHoldKanbanLabel(mediaSize) ? mediaSize : undefined;
+
+  const label: KanbanLabelItem = {
+    id: item.id,
+    kanbanId: item.kanbanId,
+    itemName: item.itemName,
+    itemReadableId: item.itemId,
+    locationName: item.locationName,
+    storageUnitName: item.storageUnitName,
+    fromStorageUnitName: item.fromStorageUnitName,
+    supplierName: item.supplierName,
+    quantity: item.quantity,
+    replenishmentLevel: item.replenishmentLevel,
+    unitOfMeasureCode: item.unitOfMeasureCode
+  };
+
+  if (format === "zpl") {
+    if (!cardSize) {
+      throw new Error(
+        `A kanban card needs a label of at least 3" x 2"; this printer's media size is ${mediaSizeId}.`
+      );
+    }
+    requireZplCapable(cardSize);
+    return {
+      content: generateKanbanLabelZPL(
+        label,
+        cardSize,
+        ERP_URL ?? "",
+        item.action
+      ),
+      contentType: "zpl"
+    };
+  }
+
+  const labelSize = cardSize ?? (await getKanbanLabelSize(client, companyId));
+
+  // Only the letter sheet prints the item thumbnail.
+  if (!labelSize && item.thumbnailPath) {
+    // Private object paths are prefixed with the owning companyId segment.
+    const ownerId = item.thumbnailPath.split("/")[0] ?? "";
+    const { data } = await storage(client)
+      .company(ownerId)
+      .download(item.thumbnailPath);
+    if (data) {
+      const buffer = Buffer.from(await data.arrayBuffer());
+      const ext = item.thumbnailPath.split(".").pop()?.toLowerCase();
+      const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+      label.thumbnail = `data:${mime};base64,${buffer.toString("base64")}`;
+    }
+  }
+
+  return renderPdfContent(
+    <KanbanLabelPDF
+      baseUrl={ERP_URL ?? ""}
+      labels={[label]}
+      action={item.action}
+      labelSize={labelSize}
+    />
+  );
+}
+
+/** The company's Kanban Label Size; undefined is the letter sheet. */
+async function getKanbanLabelSize(
+  client: SupabaseClient<Database>,
+  companyId: string
+): Promise<LabelSize | undefined> {
+  const { data } = await client
+    .from("companySettings")
+    .select("kanbanLabelSize")
+    .eq("id", companyId)
+    .maybeSingle();
+  return labelSizes.find((s) => s.id === data?.kanbanLabelSize);
+}

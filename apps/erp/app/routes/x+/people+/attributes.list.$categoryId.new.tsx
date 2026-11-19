@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useRouteDialog } from "@carbon/react";
+import { useParams } from "react-router";
+import { useRouteData } from "~/hooks";
+import type { AttributeDataType } from "~/modules/people/types";
+import { AttributeForm } from "~/modules/people/ui/Attributes";
+import { DataType } from "~/modules/shared/types";
+import { path } from "~/utils/path";
+
+export default function NewAttributeRoute() {
+  const { categoryId } = useParams();
+  if (!categoryId) throw new Error("categoryId is not found");
+
+  const dialog = useRouteDialog();
+  const onClose = dialog.close;
+  const attributesRouteData = useRouteData<{
+    dataTypes: AttributeDataType[];
+  }>(path.to.attributes);
+
+  return (
+    <AttributeForm
+      initialValues={{
+        name: "",
+        // @ts-expect-error
+        attributeDataTypeId: DataType.Text.toString(),
+        userAttributeCategoryId: categoryId,
+        canSelfManage: false
+      }}
+      // @ts-expect-error TS2322 - TODO: fix type
+      dataTypes={attributesRouteData?.dataTypes ?? []}
+      open={dialog.open}
+      onClose={onClose}
+    />
+  );
+}

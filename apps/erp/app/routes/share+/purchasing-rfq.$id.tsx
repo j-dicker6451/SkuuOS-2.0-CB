@@ -1,0 +1,395 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { requirePermissions } from "@carbon/auth/auth.server";
+import type { JSONContent } from "@carbon/react";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  generateHTML,
+  Heading,
+  HStack,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+  TruncatedTooltipText,
+  useMode,
+  VStack
+} from "@carbon/react";
+import { useLingui } from "@lingui/react/macro";
+import { useLocale } from "@react-aria/i18n";
+import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
+import { LuChevronRight, LuImage } from "react-icons/lu";
+import type { LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import { DateTime } from "~/components";
+import {
+  getPurchasingRFQ,
+  getPurchasingRFQLines
+} from "~/modules/purchasing/purchasing.service";
+import type { PurchasingRFQLine } from "~/modules/purchasing/types";
+import { getCompany } from "~/modules/settings/settings.service";
+import type { Company } from "~/modules/settings/types";
+import { getBase64ImageFromSupabase } from "~/modules/shared/shared.service";
+
+export const meta = () => {
+  return [{ title: "RFQ Preview" }];
+};
+
+export async function loader({ params, request }: LoaderFunctionArgs) {
+  const { id } = params;
+  if (!id) {
+    return {
+      error: "RFQ not found",
+      data: null
+    };
+  }
+
+  // Require authentication - this is an internal preview
+  const { client, companyId } = await requirePermissions(request, {
+    view: "purchasing"
+  });
+
+  const [rfqResult, linesResult, company] = await Promise.all([
+    getPurchasingRFQ(client, id),
+    getPurchasingRFQLines(client, id),
+    getCompany(client, companyId)
+  ]);
+
+  if (rfqResult.error || !rfqResult.data) {
+    return {
+      error: "RFQ not found",
+      data: null
+    };
+  }
+
+  // Get thumbnails for line items
+  const thumbnailPaths = linesResult.data?.reduce<
+    Record<string, string | null>
+  >((acc, line) => {
+    if (line.thumbnailPath) {
+      // @ts-expect-error TS2538 - TODO: fix type
+      acc[line.id] = line.thumbnailPath;
+    }
+    return acc;
+  }, {});
+
+  const thumbnails: Record<string, string | null> =
+    (thumbnailPaths
+      ? await Promise.all(
+          Object.entries(thumbnailPaths).map(([lineId, path]) => {
+            if (!path) return null;
+            return getBase64ImageFromSupabase(client, path).then((data) => ({
+              id: lineId,
+              data
+            }));
+          })
+        )
+      : []
+    )?.reduce<Record<string, string | null>>((acc, thumbnail) => {
+      if (thumbnail) {
+        acc[thumbnail.id] = thumbnail.data;
+      }
+      return acc;
+    }, {}) ?? {};
+
+  return {
+    error: null,
+    data: {
+      rfq: rfqResult.data,
+      lines: linesResult.data ?? [],
+      company: company.data,
+      thumbnails
+    }
+  };
+}
+
+const Header = ({
+  company,
+  rfq,
+  locale
+}: {
+  company: Company | null;
+  rfq: any;
+  locale: string;
+}) => (
+  <CardHeader className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-4 sm:space-y-2 pb-7">
+    <VStack spacing={4}>
+      <div>
+        <CardTitle className="text-3xl">{company?.name ?? ""}</CardTitle>
+        {rfq?.rfqId && (
+          <p className="text-lg text-muted-foreground">{rfq.rfqId}</p>
+        )}
+        {rfq?.expirationDate && (
+          <p className="text-lg text-muted-foreground">
+            Due <DateTime value={rfq.expirationDate} variant="date" />
+          </p>
+        )}
+      </div>
+      <span className="text-base text-muted-foreground">
+        This is a preview of how suppliers will see the quote request
+      </span>
+    </VStack>
+  </CardHeader>
+);
+
+const NotesDisplay = ({ notes }: { notes: JSONContent | null }) => {
+  if (!notes || Object.keys(notes).length === 0) return null;
+
+  return (
+    <div
+      className="prose dark:prose-invert mt-2 text-muted-foreground"
+      dangerouslySetInnerHTML={{
+        __html: generateHTML(notes)
+      }}
+    />
+  );
+};
+
+const LineItems = ({
+  lines,
+  thumbnails
+}: {
+  lines: PurchasingRFQLine[];
+  thumbnails: Record<string, string | null>;
+}) => {
+  const { t } = useLingui();
+  // @ts-expect-error TS2345 - TODO: fix type
+  const [openItems, setOpenItems] = useState<string[]>(() =>
+    lines.map((line) => line.id).filter(Boolean)
+  );
+
+  const toggleOpen = (id: string) => {
+    setOpenItems((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  return (
+    <VStack spacing={8} className="w-full">
+      {lines.map((line) => {
+        if (!line.id) return null;
+
+        const lineName = line.itemReadableId ?? t`Item`;
+
+        return (
+          <div key={line.id} className="border-b border-input py-6 w-full">
+            <HStack spacing={4} className="items-start">
+              {thumbnails[line.id] ? (
+                <img
+                  alt={line.itemReadableId ?? "Item"}
+                  className="w-24 h-24 shrink-0 bg-gradient-to-bl from-muted to-muted/40 rounded-lg"
+                  src={thumbnails[line.id] ?? undefined}
+                />
+              ) : (
+                <div className="w-24 h-24 shrink-0 bg-gradient-to-bl from-muted to-muted/40 rounded-lg p-4">
+                  <LuImage className="w-16 h-16 text-muted-foreground" />
+                </div>
+              )}
+
+              {/* flex-1 + min-w-0, not w-full: `width: 100%` on a flex item
+                  resolves against the row's full width and ignores the
+                  thumbnail beside it, pushing the description past the card
+                  edge. min-w-0 is what lets truncate bite. */}
+              <VStack spacing={0} className="flex-1 min-w-0">
+                {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: pointer-only shortcut so a click anywhere on the header toggles; the chevron button is the keyboard/AT toggle */}
+                <div
+                  className="flex flex-col cursor-pointer w-full min-w-0"
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest("a, button")) return;
+                    toggleOpen(line.id!);
+                  }}
+                >
+                  <div className="flex items-center gap-x-4 justify-between flex-grow min-w-0">
+                    {/* min-w-0 so a long item id wraps inside the card
+                        instead of shoving the chevron out of it. */}
+                    <Heading className="min-w-0">
+                      {line.itemReadableId ?? "Item"}
+                    </Heading>
+                    <HStack spacing={4} className="shrink-0">
+                      <motion.button
+                        type="button"
+                        aria-expanded={openItems.includes(line.id)}
+                        aria-controls={
+                          openItems.includes(line.id)
+                            ? `rfq-line-details-${line.id}`
+                            : undefined
+                        }
+                        aria-label={
+                          openItems.includes(line.id)
+                            ? t`Hide details for ${lineName}`
+                            : t`Show details for ${lineName}`
+                        }
+                        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => toggleOpen(line.id!)}
+                        animate={{
+                          rotate: openItems.includes(line.id) ? 90 : 0
+                        }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <LuChevronRight size={24} aria-hidden />
+                      </motion.button>
+                    </HStack>
+                  </div>
+                  <TruncatedTooltipText
+                    className="text-muted-foreground text-base truncate"
+                    tooltip={line.description}
+                  >
+                    {line.description}
+                  </TruncatedTooltipText>
+                </div>
+              </VStack>
+            </HStack>
+
+            <AnimatePresence initial={false}>
+              {openItems.includes(line.id) ? (
+                <motion.div
+                  id={`rfq-line-details-${line.id}`}
+                  key="panel"
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: "auto", marginTop: 16 }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                  className="w-full overflow-hidden"
+                >
+                  <LinePricing line={line} />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+            <NotesDisplay notes={(line.externalNotes as JSONContent) || null} />
+          </div>
+        );
+      })}
+    </VStack>
+  );
+};
+
+const LinePricing = ({ line }: { line: PurchasingRFQLine }) => {
+  const quantities =
+    Array.isArray(line.quantity) && line.quantity.length > 0
+      ? line.quantity
+      : [1];
+
+  return (
+    <VStack spacing={4}>
+      <Table>
+        <Thead>
+          <Tr className="whitespace-nowrap">
+            <Th className="w-[50px]" />
+            <Th className="w-2">Quantity</Th>
+            <Th className="w-[80px]">Unit</Th>
+            <Th className="w-[150px]">Unit Price</Th>
+            <Th className="w-[120px]">Lead Time</Th>
+            <Th className="w-[150px]">Shipping Cost</Th>
+            <Th className="w-[150px]">Tax</Th>
+            <Th className="w-[100px]">Total</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {quantities.map((qty, index) => (
+            <Tr key={index}>
+              <Td className="w-[50px]">
+                <div className="w-4 h-4 border rounded" />
+              </Td>
+              <Td>{qty}</Td>
+              <Td>
+                {line.purchaseUnitOfMeasureCode ??
+                  line.inventoryUnitOfMeasureCode}
+              </Td>
+              <Td className="text-muted-foreground">—</Td>
+              <Td className="text-muted-foreground">—</Td>
+              <Td className="text-muted-foreground">—</Td>
+              <Td className="text-muted-foreground">—</Td>
+              <Td className="text-muted-foreground">—</Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+    </VStack>
+  );
+};
+
+const RFQPreview = ({
+  data
+}: {
+  data: {
+    company: Company | null;
+    rfq: any;
+    lines: PurchasingRFQLine[];
+    thumbnails: Record<string, string | null>;
+  };
+}) => {
+  const { company, rfq, lines, thumbnails } = data;
+  const { locale } = useLocale();
+  const mode = useMode();
+  const logo = mode === "dark" ? company?.logoDark : company?.logoLight;
+
+  return (
+    <VStack spacing={8} className="w-full items-center p-2 md:p-8">
+      {logo && (
+        <img
+          src={logo}
+          alt={company?.name ?? ""}
+          className="w-auto mx-auto max-w-5xl"
+        />
+      )}
+
+      <Badge variant="outline" className="text-lg px-4 py-2">
+        Preview Mode
+      </Badge>
+
+      <Card className="w-full max-w-5xl mx-auto">
+        <Header company={company} rfq={rfq} locale={locale} />
+        <CardContent>
+          <LineItems lines={lines} thumbnails={thumbnails} />
+
+          <div className="mt-8 p-4 bg-muted rounded-lg">
+            <p className="text-sm text-muted-foreground text-center">
+              This is a preview of how suppliers will see the quote request.
+              Finalize the RFQ to send it to suppliers.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </VStack>
+  );
+};
+
+const ErrorMessage = ({
+  title,
+  message
+}: {
+  title: string;
+  message: string;
+}) => {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center p-4 text-center">
+      <h1 className="text-3xl font-semibold">{title}</h1>
+      <p className="text-lg text-muted-foreground">{message}</p>
+    </div>
+  );
+};
+
+export default function PurchasingRFQPreview() {
+  const { error, data } = useLoaderData<typeof loader>();
+
+  if (error || !data) {
+    return (
+      <ErrorMessage
+        title="RFQ not found"
+        message="Oops! The RFQ you're trying to preview could not be found."
+      />
+    );
+  }
+
+  // @ts-expect-error TS2322 - TODO: fix type
+  return <RFQPreview data={data} />;
+}

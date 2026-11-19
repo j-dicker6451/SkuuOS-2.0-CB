@@ -1,0 +1,396 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { getQuoteDisplayId } from "@carbon/documents/utils";
+import {
+  HStack,
+  MENU_ITEM_SHORTCUTS,
+  MenuIcon,
+  MenuItem,
+  useDisclosure
+} from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ColumnDef } from "@tanstack/react-table";
+import { memo, useMemo, useState } from "react";
+import {
+  LuBookMarked,
+  LuCalendar,
+  LuMap,
+  LuPencil,
+  LuQrCode,
+  LuSquareUser,
+  LuStar,
+  LuTrash,
+  LuUser
+} from "react-icons/lu";
+import { useNavigate } from "react-router";
+import {
+  CustomerAvatar,
+  DateTime,
+  EmployeeAvatar,
+  Hyperlink,
+  ItemThumbnail,
+  New,
+  RevisionSuffix,
+  Table
+} from "~/components";
+import { Enumerable } from "~/components/Enumerable";
+import { useLineItemRows } from "~/components/LineItemRows";
+import { ConfirmDelete } from "~/components/Modals";
+import type { InfiniteOptions } from "~/components/Table";
+import { usePermissions } from "~/hooks";
+import { useCustomColumns } from "~/hooks/useCustomColumns";
+import { useCustomers, usePeople } from "~/stores";
+import { path } from "~/utils/path";
+import { quoteStatusType } from "../../sales.models";
+import type { QuotationListItem } from "../../types";
+import QuoteStatus from "./QuoteStatus";
+
+type QuotesTableProps = {
+  data: QuotationListItem[];
+  count: number;
+  infinite: InfiniteOptions;
+};
+
+const QuotesTable = memo(({ data, count, infinite }: QuotesTableProps) => {
+  const { t } = useLingui();
+  const permissions = usePermissions();
+  const navigate = useNavigate();
+
+  const [selectedQuotation, setSelectedQuotation] =
+    useState<QuotationListItem | null>(null);
+  const deleteQuotationModal = useDisclosure();
+
+  const [customers] = useCustomers();
+  const [people] = usePeople();
+
+  const customColumns = useCustomColumns<QuotationListItem>("quote");
+  const columns = useMemo<ColumnDef<QuotationListItem>[]>(() => {
+    const employeeOptions = people.map((employee) => ({
+      value: employee.id,
+      label: employee.name
+    }));
+
+    const defaultColumns: ColumnDef<QuotationListItem>[] = [
+      {
+        accessorKey: "quoteId",
+        header: t`Quote Number`,
+        cell: ({ row }) => (
+          <HStack>
+            <ItemThumbnail
+              size="md"
+              thumbnailPath={row.original.thumbnailPath}
+              // @ts-expect-error
+              type={row.original.itemType}
+            />
+            <Hyperlink to={path.to.quoteDetails(row.original.id!)}>
+              <div className="flex justify-start items-center gap-0">
+                <span>{row.original.quoteId}</span>
+                <RevisionSuffix revisionId={row.original.revisionId} />
+              </div>
+            </Hyperlink>
+          </HStack>
+        ),
+        meta: {
+          mobile: "P1",
+          icon: <LuBookMarked />
+        }
+      },
+      {
+        id: "customerId",
+        header: t`Customer`,
+        cell: ({ row }) => (
+          // Phones: the expiry date follows the customer on line 2.
+          <div className="contents max-md:flex max-md:min-w-0 max-md:items-center max-md:gap-1">
+            <CustomerAvatar customerId={row.original.customerId} />
+            {row.original.expirationDate ? (
+              <span className="shrink-0 whitespace-nowrap md:hidden">
+                ·{" "}
+                <Trans>
+                  Exp.{" "}
+                  <DateTime
+                    value={row.original.expirationDate}
+                    variant="date"
+                    dateOptions={{ month: "short", day: "numeric" }}
+                  />
+                </Trans>
+              </span>
+            ) : null}
+          </div>
+        ),
+        meta: {
+          mobile: "P3",
+          filter: {
+            type: "static",
+            options: customers?.map((customer) => ({
+              value: customer.id,
+              label: customer.name
+            }))
+          },
+          icon: <LuSquareUser />
+        }
+      },
+
+      {
+        accessorKey: "status",
+        header: t`Status`,
+        cell: ({ row }) => <QuoteStatus status={row.original.status} />,
+        meta: {
+          mobile: "P2",
+          filter: {
+            type: "static",
+            options: quoteStatusType.map((status) => ({
+              value: status,
+              label: <QuoteStatus status={status} />
+            }))
+          },
+          pluralHeader: t`Statuses`,
+          icon: <LuStar />
+        }
+      },
+      {
+        accessorKey: "customerReference",
+        header: t`Customer RFQ`,
+        cell: (item) => item.getValue(),
+        meta: {
+          icon: <LuQrCode />
+        }
+      },
+      {
+        accessorKey: "salesPersonId",
+        header: t`Sales Person`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.salesPersonId} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: employeeOptions
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "estimatorId",
+        header: t`Estimator`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.estimatorId} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: employeeOptions
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        id: "assignee",
+        header: t`Assignee`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.assignee} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: employeeOptions
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "dueDate",
+        header: t`Due Date`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          filter: {
+            type: "dateRange"
+          },
+          icon: <LuCalendar />
+        }
+      },
+      {
+        accessorKey: "expirationDate",
+        header: t`Expiration Date`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          filter: {
+            type: "dateRange"
+          },
+          icon: <LuCalendar />
+        }
+      },
+      {
+        accessorKey: "locationName",
+        header: t`Location`,
+        cell: (item) => <Enumerable value={item.getValue<string>()} />,
+        meta: {
+          filter: {
+            type: "fetcher",
+            endpoint: path.to.api.locations,
+            transform: (data: { id: string; name: string }[] | null) =>
+              data?.map(({ name }) => ({
+                value: name,
+                label: <Enumerable value={name} />
+              })) ?? []
+          },
+          icon: <LuMap />
+        }
+      },
+      {
+        id: "createdBy",
+        header: t`Created By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.createdBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "createdAt",
+        header: t`Created At`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          icon: <LuCalendar />
+        }
+      },
+      {
+        id: "updatedBy",
+        header: t`Updated By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.updatedBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "updatedAt",
+        header: t`Updated At`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          icon: <LuCalendar />
+        }
+      }
+    ];
+
+    return [...defaultColumns, ...customColumns];
+  }, [customers, people, customColumns, t]);
+
+  const renderContextMenu = useMemo(() => {
+    return (row: QuotationListItem) => (
+      <>
+        <MenuItem
+          shortcut={MENU_ITEM_SHORTCUTS.edit}
+          onClick={() => navigate(path.to.quoteDetails(row.id!))}
+        >
+          <MenuIcon icon={<LuPencil />} />
+          <Trans>Edit</Trans>
+        </MenuItem>
+        <MenuItem
+          shortcut={MENU_ITEM_SHORTCUTS.delete}
+          disabled={!permissions.can("delete", "sales")}
+          destructive
+          onClick={() => {
+            setSelectedQuotation(row);
+            deleteQuotationModal.onOpen();
+          }}
+        >
+          <MenuIcon icon={<LuTrash />} />
+          <Trans>Delete</Trans>
+        </MenuItem>
+      </>
+    );
+  }, [deleteQuotationModal, navigate, permissions]);
+
+  const lineItemRows = useLineItemRows<QuotationListItem>("quotes");
+
+  return (
+    <>
+      <Table<QuotationListItem>
+        getRowLabel={(row) => row.quoteId ?? undefined}
+        count={count}
+        infinite={infinite}
+        columns={columns}
+        data={data}
+        {...lineItemRows}
+        defaultColumnPinning={{
+          left: ["quoteId"]
+        }}
+        defaultColumnVisibility={{
+          createdAt: false,
+          createdBy: false,
+          updatedAt: false,
+          updatedBy: false
+        }}
+        importCSV={
+          // The import action gates on `sales_update` (see import.$tableId.tsx),
+          // so match that here rather than `create`.
+          permissions.can("update", "sales")
+            ? [
+                {
+                  table: "quoteWithLines" as const,
+                  label: t`Quotes with Lines`
+                },
+                { table: "quote" as const, label: t`Quotes` },
+                { table: "quoteLine" as const, label: t`Quote Lines` }
+              ]
+            : undefined
+        }
+        primaryAction={
+          permissions.can("create", "sales") && (
+            <New label={t`Quote`} to={path.to.newQuote} />
+          )
+        }
+        renderContextMenu={renderContextMenu}
+        table="quote"
+        title={t`Quotes`}
+        withSavedView
+      />
+      {selectedQuotation && selectedQuotation.id && (
+        <ConfirmDelete
+          action={path.to.deleteQuote(selectedQuotation.id)}
+          isOpen={deleteQuotationModal.isOpen}
+          name={getQuoteDisplayId(selectedQuotation)}
+          text={t`Are you sure you want to delete ${getQuoteDisplayId(
+            selectedQuotation
+          )}? This cannot be undone.`}
+          onCancel={() => {
+            deleteQuotationModal.onClose();
+          }}
+          onSubmit={() => {
+            deleteQuotationModal.onClose();
+          }}
+        />
+      )}
+    </>
+  );
+});
+
+QuotesTable.displayName = "QuotesTable";
+
+export default QuotesTable;

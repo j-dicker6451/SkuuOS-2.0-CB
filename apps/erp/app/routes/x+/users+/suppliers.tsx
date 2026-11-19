@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { RecordOutlet, VStack } from "@carbon/react";
+import { redirect } from "@carbon/utils";
+import { msg } from "@lingui/core/macro";
+import type { LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import { getSupplierTypes } from "~/modules/purchasing/purchasing.service";
+import { SupplierAccountsTable } from "~/modules/users/ui";
+import {
+  getSuppliers,
+  getUnrevokedInviteEmails
+} from "~/modules/users/users.service";
+import type { Handle } from "~/utils/handle";
+import { SINGLE_LOAD_LIMIT } from "~/utils/pagination";
+import { path } from "~/utils/path";
+import { getGenericQueryFilters } from "~/utils/query";
+
+export const handle: Handle = {
+  breadcrumb: msg`Suppliers`,
+  to: path.to.supplierAccounts
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "users",
+    bypassRls: true
+  });
+
+  const url = new URL(request.url);
+  const searchParams = new URLSearchParams(url.search);
+  const search = searchParams.get("search");
+
+  const { sorts, filters } = getGenericQueryFilters(searchParams);
+
+  const [suppliers, supplierTypes, invites] = await Promise.all([
+    getSuppliers(client, companyId, {
+      search,
+      // A single-load list: its default sort is on the joined user, which a
+      // cursor cannot follow.
+      limit: SINGLE_LOAD_LIMIT,
+      offset: 0,
+      sorts,
+      filters
+    }),
+    getSupplierTypes(client, companyId),
+    getUnrevokedInviteEmails(client, companyId)
+  ]);
+  if (suppliers.error) {
+    throw redirect(
+      path.to.users,
+      await flash(request, error(suppliers.error, "Error loading suppliers"))
+    );
+  }
+  if (supplierTypes.error) {
+    throw redirect(
+      path.to.users,
+      await flash(
+        request,
+        error(supplierTypes.error, "Error loading supplier types")
+      )
+    );
+  }
+
+  return {
+    count: suppliers.count ?? 0,
+    suppliers: suppliers.data ?? [],
+    isTruncated: (suppliers.data?.length ?? 0) >= SINGLE_LOAD_LIMIT,
+    supplierTypes: supplierTypes.data,
+    unrevokedInviteEmails: invites.data?.map((i) => i.email) ?? []
+  };
+}
+
+export default function UsersSuppliersRoute() {
+  const {
+    count,
+    suppliers,
+    isTruncated,
+    supplierTypes,
+    unrevokedInviteEmails
+  } = useLoaderData<typeof loader>();
+
+  return (
+    <VStack spacing={0} className="h-full">
+      <SupplierAccountsTable
+        data={suppliers}
+        count={count}
+        isTruncated={isTruncated}
+        supplierTypes={supplierTypes}
+        unrevokedInviteEmails={unrevokedInviteEmails}
+      />
+      <RecordOutlet />
+    </VStack>
+  );
+}

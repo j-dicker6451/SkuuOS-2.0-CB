@@ -1,0 +1,964 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useCarbon } from "@carbon/auth";
+import { storage } from "@carbon/files";
+import { TiptapText } from "@carbon/files/markdown";
+import {
+  Combobox,
+  DateTimePicker,
+  Hidden,
+  Input as InputField,
+  Number,
+  Select,
+  Submit,
+  ValidatedForm
+} from "@carbon/form";
+import { useAction } from "@carbon/query";
+import type { JSONContent } from "@carbon/react";
+import {
+  Button,
+  Checkbox,
+  cn,
+  generateHTML,
+  HStack,
+  IconButton,
+  ImageZoomViewer,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+  Switch,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+  toast,
+  toastError,
+  useDisclosure,
+  VStack
+} from "@carbon/react";
+import {
+  documentHasImages,
+  parseMentionsFromDocument,
+  stripSpecialCharacters
+} from "@carbon/utils";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { useNumberFormatter } from "@react-aria/i18n";
+import { nanoid } from "nanoid";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useMemo, useRef, useState } from "react";
+import {
+  LuChevronDown,
+  LuChevronRight,
+  LuCircleCheck,
+  LuFile,
+  LuPaperclip,
+  LuTrash
+} from "react-icons/lu";
+import { useFetcher } from "react-router";
+import { DateTime } from "~/components";
+import { ProcedureStepTypeIcon } from "~/components/Icons";
+import ItemThumbnail from "~/components/ItemThumbnail";
+import { useUser } from "~/hooks";
+import {
+  measurementStepRecordValidator,
+  stepRecordValidator
+} from "~/services/models";
+import type { CorrectionSuggestion } from "~/services/operations.service";
+import type { JobOperationStep } from "~/services/types";
+import { useItems, usePeople } from "~/stores";
+import { getPrivateUrl, path } from "~/utils/path";
+import FileDropzone from "../../FileDropzone";
+import { CorrectionPrompt } from "./CorrectionPrompt";
+
+// Reference-image annotation pins (mirrors ImageZoomViewer's Annotation shape). The
+// slide row stores these as JSON, so we cast when passing them to the viewer.
+type SlideAnnotation = {
+  id: string;
+  x: number;
+  y: number;
+  label?: string | null;
+  color?: string | null;
+  toolId?: string | null;
+};
+
+// An empty step description is persisted by the ERP editors as
+// JSON.stringify({}) === "{}" (and some legacy rows carry it as a tiptap doc
+// whose only text is literally "{}"). Treat an empty object, empty doc, or
+// "{}"-only text as "no description" so we render nothing instead of a bare "{}".
+export function hasStepDescription(
+  description: JobOperationStep["description"]
+): boolean {
+  if (!description) return false;
+  const doc = description as JSONContent;
+  const text = TiptapText(doc).toString().trim();
+  if (text.length > 0 && text !== "{}") return true;
+  if (parseMentionsFromDocument(doc).length > 0) return true;
+  // A step's reference imagery is frequently an image-only description (no text,
+  // no @-mention). Without this the description block — and its <img> — is hidden.
+  return documentHasImages(doc);
+}
+
+// The limits a Measurement must fall within, in its unit, as the step lists
+// and the record windows state them. Both limits are inclusive: a value equal
+// to either one passes.
+export function useMeasurementLimits(step: {
+  minValue: number | null;
+  maxValue: number | null;
+  unitOfMeasureCode: string | null;
+}) {
+  const { t } = useLingui();
+  const { minValue, maxValue } = step;
+  const unitOfMeasureCode = step.unitOfMeasureCode ?? "";
+  if (minValue !== null && maxValue !== null) {
+    return t`Must be between ${minValue} and ${maxValue} ${unitOfMeasureCode}`;
+  }
+  if (minValue !== null)
+    return t`Must be at least ${minValue} ${unitOfMeasureCode}`;
+  if (maxValue !== null)
+    return t`Must be at most ${maxValue} ${unitOfMeasureCode}`;
+  return null;
+}
+
+export function StepsListItem({
+  activeStep,
+  step,
+  compact = false,
+  operationId,
+  className,
+  onRecord,
+  onDelete,
+  stepNumber,
+  disabled = false
+}: {
+  activeStep: number;
+  step: JobOperationStep;
+  compact?: boolean;
+  // The step's 1-based position in the list, so its action buttons name it.
+  stepNumber?: number;
+  operationId?: string;
+  className: string;
+  onRecord: (step: JobOperationStep) => void;
+  onDelete: (step: JobOperationStep) => void;
+  // The operator may not record on this operation (ability policy 'block')
+  disabled?: boolean;
+}) {
+  const { t } = useLingui();
+  const fetcher = useFetcher<{ success: boolean }>();
+  const user = useUser();
+  const { name, description, type } = step;
+  const limits = useMeasurementLimits(step);
+  // "step 2: Torque bolts" — names which step each action acts on.
+  const stepLabel =
+    stepNumber === undefined ? name : t`step ${stepNumber}: ${name}`;
+
+  const hasDescription = hasStepDescription(description);
+  const disclosure = useDisclosure({
+    defaultIsOpen: hasDescription
+  });
+
+  if (!operationId) return null;
+  const record = step.jobOperationStepRecord.find(
+    (r) => r.index === activeStep
+  );
+
+  return (
+    <div className={cn("border-b hover:bg-muted/30 p-6", className)}>
+      <div className="flex flex-1 justify-between items-center w-full gap-2">
+        <HStack spacing={4} className="w-2/3">
+          <HStack spacing={4} className="flex-1">
+            <div className="bg-muted border rounded-full flex items-center justify-center p-2">
+              <ProcedureStepTypeIcon type={type} />
+            </div>
+            <VStack spacing={0}>
+              <HStack>
+                <span className="text-foreground text-sm font-medium">
+                  {name}
+                </span>
+              </HStack>
+              {type === "Measurement" && (
+                <span className="text-xs text-muted-foreground">{limits}</span>
+              )}
+            </VStack>
+            {!compact && (
+              <PreviewStepRecord step={step} activeStep={activeStep} />
+            )}
+          </HStack>
+        </HStack>
+        <div className="flex items-center justify-end gap-2">
+          {record ? (
+            <div className="flex items-center gap-2">
+              {type !== "Task" &&
+                (compact ? (
+                  <IconButton
+                    aria-label={t`Update ${stepLabel}`}
+                    variant="secondary"
+                    size="lg"
+                    icon={<LuCircleCheck />}
+                    isDisabled={disabled || record?.createdBy !== user?.id}
+                    onClick={() => onRecord(step)}
+                    className={cn(
+                      "text-emerald-500",
+                      step.minValue !== null &&
+                        record?.numericValue != null &&
+                        record?.numericValue < step.minValue &&
+                        "text-red-500",
+                      step.maxValue !== null &&
+                        record?.numericValue != null &&
+                        record?.numericValue > step.maxValue &&
+                        "text-red-500"
+                    )}
+                  />
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    rightIcon={<LuCircleCheck />}
+                    isDisabled={disabled}
+                    onClick={() => onRecord(step)}
+                    aria-label={t`Update ${stepLabel}`}
+                  >
+                    <Trans>Update</Trans>
+                  </Button>
+                ))}
+              <IconButton
+                aria-label={t`Delete ${stepLabel}`}
+                variant="secondary"
+                size="lg"
+                icon={<LuTrash />}
+                isDisabled={disabled || record?.createdBy !== user?.id}
+                onClick={() => onDelete(step)}
+              />
+            </div>
+          ) : type === "Task" ? (
+            <fetcher.Form method="post" action={path.to.record}>
+              <input type="hidden" name="index" value={activeStep} />
+              <input type="hidden" name="jobOperationStepId" value={step.id} />
+
+              <input type="hidden" name="booleanValue" value="true" />
+              {compact ? (
+                <IconButton
+                  aria-label={t`Record ${stepLabel}`}
+                  variant="secondary"
+                  size="lg"
+                  icon={<LuCircleCheck />}
+                  type="submit"
+                  isLoading={fetcher.state !== "idle"}
+                  isDisabled={disabled || fetcher.state !== "idle"}
+                />
+              ) : (
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="lg"
+                  rightIcon={<LuCircleCheck />}
+                  isLoading={fetcher.state !== "idle"}
+                  isDisabled={disabled || fetcher.state !== "idle"}
+                  aria-label={t`Complete ${stepLabel}`}
+                >
+                  <Trans>Complete</Trans>
+                </Button>
+              )}
+            </fetcher.Form>
+          ) : compact ? (
+            <IconButton
+              aria-label={t`Record ${stepLabel}`}
+              variant="secondary"
+              size="lg"
+              icon={<LuCircleCheck />}
+              isDisabled={disabled}
+              onClick={() => onRecord(step)}
+            />
+          ) : (
+            <Button
+              variant="secondary"
+              size="lg"
+              rightIcon={<LuCircleCheck />}
+              isDisabled={disabled}
+              onClick={() => onRecord(step)}
+              aria-label={t`Record ${stepLabel}`}
+            >
+              <Trans>Record</Trans>
+            </Button>
+          )}
+          {hasDescription && (
+            <IconButton
+              aria-expanded={disclosure.isOpen}
+              aria-label={
+                disclosure.isOpen ? "Hide description" : "Show description"
+              }
+              variant="ghost"
+              size="lg"
+              isDisabled={!hasDescription}
+              icon={disclosure.isOpen ? <LuChevronDown /> : <LuChevronRight />}
+              onClick={disclosure.onToggle}
+            />
+          )}
+        </div>
+      </div>
+      <StepMedia
+        description={description}
+        slides={step.jobOperationStepSlide ?? []}
+        showDescription={disclosure.isOpen && hasDescription}
+      />
+    </div>
+  );
+}
+
+type StepSlide = {
+  id: string;
+  imagePath: string | null;
+  caption: string | null;
+  sortOrder: number | null;
+  annotations: unknown;
+};
+
+// A step's reference material: its image slides from the Bill of Process (a
+// slide is image XOR model; model slides need a modelUpload join these loaders
+// don't fetch, so only image slides render), the rich-text description, and
+// the parts it @-mentions. Shared by the job's step list and the batch view.
+export function StepMedia({
+  description,
+  slides,
+  showDescription
+}: {
+  description: JobOperationStep["description"];
+  slides: StepSlide[];
+  showDescription: boolean;
+}) {
+  const { t } = useLingui();
+  const imageSlides = slides
+    .filter((slide) => !!slide.imagePath)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .map((slide) => ({
+      id: slide.id,
+      url: getPrivateUrl(slide.imagePath as string),
+      caption: slide.caption,
+      // Slides copied from the method (get-method) can persist annotations as a
+      // non-array JSON value ({}), so normalize before the viewer calls .map().
+      annotations: Array.isArray(slide.annotations)
+        ? (slide.annotations as SlideAnnotation[])
+        : []
+    }));
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const activeSlide =
+    viewerIndex !== null ? (imageSlides[viewerIndex] ?? null) : null;
+  const mentionIds = hasStepDescription(description)
+    ? parseMentionsFromDocument(description as JSONContent)
+    : [];
+
+  return (
+    <>
+      {imageSlides.length > 0 && (
+        <div
+          className={cn(
+            "mt-4 grid min-w-0 gap-2",
+            imageSlides.length > 1 && "md:grid-cols-2"
+          )}
+        >
+          {imageSlides.map((slide, i) => (
+            <div
+              key={slide.id}
+              className={cn(
+                "min-w-0",
+                imageSlides.length > 1 &&
+                  imageSlides.length % 2 === 1 &&
+                  i === imageSlides.length - 1 &&
+                  "md:col-span-2"
+              )}
+            >
+              <button
+                type="button"
+                aria-label={slide.caption || `${t`Reference image`} ${i + 1}`}
+                onClick={() => setViewerIndex(i)}
+                className="w-full min-w-0 overflow-hidden rounded-lg border bg-muted/40 text-left transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <img
+                  src={slide.url}
+                  alt={slide.caption || ""}
+                  className="block max-h-[65vh] w-full object-contain"
+                />
+              </button>
+              {slide.caption && (
+                <p
+                  aria-hidden="true"
+                  className="mt-1 text-sm text-muted-foreground"
+                >
+                  {slide.caption}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {showDescription && (
+        <div
+          className="my-4 max-w-none text-sm prose prose-sm dark:prose-invert [&_img]:max-h-[65vh] [&_img]:w-full [&_img]:object-contain"
+          dangerouslySetInnerHTML={{
+            __html: generateHTML(description as JSONContent)
+          }}
+        />
+      )}
+      {mentionIds.length > 0 && <ItemsSummaryTable itemsIds={mentionIds} />}
+      <ImageZoomViewer
+        open={viewerIndex !== null}
+        src={activeSlide?.url ?? null}
+        caption={activeSlide?.caption}
+        annotations={activeSlide?.annotations ?? []}
+        onClose={() => setViewerIndex(null)}
+      />
+    </>
+  );
+}
+
+function ItemsSummaryTable({ itemsIds }: { itemsIds: string[] }) {
+  const [allItems] = useItems();
+  const items = useMemo(() => {
+    return itemsIds.map((id) => allItems.find((item) => item.id === id));
+  }, [itemsIds, allItems]);
+  return (
+    <Table className="border rounded-md">
+      <Thead className="sr-only">
+        <Tr>
+          <Th>
+            <Trans>Image</Trans>
+          </Th>
+          <Th>
+            <Trans>Item</Trans>
+          </Th>
+        </Tr>
+      </Thead>
+      <Tbody>
+        {items.map(
+          (item) =>
+            item && (
+              <Tr className="bg-muted/50 hover:bg-muted/80" key={item.id}>
+                <Td className="flex-shrink-0 py-3 w-[60px]">
+                  <ItemThumbnail
+                    size="lg"
+                    thumbnailPath={item?.thumbnailPath ?? undefined}
+                    onClick={() => {
+                      if (item?.thumbnailPath) {
+                        window.open(
+                          getPrivateUrl(item.thumbnailPath),
+                          "_blank"
+                        );
+                      }
+                    }}
+                  />
+                </Td>
+                <Td className="flex-grow">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-base font-medium">{item.name}</span>
+                    <span className="text-sm font-mono text-muted-foreground">
+                      {item.readableIdWithRevision ?? item.id}
+                    </span>
+                  </div>
+                </Td>
+              </Tr>
+            )
+        )}
+      </Tbody>
+    </Table>
+  );
+}
+
+export function PreviewStepRecord({
+  activeStep,
+  step
+}: {
+  activeStep: number;
+  step: JobOperationStep;
+}) {
+  const [employees] = usePeople();
+  const numberFormatter = useNumberFormatter();
+
+  if (!step.jobOperationStepRecord) return null;
+  const record = step.jobOperationStepRecord.find(
+    (r) => r.index === activeStep
+  );
+  // A Task record exists only once the task is done; a Checkbox with no
+  // answer yet (null) is neither Yes nor No.
+  if (step.type === "Task" && !record) return null;
+  if (step.type === "Checkbox" && record?.booleanValue == null) return null;
+
+  return (
+    <div className="min-w-[200px] truncate text-right font-medium">
+      {step.type === "Task" && (
+        <span className="inline-flex items-center gap-1 text-sm text-emerald-500">
+          <LuCircleCheck aria-hidden="true" />
+          <Trans>Completed</Trans>
+        </span>
+      )}
+      {step.type === "Checkbox" && (
+        <span className="text-sm">
+          {record?.booleanValue ? <Trans>Yes</Trans> : <Trans>No</Trans>}
+        </span>
+      )}
+      {step.type === "Value" && <p className="text-sm">{record?.value}</p>}
+      {step.type === "Measurement" &&
+        typeof record?.numericValue === "number" && (
+          <p
+            className={cn(
+              "text-sm",
+              step.minValue !== null &&
+                record?.numericValue < step.minValue &&
+                "text-red-500",
+              step.maxValue !== null &&
+                record?.numericValue > step.maxValue &&
+                "text-red-500"
+            )}
+          >
+            {numberFormatter.format(record?.numericValue)}{" "}
+            {step.unitOfMeasureCode}
+          </p>
+        )}
+      {step.type === "Timestamp" && (
+        <p className="text-sm">
+          <DateTime value={record?.value} variant="absolute" />
+        </p>
+      )}
+      {step.type === "List" && <p className="text-sm">{record?.value}</p>}
+      {step.type === "Person" && (
+        <p className="text-sm">
+          {employees.find((e) => e.id === record?.userValue)?.name}
+        </p>
+      )}
+      {step.type === "File" && record?.value && (
+        <div className="flex justify-end gap-2 text-sm">
+          <LuPaperclip className="size-4 text-muted-foreground" />
+        </div>
+      )}
+      {step.type === "Inspection" && (
+        <div className="flex justify-end gap-2 items-center text-sm">
+          {record?.value && (
+            <LuPaperclip className="size-4 text-muted-foreground" />
+          )}
+          <Checkbox
+            aria-label={step.name}
+            checked={record?.booleanValue ?? false}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function RecordModal({
+  attribute,
+  activeStep,
+  open = true,
+  onClose,
+  onScrap,
+  onQualityIssue
+}: {
+  attribute: JobOperationStep;
+  activeStep: number;
+  open?: boolean;
+  onClose: () => void;
+  // Offered by the correction prompt once a unit has used a correction its
+  // limit number of times.
+  onScrap?: () => void;
+  onQualityIssue?: () => void;
+}) {
+  // A recorded result mapped to a correction turns the window into the
+  // correction prompt instead of closing it.
+  const [suggestion, setSuggestion] = useState<CorrectionSuggestion | null>(
+    null
+  );
+  // The window can stay mounted between openings, so a prompt that was
+  // answered or dismissed must not come back the next time the operator opens
+  // the step to change its value.
+  const close = () => {
+    setSuggestion(null);
+    onClose();
+  };
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) {
+          close();
+        }
+      }}
+    >
+      <ModalContent>
+        {suggestion ? (
+          <CorrectionPrompt
+            suggestion={suggestion}
+            onClose={close}
+            onScrap={onScrap}
+            onQualityIssue={onQualityIssue}
+          />
+        ) : (
+          <RecordBody
+            attribute={attribute}
+            activeStep={activeStep}
+            onClose={close}
+            onSuggestCorrection={setSuggestion}
+          />
+        )}
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function RecordBody({
+  attribute,
+  activeStep,
+  onClose,
+  onSuggestCorrection
+}: {
+  attribute: JobOperationStep;
+  activeStep: number;
+  onClose: () => void;
+  onSuggestCorrection?: (suggestion: CorrectionSuggestion) => void;
+}) {
+  const [employees] = usePeople();
+  const employeeOptions = useMemo(() => {
+    return employees.map((employee) => ({
+      label: employee.name,
+      value: employee.id
+    }));
+  }, [employees]);
+
+  const { t } = useLingui();
+  const { carbon } = useCarbon();
+  const { company } = useUser();
+  const limits = useMeasurementLimits(attribute);
+  const [file, setFile] = useState<File | null>(null);
+  const [filePath, setFilePath] = useState<string | null>(null);
+  // Bumped on every drop/remove so a stale in-flight upload can't set state
+  const uploadIdRef = useRef(0);
+  const fetcher = useAction<{
+    success: boolean;
+    correction?: CorrectionSuggestion | null;
+  }>({
+    onSuccess: (data) => {
+      if (!data?.success) return;
+      if (data.correction && onSuggestCorrection) {
+        onSuggestCorrection(data.correction);
+      } else {
+        onClose();
+      }
+    }
+  });
+
+  const removeFile = () => {
+    uploadIdRef.current += 1;
+    setFile(null);
+    setFilePath(null);
+  };
+
+  const onDrop = async (acceptedFiles: File[]) => {
+    if (!acceptedFiles[0] || !carbon) return;
+    const fileUpload = acceptedFiles[0];
+    const uploadId = ++uploadIdRef.current;
+
+    setFile(fileUpload);
+    toast.info(t`Uploading ${fileUpload.name}`);
+
+    const safeName = stripSpecialCharacters(fileUpload.name) || "file";
+    const fileName = `${company.id}/job/${attribute.operationId}/${attribute.id}/${nanoid()}/${safeName}`;
+
+    const upload = await storage(carbon)
+      .company(company.id)
+      .upload(fileName, fileUpload, {
+        cacheControl: `${12 * 60 * 60}`,
+        upsert: true
+      });
+
+    if (uploadIdRef.current !== uploadId) return;
+
+    if (upload.error) {
+      toastError(t`Failed to upload file: ${fileUpload.name}`, upload.error);
+      removeFile();
+    } else if (upload.data?.path) {
+      toast.success(t`Uploaded: ${fileUpload.name}`);
+      setFilePath(upload.data.path);
+    }
+  };
+
+  const record = attribute?.jobOperationStepRecord.find(
+    (r) => r.index === activeStep
+  );
+
+  const [booleanControlled, setBooleanControlled] = useState(
+    record?.booleanValue ?? false
+  );
+
+  // Enter on a value switch records the step (Space still toggles it). Record's
+  // own Enter shortcut stands down while focus is on another control, so the
+  // switch presses Record itself; a disabled Record ignores the click.
+  const submitRef = useRef<HTMLButtonElement>(null);
+  const recordOnEnter = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey)
+      return;
+    event.preventDefault();
+    submitRef.current?.click();
+  };
+
+  return (
+    <ValidatedForm
+      method="post"
+      validator={
+        attribute.type === "Measurement"
+          ? measurementStepRecordValidator
+          : stepRecordValidator
+      }
+      action={path.to.record}
+      defaultValues={{
+        index: activeStep,
+        jobOperationStepId: attribute.id,
+        value:
+          record?.value ??
+          (attribute.type === "Timestamp" ? new Date().toISOString() : ""),
+        // Empty until recorded: a prefilled 0 could be recorded as a
+        // real measurement.
+        numericValue: record?.numericValue ?? undefined,
+        userValue: record?.userValue ?? ""
+      }}
+      fetcher={fetcher}
+    >
+      <ModalHeader>
+        <ModalTitle>
+          <Trans>
+            {attribute.name} - Set {activeStep + 1}
+          </Trans>
+        </ModalTitle>
+      </ModalHeader>
+      <ModalBody>
+        <Hidden name="id" />
+        <Hidden name="jobOperationStepId" />
+        <Hidden name="index" />
+        {attribute.type === "Checkbox" && (
+          <Hidden
+            name="booleanValue"
+            value={booleanControlled ? "true" : "false"}
+          />
+        )}
+        {attribute.type === "File" && (
+          <Hidden name="value" value={filePath ?? ""} />
+        )}
+        {attribute.type === "Inspection" && (
+          <>
+            <Hidden name="value" value={filePath ?? ""} />
+            <Hidden
+              name="booleanValue"
+              value={booleanControlled ? "true" : "false"}
+            />
+          </>
+        )}
+        <VStack spacing={4}>
+          {hasStepDescription(attribute.description) && (
+            <div
+              className="flex flex-col gap-2"
+              dangerouslySetInnerHTML={{
+                __html: generateHTML(attribute.description as JSONContent)
+              }}
+            />
+          )}
+          {attribute.type === "Value" && (
+            <InputField
+              name="value"
+              label=""
+              aria-label={attribute.name}
+              size="lg"
+            />
+          )}
+          {attribute.type === "Measurement" && (
+            <Number
+              name="numericValue"
+              label={attribute.unitOfMeasureCode ?? ""}
+              // The visible label is only the unit; name the measure too.
+              aria-label={
+                attribute.unitOfMeasureCode
+                  ? `${attribute.name} (${attribute.unitOfMeasureCode})`
+                  : attribute.name
+              }
+              helperText={limits ?? undefined}
+              size="lg"
+            />
+          )}
+          {attribute.type === "Timestamp" && (
+            <DateTimePicker
+              name="value"
+              label=""
+              aria-label={attribute.name}
+              size="lg"
+            />
+          )}
+          {attribute.type === "Checkbox" && (
+            <Switch
+              aria-label={attribute.name}
+              checked={booleanControlled}
+              onCheckedChange={(checked) => setBooleanControlled(!!checked)}
+              onKeyDown={recordOnEnter}
+            />
+          )}
+          {attribute.type === "Person" && (
+            <Combobox
+              name="userValue"
+              label=""
+              aria-label={attribute.name}
+              options={employeeOptions}
+              size="lg"
+            />
+          )}
+          {attribute.type === "List" && (
+            <Select
+              name="value"
+              label=""
+              aria-label={attribute.name}
+              size="lg"
+              options={(attribute.listValues ?? []).map((value) => ({
+                label: value,
+                value
+              }))}
+            />
+          )}
+          {attribute.type === "File" &&
+            (file ? (
+              <div className="flex flex-col gap-2 items-center justify-center py-6 w-full">
+                <LuFile className="size-10 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">{file.name}</p>
+                <Button variant="secondary" size="sm" onClick={removeFile}>
+                  <Trans>Remove</Trans>
+                </Button>
+              </div>
+            ) : (
+              <FileDropzone onDrop={onDrop} />
+            ))}
+          {attribute.type === "Inspection" && (
+            <>
+              {file ? (
+                <div className="flex flex-col gap-2 items-center justify-center py-6 w-full">
+                  <LuFile className="size-10 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">{file.name}</p>
+                  <Button variant="secondary" size="sm" onClick={removeFile}>
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <FileDropzone onDrop={onDrop} />
+              )}
+              <div className="flex items-center justify-between py-4 w-full">
+                <span className="text-sm font-medium">
+                  <Trans>Passed Inspection</Trans>
+                </span>
+                <Switch
+                  aria-label={t`Passed Inspection`}
+                  checked={booleanControlled}
+                  onCheckedChange={(checked) => setBooleanControlled(!!checked)}
+                  onKeyDown={recordOnEnter}
+                />
+              </div>
+            </>
+          )}
+        </VStack>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" size="lg" onClick={onClose}>
+          <Trans>Cancel</Trans>
+        </Button>
+        <Submit
+          ref={submitRef}
+          size="lg"
+          isLoading={fetcher.state !== "idle"}
+          isDisabled={
+            fetcher.state !== "idle" || (attribute.type === "File" && !filePath)
+          }
+          rightIcon={<LuCircleCheck />}
+          // Focus in a field submits natively on Enter; this covers focus
+          // elsewhere in the modal and renders the ↵ badge.
+          shortcut="enter"
+          // Enter on a focused control (Cancel, Remove, the dropzone, a
+          // combobox) stays that control's: Button's own guard stands
+          // down. The switches record through `recordOnEnter`.
+          type="submit"
+        >
+          <Trans>Record</Trans>
+        </Submit>
+      </ModalFooter>
+    </ValidatedForm>
+  );
+}
+
+export function DeleteStepRecordModal({
+  open = true,
+  onClose,
+  id,
+  title,
+  description
+}: {
+  open?: boolean;
+  onClose: () => void;
+  id: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Modal open={open} onOpenChange={onClose}>
+      <ModalContent>
+        <DeleteStepRecordBody
+          onClose={onClose}
+          id={id}
+          title={title}
+          description={description}
+        />
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function DeleteStepRecordBody({
+  onClose,
+  id,
+  title,
+  description
+}: {
+  onClose: () => void;
+  id: string;
+  title: string;
+  description: string;
+}) {
+  const fetcher = useAction<{ success: boolean }>({
+    onSuccess: (data) => {
+      if (data?.success) {
+        onClose();
+      }
+    }
+  });
+
+  return (
+    <>
+      <ModalHeader>
+        <ModalTitle>{title}</ModalTitle>
+        <ModalDescription>{description}</ModalDescription>
+      </ModalHeader>
+      <ModalFooter>
+        <Button variant="secondary" size="lg" onClick={onClose}>
+          <Trans>Cancel</Trans>
+        </Button>
+        <fetcher.Form method="post" action={path.to.recordDelete(id)}>
+          <Button
+            size="lg"
+            isLoading={fetcher.state !== "idle"}
+            isDisabled={fetcher.state !== "idle"}
+            type="submit"
+            variant="destructive"
+          >
+            <Trans>Delete</Trans>
+          </Button>
+        </fetcher.Form>
+      </ModalFooter>
+    </>
+  );
+}

@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { assertIsPost, error, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { validationError, validator } from "@carbon/form";
+import { useRouteDialog } from "@carbon/react";
+import { isUniqueViolation, redirect } from "@carbon/utils";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { data } from "react-router";
+import {
+  UNIT_OF_MEASURE_TAKEN,
+  unitOfMeasureValidator
+} from "~/modules/items/items.models";
+import { upsertUnitOfMeasure } from "~/modules/items/items.service";
+import { UnitOfMeasureForm } from "~/modules/items/ui/UnitOfMeasure";
+import { setCustomFields } from "~/utils/form";
+import { getParams, path } from "~/utils/path";
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  await requirePermissions(request, {
+    create: "parts"
+  });
+
+  return null;
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  assertIsPost(request);
+  const { client, companyId, userId } = await requirePermissions(request, {
+    create: "parts"
+  });
+
+  const formData = await request.formData();
+  const modal = formData.get("type") === "modal";
+
+  const validation = await validator(unitOfMeasureValidator).validate(formData);
+
+  if (validation.error) {
+    return validationError(validation.error);
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: suppressed due to migration
+  const { id, ...d } = validation.data;
+
+  const insertUnitOfMeasure = await upsertUnitOfMeasure(client, {
+    ...d,
+    companyId,
+    createdBy: userId,
+    customFields: setCustomFields(formData)
+  });
+  if (insertUnitOfMeasure.error) {
+    return data(
+      {},
+      await flash(
+        request,
+        error(
+          insertUnitOfMeasure.error,
+          isUniqueViolation(insertUnitOfMeasure.error)
+            ? UNIT_OF_MEASURE_TAKEN
+            : "Failed to insert unit of measure"
+        )
+      )
+    );
+  }
+
+  return modal
+    ? data(insertUnitOfMeasure, { status: 201 })
+    : redirect(
+        `${path.to.uoms}?${getParams(request)}`,
+        await flash(request, success("Unit of measure created"))
+      );
+}
+
+export default function NewUnitOfMeasuresRoute() {
+  const dialog = useRouteDialog();
+  const initialValues = {
+    name: "",
+    code: "",
+    active: true
+  };
+
+  return (
+    <UnitOfMeasureForm
+      open={dialog.open}
+      onClose={dialog.close}
+      initialValues={initialValues}
+    />
+  );
+}

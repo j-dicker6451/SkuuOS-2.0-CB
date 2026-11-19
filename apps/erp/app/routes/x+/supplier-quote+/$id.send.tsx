@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon, respond } from "@carbon/api/carbon.server";
+import { validator } from "@carbon/form";
+import type { ActionFunctionArgs } from "react-router";
+import { supplierQuoteFinalizeValidator } from "~/modules/purchasing/purchasing.models";
+import { path } from "~/utils/path";
+
+export async function action(args: ActionFunctionArgs) {
+  const input = await validator(supplierQuoteFinalizeValidator).request(args, {
+    params: ["id"]
+  });
+  if ("invalid" in input) return input.invalid;
+  const { id } = input.params;
+  const api = await carbon(args.request);
+  const result = await api.purchasing.sendSupplierQuoteToSupplier({
+    ...input.data,
+    // The dialog listed the part files but none is ticked: share none, rather
+    // than keep what the quote was shared with before.
+    partFiles:
+      input.data.partFiles ??
+      (input.formData?.has("partFilesListed") ? [] : undefined),
+    supplierQuoteId: id
+  });
+  return respond(args.request, result).redirect(path.to.supplierQuote(id), {
+    message: "Supplier quote sent successfully"
+  });
+}
