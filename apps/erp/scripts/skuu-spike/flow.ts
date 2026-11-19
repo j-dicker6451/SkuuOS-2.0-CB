@@ -22,6 +22,8 @@ import { handlesOf } from "../../test/database/fixtures/handles";
 import { seedTrx, unwrap } from "./posting-helpers";
 import type { SpikeContext, SpikeInput } from "./context";
 import type { SpikeReportLine } from "./report";
+import { ensureSpikePart } from "./item-factory";
+import { teardownTagged } from "./teardown";
 
 type Db = SpikeContext["db"];
 
@@ -61,74 +63,8 @@ async function runTrx<T>(
   });
 }
 
-async function teardownTagged(db: Db, companyId: string, prefix: string) {
-  await runTrx(db, async (trx) => {
-    await sql`SET LOCAL session_replication_role = replica`.execute(trx);
-  await trx
-    .deleteFrom("skuuJobMaterialDispense")
-    .where("companyId", "=", companyId)
-    .where("id", "like", `${prefix}%`)
-    .execute();
-  await trx
-    .deleteFrom("job")
-    .where("companyId", "=", companyId)
-    .where("id", "like", `${prefix}%`)
-    .execute();
-  await trx
-    .deleteFrom("trackedEntity")
-    .where("companyId", "=", companyId)
-    .where("id", "like", `${prefix}%`)
-    .execute();
-  await trx
-    .deleteFrom("item")
-    .where("companyId", "=", companyId)
-    .where("id", "like", `${prefix}%`)
-    .execute();
-    await sql`SET LOCAL session_replication_role = origin`.execute(trx);
-  });
-}
-
-async function ensureBatchItem(
-  db: Db,
-  ctx: SpikeContext,
-  key: string,
-  name: string
-) {
-  const itemId = `${ctx.prefix}-rm-${key}`;
-  await runTrx(db, async (trx) => {
-    const exists = await trx
-      .selectFrom("item")
-      .select("id")
-      .where("id", "=", itemId)
-      .executeTakeFirst();
-    if (exists) return;
-    await trx
-      .insertInto("item")
-      .values({
-        id: itemId,
-        readableId: `${ctx.prefix}-RM-${key}`,
-        name,
-        type: "Part",
-        itemTrackingType: "Batch",
-        replenishmentSystem: "Buy",
-        unitOfMeasureCode: ctx.lookups.unitKg,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .execute();
-    await trx
-      .insertInto("itemCost")
-      .values({
-        itemId,
-        costingMethod: "FIFO",
-        unitCost: 1,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.doNothing())
-      .execute();
-  });
-  return itemId;
+function spikeReadableId(ctx: SpikeContext, suffix: string) {
+  return `${ctx.prefix}-${suffix}`;
 }
 
 async function receiveLot(
@@ -169,41 +105,37 @@ async function setupBulkItem(
   db: Db,
   ctx: SpikeContext,
   input: SpikeInput,
-  ingredientItemIds: string[]
+  ingredientItemIds: string[],
+  bulkItemId: string
 ) {
-  const bulkItemId = `${ctx.prefix}-bulk`;
-  const makeMethodId = `${ctx.prefix}-mm`;
   const processId = `${ctx.prefix}-proc`;
   const operationId = `${ctx.prefix}-mop`;
 
   await runTrx(db, async (trx) => {
+    const defaultMethod = await trx
+      .selectFrom("makeMethod")
+      .select("id")
+      .where("itemId", "=", bulkItemId)
+      .where("companyId", "=", ctx.companyId)
+      .orderBy("createdAt")
+      .limit(1)
+      .executeTakeFirst();
+    if (!defaultMethod) {
+      throw new Error(
+        `Default makeMethod missing for bulk item ${bulkItemId} after upsertPart`
+      );
+    }
+    const makeMethodId = defaultMethod.id;
     await trx
-      .insertInto("item")
-      .values({
-        id: bulkItemId,
-        readableId: `${ctx.prefix}-BULK`,
-        name: input.product,
-        type: "Part",
-        itemTrackingType: "Batch",
-        replenishmentSystem: "Make",
-        unitOfMeasureCode: ctx.lookups.unitKg,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
-    await trx
-      .insertInto("makeMethod")
-      .values({
-        id: makeMethodId,
-        itemId: bulkItemId,
+      .updateTable("makeMethod")
+      .set({
         version: 1,
         status: "Active",
         isDefault: true,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
+        updatedAt: new Date().toISOString()
       })
-      .onConflict((oc) => oc.column("id").doNothing())
+      .where("id", "=", makeMethodId)
+      .where("companyId", "=", ctx.companyId)
       .execute();
     await trx
       .insertInto("process")
@@ -294,7 +226,7 @@ async function setupBulkItem(
       .execute();
   });
 
-  return { bulkItemId, makeMethodId, processId };
+  return { bulkItemId, processId };
 }
 
 async function createAndRunBulkJob(
@@ -458,39 +390,35 @@ async function setupFillItem(
   key: string,
   packSizeMl: number,
   bulkItemId: string,
-  density: number
+  density: number,
+  fillItemId: string
 ) {
-  const fillItemId = `${ctx.prefix}-fill-${key}`;
-  const makeMethodId = `${ctx.prefix}-fmm-${key}`;
   const kgPerUnit = (packSizeMl * density) / 1000;
   await runTrx(db, async (trx) => {
+    const defaultMethod = await trx
+      .selectFrom("makeMethod")
+      .select("id")
+      .where("itemId", "=", fillItemId)
+      .where("companyId", "=", ctx.companyId)
+      .orderBy("createdAt")
+      .limit(1)
+      .executeTakeFirst();
+    if (!defaultMethod) {
+      throw new Error(
+        `Default makeMethod missing for fill item ${fillItemId} after upsertPart`
+      );
+    }
+    const makeMethodId = defaultMethod.id;
     await trx
-      .insertInto("item")
-      .values({
-        id: fillItemId,
-        readableId: `${ctx.prefix}-FILL-${key}`,
-        name: `Fill ${packSizeMl}mL`,
-        type: "Part",
-        itemTrackingType: "Batch",
-        replenishmentSystem: "Make",
-        unitOfMeasureCode: ctx.lookups.unitEa,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
-    await trx
-      .insertInto("makeMethod")
-      .values({
-        id: makeMethodId,
-        itemId: fillItemId,
+      .updateTable("makeMethod")
+      .set({
         version: 1,
         status: "Active",
         isDefault: true,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
+        updatedAt: new Date().toISOString()
       })
-      .onConflict((oc) => oc.column("id").doNothing())
+      .where("id", "=", makeMethodId)
+      .where("companyId", "=", ctx.companyId)
       .execute();
     const processId = `${ctx.prefix}-fproc-${key}`;
     const opId = `${ctx.prefix}-fop-${key}`;
@@ -729,11 +657,16 @@ export async function runSpikeFlow(
   const lotsByItem = new Map<string, { id: string; quantity: number }[]>();
   for (let i = 0; i < input.ingredients.length; i++) {
     const ing = input.ingredients[i]!;
-    const itemId = await ensureBatchItem(
-      ctx.db,
+    const itemId = await ensureSpikePart(
       ctx,
-      String(i),
-      ing.name
+      spikeReadableId(ctx, `RM-${i}`),
+      {
+        name: ing.name,
+        replenishmentSystem: "Buy",
+        itemTrackingType: "Batch",
+        unitOfMeasureCode: ctx.lookups.unitKg,
+        unitCost: 1
+      }
     );
     ingredientIds.push(itemId);
     const grossKg = manufactureFromExpectedYield(
@@ -766,12 +699,13 @@ export async function runSpikeFlow(
     lotsByItem.set(itemId, lots);
   }
 
-  const { bulkItemId } = await setupBulkItem(
-    ctx.db,
-    ctx,
-    input,
-    ingredientIds
-  );
+  const bulkItemId = await ensureSpikePart(ctx, spikeReadableId(ctx, "BULK"), {
+    name: input.product,
+    replenishmentSystem: "Make",
+    itemTrackingType: "Batch",
+    unitOfMeasureCode: ctx.lookups.unitKg
+  });
+  await setupBulkItem(ctx.db, ctx, input, ingredientIds, bulkItemId);
   note("bulk", `Bulk item ${bulkItemId} with % formula and Skuu header`);
 
   let bulkRun: Awaited<ReturnType<typeof createAndRunBulkJob>>;
@@ -804,13 +738,24 @@ export async function runSpikeFlow(
   const fillResults: Awaited<ReturnType<typeof runFillJob>>[] = [];
   for (let f = 0; f < input.fills.length; f++) {
     const fill = input.fills[f]!;
-    const { fillItemId } = await setupFillItem(
+    const fillItemId = await ensureSpikePart(
+      ctx,
+      spikeReadableId(ctx, `FILL-${f}`),
+      {
+        name: `Fill ${fill.packSizeMl}mL`,
+        replenishmentSystem: "Make",
+        itemTrackingType: "Batch",
+        unitOfMeasureCode: ctx.lookups.unitEa
+      }
+    );
+    await setupFillItem(
       ctx.db,
       ctx,
       String(f),
       fill.packSizeMl,
       bulkItemId,
-      input.productDensityGPerMl
+      input.productDensityGPerMl,
+      fillItemId
     );
     try {
       const fr = await runFillJob(
@@ -846,7 +791,13 @@ export async function runSpikeFlow(
 
   const shippedLot = fillResults[0]?.fillLots[0];
   if (shippedLot) {
-    const fillItemId = `${ctx.prefix}-fill-0`;
+    const fillItemId = await ctx.db
+      .selectFrom("item")
+      .select("id")
+      .where("companyId", "=", ctx.companyId)
+      .where("readableId", "=", spikeReadableId(ctx, "FILL-0"))
+      .executeTakeFirstOrThrow()
+      .then((r) => r.id);
     await shipFillUnits(ctx, fillItemId, 10, "0");
     note("ship", "Posted shipment for 10 units of first fill SKU");
   }
