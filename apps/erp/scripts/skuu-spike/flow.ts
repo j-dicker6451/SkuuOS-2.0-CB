@@ -33,6 +33,11 @@ import {
   syncSkuuBulkToPostgrest
 } from "./spike-mes";
 import { teardownTagged } from "./teardown";
+import {
+  assignFillLotToShipmentLine,
+  ensureItemBatchSequence,
+  stampJobBatchLotNumber
+} from "./spike-tracking";
 
 type Db = SpikeContext["db"];
 
@@ -302,6 +307,7 @@ async function createAndRunBulkJob(
     throw new Error(`insertJob failed: ${created.error?.message ?? "unknown"}`);
   }
   const jobId = created.data.id;
+  await stampJobBatchLotNumber(ctx, jobId, bulkItemId);
   await recalculateJobRequirements(client, ctx.db, {
     id: jobId,
     companyId: ctx.companyId,
@@ -554,6 +560,7 @@ async function runFillJob(
   } as never);
   unwrap({ data: created.data, error: created.error });
   const jobId = created.data!.id;
+  await stampJobBatchLotNumber(ctx, jobId, fillItemId);
   await recalculateJobRequirements(client, ctx.db, {
     id: jobId,
     companyId: ctx.companyId,
@@ -634,6 +641,7 @@ async function shipFillUnits(
   ctx: SpikeContext,
   fillItemId: string,
   quantity: number,
+  fillLot: { id: string; quantity: number },
   key: string
 ) {
   const salesOrderId = `${ctx.prefix}-so-${key}`;
@@ -678,6 +686,30 @@ async function shipFillUnits(
       locationId: ctx.locationId
     })
   );
+
+  const shipmentLine = await ctx.db
+    .selectFrom("shipmentLine")
+    .select(["id", "shippedQuantity", "requiresBatchTracking"])
+    .where("companyId", "=", ctx.companyId)
+    .where("shipmentId", "=", shipment.id)
+    .where("itemId", "=", fillItemId)
+    .executeTakeFirstOrThrow();
+
+  const shipQty = Number(shipmentLine.shippedQuantity ?? quantity);
+  if (shipmentLine.requiresBatchTracking) {
+    if (fillLot.quantity < shipQty) {
+      throw new Error(
+        `Fill lot ${fillLot.id} holds ${fillLot.quantity}, cannot ship ${shipQty}`
+      );
+    }
+    await assignFillLotToShipmentLine(ctx, {
+      shipmentId: shipment.id,
+      shipmentLineId: shipmentLine.id,
+      trackedEntityId: fillLot.id,
+      quantity: shipQty
+    });
+  }
+
   unwrap(
     await invokePosting(
       handlesOf({ db: ctx.db, companyId: ctx.companyId, userId: ctx.userId }),
@@ -809,6 +841,7 @@ export async function runSpikeFlow(
     itemTrackingType: "Batch",
     unitOfMeasureCode: ctx.lookups.unitKg
   });
+  await ensureItemBatchSequence(ctx, bulkItemId, `BULK-${input.formulaRef}`);
   const { makeMethodId } = await setupBulkItem(
     ctx.db,
     ctx,
@@ -854,16 +887,14 @@ export async function runSpikeFlow(
   const fillResults: Awaited<ReturnType<typeof runFillJob>>[] = [];
   for (let f = 0; f < input.fills.length; f++) {
     const fill = input.fills[f]!;
-    const fillItemId = await ensureSpikePart(
-      ctx,
-      spikeReadableId(ctx, `FILL-${f}`),
-      {
-        name: `Fill ${fill.packSizeMl}mL`,
-        replenishmentSystem: "Make",
-        itemTrackingType: "Batch",
-        unitOfMeasureCode: ctx.lookups.unitEa
-      }
-    );
+    const fillSku = spikeReadableId(ctx, `FILL-${f}`);
+    const fillItemId = await ensureSpikePart(ctx, fillSku, {
+      name: `Fill ${fill.packSizeMl}mL`,
+      replenishmentSystem: "Make",
+      itemTrackingType: "Batch",
+      unitOfMeasureCode: ctx.lookups.unitEa
+    });
+    await ensureItemBatchSequence(ctx, fillItemId, `FG-${fillSku}`);
     const { kgPerUnit } = await setupFillItem(
       ctx.db,
       ctx,
@@ -899,11 +930,13 @@ export async function runSpikeFlow(
     .select(["quantity", "readableId"])
     .where("id", "=", bulkLotId)
     .executeTakeFirst();
+  const bulkLotLabel =
+    remainingBulk?.readableId ?? bulkRun.bulkLot?.readableId ?? bulkLotId;
   note(
     "bulk-remaining",
     remainingBulk
-      ? `Bulk lot ${remainingBulk.readableId} remaining ${remainingBulk.quantity} kg after ${input.fills.length} fill jobs`
-      : "Bulk lot not found"
+      ? `Bulk lot ${bulkLotLabel} (${bulkLotId}) remaining ${remainingBulk.quantity} kg after ${input.fills.length} fill jobs`
+      : `Bulk lot ${bulkLotId} not found`
   );
 
   const shippedLot = fillResults[0]?.fillLots[0];
@@ -915,8 +948,23 @@ export async function runSpikeFlow(
       .where("readableId", "=", spikeReadableId(ctx, "FILL-0"))
       .executeTakeFirstOrThrow()
       .then((r) => r.id);
-    await shipFillUnits(ctx, fillItemId, 10, "0");
-    note("ship", "Posted shipment for 10 units of first fill SKU");
+    const lotForShip = await ctx.db
+      .selectFrom("trackedEntity")
+      .select(["id", "quantity", "readableId"])
+      .where("companyId", "=", ctx.companyId)
+      .where("id", "=", shippedLot.id)
+      .executeTakeFirstOrThrow();
+    await shipFillUnits(
+      ctx,
+      fillItemId,
+      10,
+      { id: lotForShip.id, quantity: Number(lotForShip.quantity) },
+      "0"
+    );
+    note(
+      "ship",
+      `Posted shipment for 10 units of ${lotForShip.readableId ?? fillItemId} (lot ${lotForShip.id})`
+    );
   }
 
   const rawLot = [...lotsByItem.values()][0]?.[0]?.id;
@@ -940,7 +988,7 @@ export async function runSpikeFlow(
       );
       note(
         "trace-reverse",
-        `From fill lot ${shippedLot.readableId}: ${back.map((r) => r.readableId ?? r.id).join(" ← ") || "(none)"}`
+        `From fill lot ${shippedLot.readableId ?? shippedLot.id}: ${back.map((r) => r.readableId ?? r.id).join(" ← ") || "(none)"}`
       );
     }
   }
