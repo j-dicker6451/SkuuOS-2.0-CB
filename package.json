@@ -92,7 +92,7 @@
     "typegen": "turbo run typegen",
     "generate:oss-stubs": "python3 scripts/generate-oss-stubs.py",
     "verify:oss-stubs-runtime": "node scripts/verify-stub-chain.mjs && node scripts/verify-server-import.mjs",
-    "skuu:spike": "node --experimental-vm-modules scripts/skuu-spike/run.mjs"
+    "skuu:spike": "tsx scripts/skuu-spike/run.ts"
   },
   "workspaces": [
     "apps/*",

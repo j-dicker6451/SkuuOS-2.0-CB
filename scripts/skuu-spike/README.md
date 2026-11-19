@@ -1,14 +1,19 @@
 # SkuuOS formula spike
 
-Validate schema and formula math against your local database.
+End-to-end harness: raw lots → bulk % job → two fill jobs from one bulk lot → shipment → forward/reverse trace.
 
 ```bash
-# After `pnpm dev` / migrations applied and satellite seed present:
-SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm skuu:spike
+# After migrations, seed (satellite), and `pnpm dev` / `crbn up` (PostgREST for RPCs):
+pnpm skuu:spike
+
+# Optional:
+SKUU_SPIKE_INPUT=scripts/skuu-spike/example-formula.json
+SKUU_SPIKE_USER=test@carbon.ms
+SKUU_SPIKE_PREFIX=skuu-spike
 ```
 
 - Committed input: `example-formula.json`
 - Local-only inputs: `*.local.json` (gitignored)
 - Last report: `report-last-run.txt`
 
-For a full end-to-end trace (receipt → bulk job → fills → ship), run postings in ERP after the spike passes schema checks.
+Uses ERP service postings (`post-inventory-adjustment`, `issue`, `completeJob`, `post-shipment`) and Carbon RPCs (`complete_job_to_inventory`, `get_next_sequence`).
