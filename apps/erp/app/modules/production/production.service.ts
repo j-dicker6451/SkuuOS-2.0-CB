@@ -170,7 +170,6 @@ import {
   parseDateTime,
   toCalendarDateTime
 } from "@internationalized/date";
-import { manufactureFromExpectedYield } from "@skuu/formula";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import {
   type ExpressionBuilder,
@@ -201,10 +200,6 @@ import {
   getStorageUnitId,
   TIME_ENTRY_BEFORE_CUTOVER_ERROR
 } from "~/modules/shared/shared.service";
-import {
-  loadSkuuBulkProfile,
-  loadSkuuFormulaPercents
-} from "~/modules/skuu/skuu-bulk.service";
 import type { StorageItem } from "~/types";
 import { type Cursor, encodeCursor } from "~/utils/cursor";
 import { PAGE_SIZE } from "~/utils/pagination";
@@ -16434,19 +16429,6 @@ export async function getMethod(
       }
       const makeMethodId = makeMethod.id;
 
-      const skuuBulk = await loadSkuuBulkProfile(
-        ctx.asCaller.supabase,
-        makeMethodId,
-        companyId
-      );
-      const skuuPercents = skuuBulk?.enabled
-        ? await loadSkuuFormulaPercents(
-            ctx.asCaller.supabase,
-            makeMethodId,
-            companyId
-          )
-        : new Map<string, number>();
-
       const jobMakeMethods = await db
         .selectFrom("jobMakeMethod")
         .select(["id"])
@@ -17255,16 +17237,7 @@ export async function getMethod(
           if (parts.billOfMaterial) {
             const locationId = job.locationId;
 
-            const materialsParentQuantity = (() => {
-              if (node.data.isRoot && skuuBulk?.enabled) {
-                const yieldPct =
-                  skuuBulk.expectedYieldPercent > 0
-                    ? skuuBulk.expectedYieldPercent
-                    : 100 - (skuuBulk.yieldLossPercent ?? 0);
-                return manufactureFromExpectedYield(targetQuantity, yieldPct);
-              }
-              return totalQuantityForChildren;
-            })();
+            const materialsParentQuantity = totalQuantityForChildren;
 
             const mapMethodMaterialToJobMaterial = async (
               child: MethodTreeItem
@@ -17304,13 +17277,6 @@ export async function getMethod(
               ]);
 
               if (itemId === "") return null;
-
-              if (node.data.isRoot && skuuBulk?.enabled) {
-                const percentWw = skuuPercents.get(child.data.methodMaterialId);
-                if (percentWw != null) {
-                  quantity = percentWw / 100;
-                }
-              }
 
               // A configured (or authored) quantity of 0 removes the line from
               // the BOM. Made sub-assemblies drop out of `configuredChildren`
