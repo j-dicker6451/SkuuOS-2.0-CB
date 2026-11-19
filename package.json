@@ -90,7 +90,7 @@
     "typecheck": "turbo run typecheck --filter='*'",
     "typegen": "turbo run typegen",
     "generate:oss-stubs": "python3 scripts/generate-oss-stubs.py",
-    "verify:oss-stubs-runtime": "node scripts/verify-server-import.mjs"
+    "verify:oss-stubs-runtime": "node scripts/verify-stub-chain.mjs && node scripts/verify-server-import.mjs"
   },
   "workspaces": [
     "apps/*",

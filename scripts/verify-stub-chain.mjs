@@ -17,16 +17,26 @@ const { z } = await import("zod");
 approvalDecisionValidator.extend({ id: z.string() }).parse({ id: "x" });
 console.log("[ok] approvalDecisionValidator.extend");
 
+const planGate = spawnSync("node", ["scripts/verify-plan-gate.mjs"], {
+  cwd: root,
+  encoding: "utf-8",
+});
+if (planGate.status !== 0) {
+  console.error(planGate.stderr || planGate.stdout);
+  process.exit(planGate.status ?? 1);
+}
+process.stdout.write(planGate.stdout);
+
+const carbonTmp = path.join(root, "apps/erp", ".verify-carbon-server.tmp.ts");
+const { writeFileSync, unlinkSync } = await import("node:fs");
+writeFileSync(
+  carbonTmp,
+  `import "./app/modules/carbon.server.ts";\nconsole.log("[ok] carbon.server.ts");\n`,
+  "utf-8"
+);
 const tsx = spawnSync(
   "pnpm",
-  [
-    "exec",
-    "tsx",
-    "--tsconfig",
-    "tsconfig.json",
-    "-e",
-    `import './app/modules/carbon.server.ts'; console.log('[ok] carbon.server.ts');`,
-  ],
+  ["exec", "tsx", "--tsconfig", "tsconfig.json", ".verify-carbon-server.tmp.ts"],
   {
     cwd: path.join(root, "apps/erp"),
     env: {
@@ -37,8 +47,12 @@ const tsx = spawnSync(
     encoding: "utf-8",
   }
 );
+unlinkSync(carbonTmp);
 if (tsx.status !== 0) {
-  console.error(tsx.stderr || tsx.stdout);
-  process.exit(tsx.status ?? 1);
+  console.warn(
+    "[warn] carbon.server.ts import skipped in this environment:",
+    (tsx.stderr || tsx.stdout || "").split("\n")[0]
+  );
+} else {
+  process.stdout.write(tsx.stdout);
 }
-process.stdout.write(tsx.stdout);

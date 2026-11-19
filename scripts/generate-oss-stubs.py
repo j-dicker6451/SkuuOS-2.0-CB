@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EE_ROOT = ROOT / "packages" / "ee"
 SRC = EE_ROOT / "src"
 RUNTIME_PATH = SRC / "_runtime.ts"
+# Hand-maintained stubs (AGPL-safe runtime); never overwritten by the generator.
+HAND_AUTHORED_SUBPATHS = frozenset({"_runtime", "plan", "plan.server"})
 
 Kind = Literal[
     "zod",
@@ -24,7 +26,10 @@ Kind = Literal[
     "object_const",
     "integrations",
     "async_server",
+    "async_string",
+    "async_bool",
     "bool_fn",
+    "noop_string_fn",
     "noop_fn",
     "class_type",
     "default",
@@ -74,6 +79,9 @@ USAGE_PATTERNS = {
     "dot_prop": re.compile(r"\b(\w+)\.[\w$]+"),
     "new": re.compile(r"\bnew\s+(\w+)\s*\("),
     "spread": re.compile(r"\.\.\.(\w+)\b"),
+    "string_method": re.compile(
+        r"\b(\w+)\.(?:startsWith|endsWith|split|includes|match|trim|toLowerCase|toUpperCase)\b"
+    ),
 }
 
 UI_EXTRA_SYMBOLS: dict[str, set[str]] = {
@@ -299,7 +307,11 @@ def classify(sub: str, name: str, tags: set[str]) -> Kind:
     if name.isupper() or name.endswith("_IDS") or name.endswith("_LABELS") or name.endswith("_TYPES"):
         return "object_const" if "array_map" not in tags else "array_const"
     if sub.endswith(".server") or "/hooks.server" in sub or name.endswith(".server"):
+        if "string_method" in tags:
+            return "async_string"
         return "async_server"
+    if tags & {"string_method"} and not tags & {"call"}:
+        return "noop_string_fn"
     if name.startswith("is") or name.startswith("has") or name.startswith("can"):
         return "bool_fn"
     if name.startswith("get") and name.endswith("Enabled"):
@@ -373,6 +385,10 @@ def emit_export(name: str, kind: Kind, rt_import: str) -> list[str]:
             return [f"export const {name}: unknown[] = [];"]
         case "object_const":
             return [f"export const {name} = {{}} as const;"]
+        case "async_string":
+            return [f"export const {name} = rt.asyncNull;"]
+        case "async_bool":
+            return [f"export const {name} = rt.asyncFalse;"]
         case "async_server":
             if name.startswith(("get", "load", "read", "fetch", "list", "build")):
                 return [f"export const {name} = rt.asyncEmptyObject;"]
@@ -385,6 +401,10 @@ def emit_export(name: str, kind: Kind, rt_import: str) -> list[str]:
             return [f"export const {name} = rt.asyncNoop;"]
         case "bool_fn":
             return [f"export const {name} = rt.fnFalse;"]
+        case "noop_string_fn":
+            return [
+                f"export const {name} = (..._args: unknown[]) => \"\";",
+            ]
         case "class_type":
             return [
                 f"export type {name} = Record<string, unknown>;",
@@ -428,15 +448,18 @@ def write_ee_package(by_sub: dict[str, set[str]], usage: dict[tuple[str, str], s
     kind_counts: dict[str, int] = defaultdict(int)
     exports: dict[str, str] = {".": "./src/index.ts", "./_runtime": "./src/_runtime.ts"}
     for sub, symbols in sorted(by_sub.items()):
-        if sub.startswith("__ui__") or sub.lstrip("/") == "_runtime":
-            continue
-        write_module(sub, symbols, usage)
-        for sym in symbols:
-            if not sym.startswith("__"):
-                kind_counts[classify(sub, sym, usage.get((sub, sym), set()))] += 1
         rel = sub.lstrip("/")
+        if sub.startswith("__ui__"):
+            continue
+        if rel not in HAND_AUTHORED_SUBPATHS:
+            write_module(sub, symbols, usage)
+            for sym in symbols:
+                if not sym.startswith("__"):
+                    kind_counts[classify(sub, sym, usage.get((sub, sym), set()))] += 1
         if rel:
             exports[f"./{rel}"] = f"./src/{rel}.ts"
+    for rel in sorted(HAND_AUTHORED_SUBPATHS - {"_runtime"}):
+        exports[f"./{rel}"] = f"./src/{rel}.ts"
     pkg = {
         "name": "@carbon/ee",
         "private": True,
@@ -451,7 +474,11 @@ def write_ee_package(by_sub: dict[str, set[str]], usage: dict[tuple[str, str], s
             "typecheck": "tsc --noEmit",
         },
         "dependencies": {
+            "@carbon/auth": "workspace:*",
+            "@carbon/database": "workspace:*",
+            "@carbon/env": "workspace:*",
             "@carbon/utils": "workspace:*",
+            "@supabase/supabase-js": "catalog:",
             "react": "catalog:",
             "zod": "catalog:",
         },
