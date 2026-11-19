@@ -3,8 +3,7 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export type WORKFLOW_LABELS = any;
-export const WORKFLOW_LABELS = class {} as any;
+export default rt.reactStub();
+export const WORKFLOW_LABELS = {} as const;

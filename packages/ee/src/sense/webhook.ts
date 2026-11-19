@@ -3,8 +3,8 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export const readSenseEvent = (..._args: unknown[]) => undefined as any;
-export const verifySenseWebhook = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const readSenseEvent = rt.deepStub;
+export const verifySenseWebhook = rt.deepStub;

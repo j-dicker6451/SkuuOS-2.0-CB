@@ -3,8 +3,8 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export type ActivepiecesPiece = any;
+export default rt.reactStub();
+export type ActivepiecesPiece = Record<string, unknown>;
 export const ActivepiecesPiece = class {} as any;

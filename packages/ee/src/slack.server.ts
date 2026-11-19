@@ -3,16 +3,13 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export class AmbiguousSlackWorkspaceError extends Error {}
-export const createIssueSlackThread = (..._args: unknown[]) => undefined as any;
-export const createSlackWebClient = (..._args: unknown[]) => undefined as any;
-export const getCarbonEmployeeFromSlackId = (..._args: unknown[]) =>
-  undefined as any;
-export const getSlackUserIdByCarbonId = (..._args: unknown[]) =>
-  undefined as any;
-export const getSlackWorkspace = (..._args: unknown[]) => undefined as any;
-export const getSlackWorkspaceByTeamId = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export class AmbiguousSlackWorkspaceError extends rt.StubError {}
+export const createIssueSlackThread = rt.asyncEmptyObject;
+export const createSlackWebClient = rt.asyncEmptyObject;
+export const getCarbonEmployeeFromSlackId = rt.asyncEmptyObject;
+export const getSlackUserIdByCarbonId = rt.asyncEmptyObject;
+export const getSlackWorkspace = rt.asyncEmptyObject;
+export const getSlackWorkspaceByTeamId = rt.asyncEmptyObject;

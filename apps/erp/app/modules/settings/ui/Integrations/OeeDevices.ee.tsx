@@ -3,8 +3,7 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
-export const OeeDevices = EnterpriseFeatureExcludedStub;
-export default function EnterpriseFeatureExcludedStub() {
-  return null;
-}
-export type StubRecord = Record<string, unknown>;
+import * as rt from "@carbon/ee/_runtime";
+
+export default rt.reactStub();
+export const OeeDevices = rt.reactStub("OeeDevices");

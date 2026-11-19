@@ -3,8 +3,8 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const deleteApiKey = (..._args: unknown[]) => undefined as any;
-export const upsertApiKey = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const deleteApiKey = rt.asyncNoop;
+export const upsertApiKey = rt.asyncEmptyObject;

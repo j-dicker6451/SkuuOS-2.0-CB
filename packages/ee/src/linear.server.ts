@@ -3,13 +3,11 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const getCompanyEmployees = (..._args: unknown[]) => undefined as any;
-export const getLinearClient = (..._args: unknown[]) => undefined as any;
-export const getLinearIssueFromExternalId = (..._args: unknown[]) =>
-  undefined as any;
-export const unlinkActionFromLinearIssue = (..._args: unknown[]) =>
-  undefined as any;
-export const verifyLinearWebhook = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const getCompanyEmployees = rt.asyncEmptyObject;
+export const getLinearClient = rt.asyncEmptyObject;
+export const getLinearIssueFromExternalId = rt.asyncEmptyObject;
+export const unlinkActionFromLinearIssue = rt.asyncNoop;
+export const verifyLinearWebhook = rt.asyncNoop;

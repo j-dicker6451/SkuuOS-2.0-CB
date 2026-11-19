@@ -3,18 +3,16 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type OrderSchema = any;
-export const OrderSchema = class {} as any;
-export const getCarbonOrderStatus = (..._args: unknown[]) => undefined as any;
-export const getCustomerIdAndContactId = (..._args: unknown[]) =>
-  undefined as any;
-export const getCustomerLocationIds = (..._args: unknown[]) => undefined as any;
-export const getEmployeeAndSalesPersonId = (..._args: unknown[]) =>
-  undefined as any;
-export const getOrderLocationId = (..._args: unknown[]) => undefined as any;
-export const getPaperlessParts = (..._args: unknown[]) => undefined as any;
-export const insertOrderLines = (..._args: unknown[]) => undefined as any;
-export const insertQuoteLines = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export type OrderSchema = import("zod").ZodTypeAny;
+export const OrderSchema = rt.permissiveSchema();
+export const getCarbonOrderStatus = rt.deepStub;
+export const getCustomerIdAndContactId = rt.deepStub;
+export const getCustomerLocationIds = rt.deepStub;
+export const getEmployeeAndSalesPersonId = rt.deepStub;
+export const getOrderLocationId = rt.deepStub;
+export const getPaperlessParts = rt.deepStub;
+export const insertOrderLines = rt.deepStub;
+export const insertQuoteLines = rt.deepStub;

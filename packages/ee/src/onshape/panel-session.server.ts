@@ -3,15 +3,12 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export const createPanelSession = (..._args: unknown[]) => undefined as any;
-export const deletePanelSession = (..._args: unknown[]) => undefined as any;
-export const panelCompanyChoices = (..._args: unknown[]) => undefined as any;
-export const panelSessionTokenFromRequest = (..._args: unknown[]) =>
-  undefined as any;
-export const requireOnshapePanelPermissions = (..._args: unknown[]) =>
-  undefined as any;
-export const switchPanelSessionCompany = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const createPanelSession = rt.asyncEmptyObject;
+export const deletePanelSession = rt.asyncNoop;
+export const panelCompanyChoices = rt.asyncNoop;
+export const panelSessionTokenFromRequest = rt.asyncNoop;
+export const requireOnshapePanelPermissions = rt.asyncNoop;
+export const switchPanelSessionCompany = rt.asyncNoop;

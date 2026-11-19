@@ -3,13 +3,12 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export type Email = any;
-export const Email = class {} as any;
-export const companyMailRoute = (..._args: unknown[]) => undefined as any;
-export const companyTransport = (..._args: unknown[]) => undefined as any;
-export const picksCredentialFreeEmail = (..._args: unknown[]) =>
-  undefined as any;
-export const sharedMailHeaders = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export type Email = (...args: unknown[]) => null;
+export const Email = rt.reactStub("Email");
+export const companyMailRoute = rt.deepStub;
+export const companyTransport = rt.deepStub;
+export const picksCredentialFreeEmail = rt.deepStub;
+export const sharedMailHeaders = rt.deepStub;

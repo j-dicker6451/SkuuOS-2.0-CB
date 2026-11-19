@@ -3,12 +3,11 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const generateConsolePin = (..._args: unknown[]) => undefined as any;
-export const isConsoleModeEnabledForCompany = (..._args: unknown[]) =>
-  false as any;
-export const setEmployeePin = (..._args: unknown[]) => undefined as any;
-export const updateConsoleSetting = (..._args: unknown[]) => undefined as any;
-export const verifyEmployeePin = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const generateConsolePin = rt.asyncNoop;
+export const isConsoleModeEnabledForCompany = rt.asyncNoop;
+export const setEmployeePin = rt.asyncNoop;
+export const updateConsoleSetting = rt.asyncNoop;
+export const verifyEmployeePin = rt.asyncNoop;

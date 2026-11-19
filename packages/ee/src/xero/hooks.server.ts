@@ -3,7 +3,7 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export const xeroOnInstall = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const xeroOnInstall = rt.asyncNoop;

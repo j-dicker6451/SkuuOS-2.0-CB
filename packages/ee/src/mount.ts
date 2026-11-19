@@ -3,17 +3,14 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type MOUNT_INTEGRATION_ID = any;
-export const MOUNT_INTEGRATION_ID = class {} as any;
-export type MOUNT_PUBLISH_ACTION_IDS = any;
-export const MOUNT_PUBLISH_ACTION_IDS = class {} as any;
-export type MountEntityType = any;
+export default rt.reactStub();
+export const MOUNT_INTEGRATION_ID = {} as const;
+export const MOUNT_PUBLISH_ACTION_IDS = {} as const;
+export type MountEntityType = Record<string, unknown>;
 export const MountEntityType = class {} as any;
-export type MountPublishRecord = any;
+export type MountPublishRecord = Record<string, unknown>;
 export const MountPublishRecord = class {} as any;
-export const parseMountPublishRecords = (..._args: unknown[]) =>
-  undefined as any;
-export const publishNeedsAttention = (..._args: unknown[]) => undefined as any;
+export const parseMountPublishRecords = rt.deepStub;
+export const publishNeedsAttention = rt.deepStub;

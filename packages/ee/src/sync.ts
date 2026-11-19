@@ -3,19 +3,17 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type EffectivePostingSyncSettings = any;
+export default rt.reactStub();
+export type EffectivePostingSyncSettings = Record<string, unknown>;
 export const EffectivePostingSyncSettings = class {} as any;
-export type IntegrationTopology = any;
-export const IntegrationTopology = class {} as any;
-export type LEDGER_FAMILY_KEYS = any;
-export const LEDGER_FAMILY_KEYS = class {} as any;
-export type LedgerFamilyKey = any;
+export type IntegrationTopology = (...args: unknown[]) => null;
+export const IntegrationTopology = rt.reactStub("IntegrationTopology");
+export const LEDGER_FAMILY_KEYS: unknown[] = [];
+export type LedgerFamilyKey = Record<string, unknown>;
 export const LedgerFamilyKey = class {} as any;
-export const applyLedgerDelegation = (..._args: unknown[]) => undefined as any;
-export const asCarbonOwnedSettings = (..._args: unknown[]) => undefined as any;
-export const buildIntegrationTopology = (..._args: unknown[]) =>
-  undefined as any;
-export const resolveCapabilities = (..._args: unknown[]) => undefined as any;
+export const applyLedgerDelegation = rt.deepStub;
+export const asCarbonOwnedSettings = rt.deepStub;
+export const buildIntegrationTopology = rt.deepStub;
+export const resolveCapabilities = rt.deepStub;

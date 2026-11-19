@@ -3,10 +3,9 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const getSalesRuleAssignmentsForItem = (..._args: unknown[]) =>
-  undefined as any;
-export const getSalesRulesList = (..._args: unknown[]) => undefined as any;
-export const useRuleViolations = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const getSalesRuleAssignmentsForItem = rt.deepStub;
+export const getSalesRulesList = rt.deepStub;
+export const useRuleViolations = rt.deepStub;

@@ -3,20 +3,20 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export type DocumentType = any;
+export default rt.reactStub();
+export type DocumentType = Record<string, unknown>;
 export const DocumentType = class {} as any;
-export type IssueAssignmentUpdate = any;
+export type IssueAssignmentUpdate = Record<string, unknown>;
 export const IssueAssignmentUpdate = class {} as any;
-export type IssueStatusUpdate = any;
+export type IssueStatusUpdate = Record<string, unknown>;
 export const IssueStatusUpdate = class {} as any;
-export type IssueTaskUpdate = any;
+export type IssueTaskUpdate = Record<string, unknown>;
 export const IssueTaskUpdate = class {} as any;
-export type NonConformanceData = any;
+export type NonConformanceData = Record<string, unknown>;
 export const NonConformanceData = class {} as any;
-export const formatAssignmentUpdate = (..._args: unknown[]) => undefined as any;
-export const formatDocumentCreated = (..._args: unknown[]) => undefined as any;
-export const formatStatusUpdate = (..._args: unknown[]) => undefined as any;
-export const formatTaskUpdate = (..._args: unknown[]) => undefined as any;
+export const formatAssignmentUpdate = rt.deepStub;
+export const formatDocumentCreated = rt.deepStub;
+export const formatStatusUpdate = rt.deepStub;
+export const formatTaskUpdate = rt.deepStub;

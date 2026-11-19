@@ -3,7 +3,8 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
-export default function EnterpriseFeatureExcludedStub() {
-  return null;
-}
-export type StubRecord = Record<string, unknown>;
+import * as rt from "@carbon/ee/_runtime";
+
+export default rt.reactStub();
+export type UnattributedMachineTime = Record<string, unknown>;
+export const UnattributedMachineTime = class {} as any;

@@ -88,7 +88,9 @@
     "test": "turbo run test",
     "translate": "pnpm run lingui:extract && pnpm exec linguito translate --llm && pnpm lingui:clean",
     "typecheck": "turbo run typecheck --filter='*'",
-    "typegen": "turbo run typegen"
+    "typegen": "turbo run typegen",
+    "generate:oss-stubs": "python3 scripts/generate-oss-stubs.py",
+    "verify:oss-stubs-runtime": "node scripts/verify-server-import.mjs"
   },
   "workspaces": [
     "apps/*",

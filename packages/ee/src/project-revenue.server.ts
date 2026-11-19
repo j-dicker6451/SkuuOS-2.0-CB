@@ -3,11 +3,9 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const generateCostPlusItems = (..._args: unknown[]) => undefined as any;
-export const projectRevenueSynthesizers = (..._args: unknown[]) =>
-  undefined as any;
-export const requireProjectRevenueEntitlement = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const generateCostPlusItems = rt.asyncNoop;
+export const projectRevenueSynthesizers = rt.asyncNoop;
+export const requireProjectRevenueEntitlement = rt.asyncNoop;

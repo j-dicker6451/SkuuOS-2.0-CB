@@ -3,10 +3,10 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const companyHasFeature = (..._args: unknown[]) => undefined as any;
-export const getPlan = (..._args: unknown[]) => undefined as any;
-export const hasIntegrationEarlyAccess = (..._args: unknown[]) => false as any;
-export const requireFeature = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const companyHasFeature = rt.asyncNoop;
+export const getPlan = rt.asyncEmptyObject;
+export const hasIntegrationEarlyAccess = rt.asyncNoop;
+export const requireFeature = rt.asyncNoop;

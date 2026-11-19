@@ -3,15 +3,15 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type Feature = any;
+export default rt.reactStub();
+export type Feature = Record<string, unknown>;
 export const Feature = class {} as any;
-export type GateSpec = any;
+export type GateSpec = Record<string, unknown>;
 export const GateSpec = class {} as any;
-export const defaultUpgradeMessage = (..._args: unknown[]) => undefined as any;
-export const isIntegrationComingSoon = (..._args: unknown[]) => false as any;
-export const isIntegrationWhitelisted = (..._args: unknown[]) => false as any;
-export const planMeetsRequirement = (..._args: unknown[]) => undefined as any;
-export const resolveRequirement = (..._args: unknown[]) => undefined as any;
+export const defaultUpgradeMessage = rt.deepStub;
+export const isIntegrationComingSoon = rt.fnFalse;
+export const isIntegrationWhitelisted = rt.fnFalse;
+export const planMeetsRequirement = rt.deepStub;
+export const resolveRequirement = rt.deepStub;

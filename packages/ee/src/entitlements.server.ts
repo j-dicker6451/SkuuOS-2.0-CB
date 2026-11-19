@@ -3,7 +3,7 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export class EntitlementError extends Error {}
+export default rt.reactStub();
+export class EntitlementError extends rt.StubError {}

@@ -3,19 +3,20 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type ICE_SCHEDULES = any;
-export const ICE_SCHEDULES = class {} as any;
-export const burdenSettingsValidator = (..._args: unknown[]) => false as any;
-export const contractRateCeilingValidator = (..._args: unknown[]) =>
-  false as any;
-export const indirectBaseTypes = {} as const;
-export const indirectPoolAccountValidator = (..._args: unknown[]) =>
-  false as any;
-export const indirectPoolTypes = {} as const;
-export const indirectPoolValidator = (..._args: unknown[]) => false as any;
-export const indirectRateEntryValidator = (..._args: unknown[]) => false as any;
-export const indirectRatesFieldErrors = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const ICE_SCHEDULES = {} as const;
+export type burdenSettingsValidator = import("zod").ZodTypeAny;
+export const burdenSettingsValidator = rt.permissiveSchema();
+export type contractRateCeilingValidator = import("zod").ZodTypeAny;
+export const contractRateCeilingValidator = rt.permissiveSchema();
+export const indirectBaseTypes = rt.deepStub;
+export type indirectPoolAccountValidator = import("zod").ZodTypeAny;
+export const indirectPoolAccountValidator = rt.permissiveSchema();
+export const indirectPoolTypes = rt.deepStub;
+export type indirectPoolValidator = import("zod").ZodTypeAny;
+export const indirectPoolValidator = rt.permissiveSchema();
+export type indirectRateEntryValidator = import("zod").ZodTypeAny;
+export const indirectRateEntryValidator = rt.permissiveSchema();
+export const indirectRatesFieldErrors = rt.deepStub;

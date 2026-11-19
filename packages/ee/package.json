@@ -74,8 +74,7 @@
     "./workflows.server": "./src/workflows.server.ts",
     "./workflows/help": "./src/workflows/help.ts",
     "./workflows/labels": "./src/workflows/labels.ts",
-    "./xero/hooks.server": "./src/xero/hooks.server.ts",
-    "./__ui__:apps/erp/app/modules/production/ui/MachineTime/machine-time-filters.ee.ts": "./src/__ui__:apps/erp/app/modules/production/ui/MachineTime/machine-time-filters.ee.ts.ts"
+    "./xero/hooks.server": "./src/xero/hooks.server.ts"
   },
   "scripts": {
     "clean": "rimraf .turbo node_modules",
@@ -83,7 +82,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@carbon/utils": "workspace:*"
+    "@carbon/utils": "workspace:*",
+    "react": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@carbon/config": "workspace:*",

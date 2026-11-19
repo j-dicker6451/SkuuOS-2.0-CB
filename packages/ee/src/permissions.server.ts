@@ -3,19 +3,15 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const deleteEmployeeType = (..._args: unknown[]) => undefined as any;
-export const insertEmployeeType = (..._args: unknown[]) => undefined as any;
-export const makeCompanyPermissionsFromClaims = (..._args: unknown[]) =>
-  undefined as any;
-export const makeCompanyPermissionsFromEmployeeType = (..._args: unknown[]) =>
-  undefined as any;
-export const makeEmptyPermissionsFromModules = (..._args: unknown[]) =>
-  undefined as any;
-export const updateEmployee = (..._args: unknown[]) => undefined as any;
-export const updatePermissions = (..._args: unknown[]) => undefined as any;
-export const upsertEmployeeType = (..._args: unknown[]) => undefined as any;
-export const upsertEmployeeTypePermissions = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const deleteEmployeeType = rt.asyncNoop;
+export const insertEmployeeType = rt.asyncEmptyObject;
+export const makeCompanyPermissionsFromClaims = rt.asyncNoop;
+export const makeCompanyPermissionsFromEmployeeType = rt.asyncNoop;
+export const makeEmptyPermissionsFromModules = rt.asyncNoop;
+export const updateEmployee = rt.asyncNoop;
+export const updatePermissions = rt.asyncNoop;
+export const upsertEmployeeType = rt.asyncEmptyObject;
+export const upsertEmployeeTypePermissions = rt.asyncEmptyObject;

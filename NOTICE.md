@@ -27,6 +27,19 @@ Those files were not copied. Minimal compile-time stubs were added where the rem
 
 Stubs are not feature implementations; they exist only so the AGPL tree can typecheck and build without the commercial sources.
 
+Regenerate after changing exclusion rules:
+
+```bash
+python3 scripts/generate-oss-stubs.py
+```
+
+Runtime smoke tests (no Docker):
+
+```bash
+node scripts/verify-stub-chain.mjs
+node scripts/verify-server-import.mjs   # requires pnpm build:erp first
+```
+
 ## Modifications
 
 Aside from exclusion of Enterprise files, addition of this notice, `docs/LOCAL_SETUP.md`, and the stub files described above, no intentional feature or branding changes were made to the imported Carbon sources.

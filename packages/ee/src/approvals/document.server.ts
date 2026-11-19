@@ -3,11 +3,10 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export const cancelPendingApprovals = (..._args: unknown[]) => false as any;
-export const decideApprovalRequest = (..._args: unknown[]) => undefined as any;
-export const getDocumentApprovalState = (..._args: unknown[]) =>
-  undefined as any;
-export const openApprovalRequests = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const cancelPendingApprovals = rt.asyncNoop;
+export const decideApprovalRequest = rt.asyncNoop;
+export const getDocumentApprovalState = rt.asyncEmptyObject;
+export const openApprovalRequests = rt.asyncNoop;

@@ -3,34 +3,27 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const approveRequest = (..._args: unknown[]) => undefined as any;
-export const canApproveRequest = (..._args: unknown[]) => false as any;
-export const canCancelRequest = (..._args: unknown[]) => false as any;
-export const cancelApprovalRequest = (..._args: unknown[]) => false as any;
-export const createApprovalRequest = (..._args: unknown[]) => undefined as any;
-export const deleteApprovalRule = (..._args: unknown[]) => undefined as any;
-export const getApprovalRuleByAmount = (..._args: unknown[]) =>
-  undefined as any;
-export const getApprovalRuleById = (..._args: unknown[]) => undefined as any;
-export const getApprovalRules = (..._args: unknown[]) => undefined as any;
-export const getApprovalRulesForApprover = (..._args: unknown[]) =>
-  undefined as any;
-export const getApproverUserIdsForRule = (..._args: unknown[]) =>
-  undefined as any;
-export const getDocumentApproval = (..._args: unknown[]) => undefined as any;
-export const getLatestApprovalRequestForDocument = (..._args: unknown[]) =>
-  undefined as any;
-export const getLowerTierApproverUserIds = (..._args: unknown[]) =>
-  undefined as any;
-export const getPendingApprovalsForApprover = (..._args: unknown[]) =>
-  undefined as any;
-export const hasPendingApproval = (..._args: unknown[]) => false as any;
-export const isApprovalRequired = (..._args: unknown[]) => false as any;
-export const isCompanyAdmin = (..._args: unknown[]) => false as any;
-export const pendingApprovalDocumentIds = (..._args: unknown[]) =>
-  undefined as any;
-export const rejectRequest = (..._args: unknown[]) => undefined as any;
-export const upsertApprovalRule = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const approveRequest = rt.asyncNoop;
+export const canApproveRequest = rt.asyncNoop;
+export const canCancelRequest = rt.asyncNoop;
+export const cancelApprovalRequest = rt.asyncNoop;
+export const createApprovalRequest = rt.asyncEmptyObject;
+export const deleteApprovalRule = rt.asyncNoop;
+export const getApprovalRuleByAmount = rt.asyncEmptyObject;
+export const getApprovalRuleById = rt.asyncEmptyObject;
+export const getApprovalRules = rt.asyncEmptyObject;
+export const getApprovalRulesForApprover = rt.asyncEmptyObject;
+export const getApproverUserIdsForRule = rt.asyncEmptyObject;
+export const getDocumentApproval = rt.asyncEmptyObject;
+export const getLatestApprovalRequestForDocument = rt.asyncEmptyObject;
+export const getLowerTierApproverUserIds = rt.asyncEmptyObject;
+export const getPendingApprovalsForApprover = rt.asyncEmptyObject;
+export const hasPendingApproval = rt.asyncNoop;
+export const isApprovalRequired = rt.asyncNoop;
+export const isCompanyAdmin = rt.asyncNoop;
+export const pendingApprovalDocumentIds = rt.asyncNoop;
+export const rejectRequest = rt.asyncNoop;
+export const upsertApprovalRule = rt.asyncEmptyObject;

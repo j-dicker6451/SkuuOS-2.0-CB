@@ -3,14 +3,13 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const applyIssue = (..._args: unknown[]) => undefined as any;
-export const deleteLinks = (..._args: unknown[]) => undefined as any;
-export const ensureIssueSyncSubscriptions = (..._args: unknown[]) =>
-  undefined as any;
-export const linkExistingIssue = (..._args: unknown[]) => undefined as any;
-export const linkNewIssue = (..._args: unknown[]) => undefined as any;
-export const pushRecords = (..._args: unknown[]) => undefined as any;
-export const unlinkDeletedIssue = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const applyIssue = rt.asyncNoop;
+export const deleteLinks = rt.asyncNoop;
+export const ensureIssueSyncSubscriptions = rt.asyncEmptyObject;
+export const linkExistingIssue = rt.asyncNoop;
+export const linkNewIssue = rt.asyncNoop;
+export const pushRecords = rt.asyncNoop;
+export const unlinkDeletedIssue = rt.asyncNoop;

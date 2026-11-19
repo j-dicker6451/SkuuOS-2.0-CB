@@ -3,22 +3,17 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const buildAcwpExport = (..._args: unknown[]) => undefined as any;
-export const checkBudgetAvailability = (..._args: unknown[]) =>
-  undefined as any;
-export const checkTimesheetBudget = (..._args: unknown[]) => undefined as any;
-export const closeEarnedValuePeriod = (..._args: unknown[]) => undefined as any;
-export const formatBudgetCheckMessage = (..._args: unknown[]) =>
-  undefined as any;
-export const getEarnedValue = (..._args: unknown[]) => undefined as any;
-export const getEarnedValueSnapshots = (..._args: unknown[]) =>
-  undefined as any;
-export const resumeWork = (..._args: unknown[]) => undefined as any;
-export const stopWork = (..._args: unknown[]) => undefined as any;
-export const updateElementEarnedValue = (..._args: unknown[]) =>
-  undefined as any;
-export const updateProjectControlSettings = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const buildAcwpExport = rt.asyncEmptyObject;
+export const checkBudgetAvailability = rt.asyncNoop;
+export const checkTimesheetBudget = rt.asyncNoop;
+export const closeEarnedValuePeriod = rt.asyncNoop;
+export const formatBudgetCheckMessage = rt.asyncNoop;
+export const getEarnedValue = rt.asyncEmptyObject;
+export const getEarnedValueSnapshots = rt.asyncEmptyObject;
+export const resumeWork = rt.asyncNoop;
+export const stopWork = rt.asyncNoop;
+export const updateElementEarnedValue = rt.asyncNoop;
+export const updateProjectControlSettings = rt.asyncNoop;

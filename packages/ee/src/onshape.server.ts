@@ -3,17 +3,14 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const beginOnshapeAuthorization = (..._args: unknown[]) =>
-  undefined as any;
-export const getConfiguredOnshapePanelOrigin = (..._args: unknown[]) =>
-  undefined as any;
-export const isOnshapeOAuthIntegrationId = (..._args: unknown[]) =>
-  false as any;
-export const loadOnshapeOAuthConfig = (..._args: unknown[]) => undefined as any;
-export const patchOnshapeOAuthGrant = (..._args: unknown[]) => undefined as any;
-export const patchOnshapeSettings = (..._args: unknown[]) => undefined as any;
-export const readAssemblyProperties = (..._args: unknown[]) => undefined as any;
-export const readPartProperties = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const beginOnshapeAuthorization = rt.asyncNoop;
+export const getConfiguredOnshapePanelOrigin = rt.asyncEmptyObject;
+export const isOnshapeOAuthIntegrationId = rt.asyncNoop;
+export const loadOnshapeOAuthConfig = rt.asyncEmptyObject;
+export const patchOnshapeOAuthGrant = rt.asyncNoop;
+export const patchOnshapeSettings = rt.asyncNoop;
+export const readAssemblyProperties = rt.asyncEmptyObject;
+export const readPartProperties = rt.asyncEmptyObject;

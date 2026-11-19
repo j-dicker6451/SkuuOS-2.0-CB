@@ -3,25 +3,21 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const addFinancingRate = (..._args: unknown[]) => undefined as any;
-export const approveFinancingRequest = (..._args: unknown[]) =>
-  undefined as any;
-export const completePbpEvent = (..._args: unknown[]) => undefined as any;
-export const createFinancingRequest = (..._args: unknown[]) => undefined as any;
-export const financingRefusal = (..._args: unknown[]) => undefined as any;
-export const getContractFinancing = (..._args: unknown[]) => undefined as any;
-export const getExpectedLiquidation = (..._args: unknown[]) => undefined as any;
-export const getFinancingRequest = (..._args: unknown[]) => undefined as any;
-export const linkFinancingPayment = (..._args: unknown[]) => undefined as any;
-export const markFinancingRequestsPaid = (..._args: unknown[]) =>
-  undefined as any;
-export const overrideRequestLine = (..._args: unknown[]) => undefined as any;
-export const submitFinancingRequest = (..._args: unknown[]) => undefined as any;
-export const upsertContractFinancing = (..._args: unknown[]) =>
-  undefined as any;
-export const upsertPbpEvent = (..._args: unknown[]) => undefined as any;
-export const withdrawFinancingRequest = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const addFinancingRate = rt.asyncNoop;
+export const approveFinancingRequest = rt.asyncNoop;
+export const completePbpEvent = rt.asyncNoop;
+export const createFinancingRequest = rt.asyncEmptyObject;
+export const financingRefusal = rt.asyncNoop;
+export const getContractFinancing = rt.asyncEmptyObject;
+export const getExpectedLiquidation = rt.asyncEmptyObject;
+export const getFinancingRequest = rt.asyncEmptyObject;
+export const linkFinancingPayment = rt.asyncNoop;
+export const markFinancingRequestsPaid = rt.asyncNoop;
+export const overrideRequestLine = rt.asyncNoop;
+export const submitFinancingRequest = rt.asyncNoop;
+export const upsertContractFinancing = rt.asyncEmptyObject;
+export const upsertPbpEvent = rt.asyncEmptyObject;
+export const withdrawFinancingRequest = rt.asyncNoop;

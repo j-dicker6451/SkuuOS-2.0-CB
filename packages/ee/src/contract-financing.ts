@@ -3,23 +3,26 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type FinancingOverride = any;
+export default rt.reactStub();
+export type FinancingOverride = Record<string, unknown>;
 export const FinancingOverride = class {} as any;
-export type SF1443_LINE_LABELS = any;
-export const SF1443_LINE_LABELS = class {} as any;
-export type SF1443_WHOLE_DOLLAR_SCALE = any;
-export const SF1443_WHOLE_DOLLAR_SCALE = class {} as any;
-export type Sf1443Line = any;
+export const SF1443_LINE_LABELS = {} as const;
+export const SF1443_WHOLE_DOLLAR_SCALE = {} as const;
+export type Sf1443Line = Record<string, unknown>;
 export const Sf1443Line = class {} as any;
-export const contractFinancingRateValidator = (..._args: unknown[]) =>
-  false as any;
-export const contractFinancingTermsValidator = (..._args: unknown[]) =>
-  false as any;
-export const financingApproveValidator = (..._args: unknown[]) => false as any;
-export const financingOverrideValidator = (..._args: unknown[]) => false as any;
-export const financingRequestValidator = (..._args: unknown[]) => false as any;
-export const pbpEventCompleteValidator = (..._args: unknown[]) => false as any;
-export const pbpEventValidator = (..._args: unknown[]) => false as any;
+export type contractFinancingRateValidator = import("zod").ZodTypeAny;
+export const contractFinancingRateValidator = rt.permissiveSchema();
+export type contractFinancingTermsValidator = import("zod").ZodTypeAny;
+export const contractFinancingTermsValidator = rt.permissiveSchema();
+export type financingApproveValidator = import("zod").ZodTypeAny;
+export const financingApproveValidator = rt.permissiveSchema();
+export type financingOverrideValidator = import("zod").ZodTypeAny;
+export const financingOverrideValidator = rt.permissiveSchema();
+export type financingRequestValidator = import("zod").ZodTypeAny;
+export const financingRequestValidator = rt.permissiveSchema();
+export type pbpEventCompleteValidator = import("zod").ZodTypeAny;
+export const pbpEventCompleteValidator = rt.permissiveSchema();
+export type pbpEventValidator = import("zod").ZodTypeAny;
+export const pbpEventValidator = rt.permissiveSchema();

@@ -3,21 +3,15 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type MOUNT_ENTITY_TYPES = any;
-export const MOUNT_ENTITY_TYPES = class {} as any;
-export type MOUNT_INTEGRATION_ID = any;
-export const MOUNT_INTEGRATION_ID = class {} as any;
-export type MOUNT_PUBLISH_MAX_BATCHES = any;
-export const MOUNT_PUBLISH_MAX_BATCHES = class {} as any;
-export type MountEntityType = any;
-export const MountEntityType = class {} as any;
-export type MountPublishRecord = any;
-export const MountPublishRecord = class {} as any;
-export const describePublishForNotification = (..._args: unknown[]) =>
-  undefined as any;
-export const getMountIntegration = (..._args: unknown[]) => undefined as any;
-export const markMountPublishFailed = (..._args: unknown[]) => undefined as any;
-export const runMountPublishBatch = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const MOUNT_ENTITY_TYPES: unknown[] = [];
+export const MOUNT_INTEGRATION_ID = {} as const;
+export const MOUNT_PUBLISH_MAX_BATCHES = {} as const;
+export const MountEntityType = rt.asyncNoop;
+export const MountPublishRecord = rt.asyncNoop;
+export const describePublishForNotification = rt.asyncNoop;
+export const getMountIntegration = rt.asyncEmptyObject;
+export const markMountPublishFailed = rt.asyncNoop;
+export const runMountPublishBatch = rt.asyncNoop;

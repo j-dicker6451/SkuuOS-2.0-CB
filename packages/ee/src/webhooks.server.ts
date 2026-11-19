@@ -3,14 +3,11 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const deleteWebhook = (..._args: unknown[]) => undefined as any;
-export const getWebhookSigningSecret = (..._args: unknown[]) =>
-  undefined as any;
-export const revealWebhookSigningSecret = (..._args: unknown[]) =>
-  undefined as any;
-export const rotateWebhookSigningSecret = (..._args: unknown[]) =>
-  undefined as any;
-export const upsertWebhook = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const deleteWebhook = rt.asyncNoop;
+export const getWebhookSigningSecret = rt.asyncEmptyObject;
+export const revealWebhookSigningSecret = rt.asyncNoop;
+export const rotateWebhookSigningSecret = rt.asyncNoop;
+export const upsertWebhook = rt.asyncEmptyObject;

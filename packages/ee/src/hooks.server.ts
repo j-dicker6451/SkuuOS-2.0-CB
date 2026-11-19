@@ -3,12 +3,9 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const ensureOnshapeReleaseWebhook = (..._args: unknown[]) =>
-  undefined as any;
-export const getIntegrationServerHooks = (..._args: unknown[]) =>
-  undefined as any;
-export const onshapeConnectionHasWriteScope = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const ensureOnshapeReleaseWebhook = rt.asyncEmptyObject;
+export const getIntegrationServerHooks = rt.asyncEmptyObject;
+export const onshapeConnectionHasWriteScope = rt.asyncNoop;

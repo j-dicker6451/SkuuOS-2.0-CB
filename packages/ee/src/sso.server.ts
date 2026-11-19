@@ -3,33 +3,29 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const addSsoDomain = (..._args: unknown[]) => undefined as any;
-export const deactivateSsoConnection = (..._args: unknown[]) =>
-  undefined as any;
-export const deleteJitSsoUser = (..._args: unknown[]) => undefined as any;
-export const emailDomain = (..._args: unknown[]) => undefined as any;
-export const getSamlSpUrls = (..._args: unknown[]) => undefined as any;
-export const getSsoAwareInviteLink = (..._args: unknown[]) => undefined as any;
-export const getSsoConnection = (..._args: unknown[]) => undefined as any;
-export const getSsoConnectionByDomain = (..._args: unknown[]) =>
-  undefined as any;
-export const getSsoConnectionByProviderId = (..._args: unknown[]) =>
-  undefined as any;
-export const getSsoDomains = (..._args: unknown[]) => undefined as any;
-export const getSsoProviderIdFromSession = (..._args: unknown[]) =>
-  undefined as any;
-export const getTxtRecord = (..._args: unknown[]) => undefined as any;
-export const isSsoEnabled = (..._args: unknown[]) => false as any;
-export const isSsoRequiredForEmail = (..._args: unknown[]) => false as any;
-export const linkSsoIdentityToUser = (..._args: unknown[]) => undefined as any;
-export const mergeInvitePermissions = (..._args: unknown[]) => undefined as any;
-export const migrateUserToSso = (..._args: unknown[]) => undefined as any;
-export const removeSsoDomain = (..._args: unknown[]) => undefined as any;
-export const seedSsoIdentityForUser = (..._args: unknown[]) => undefined as any;
-export class uncoveredSsoDomainError extends Error {}
-export const updateSsoRequireSso = (..._args: unknown[]) => undefined as any;
-export const upsertSsoConnection = (..._args: unknown[]) => undefined as any;
-export const verifySsoDomain = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const addSsoDomain = rt.asyncNoop;
+export const deactivateSsoConnection = rt.asyncNoop;
+export const deleteJitSsoUser = rt.asyncNoop;
+export const emailDomain = rt.asyncNoop;
+export const getSamlSpUrls = rt.asyncEmptyObject;
+export const getSsoAwareInviteLink = rt.asyncEmptyObject;
+export const getSsoConnection = rt.asyncEmptyObject;
+export const getSsoConnectionByDomain = rt.asyncEmptyObject;
+export const getSsoConnectionByProviderId = rt.asyncEmptyObject;
+export const getSsoDomains = rt.asyncEmptyObject;
+export const getSsoProviderIdFromSession = rt.asyncEmptyObject;
+export const getTxtRecord = rt.asyncEmptyObject;
+export const isSsoEnabled = rt.asyncNoop;
+export const isSsoRequiredForEmail = rt.asyncNoop;
+export const linkSsoIdentityToUser = rt.asyncNoop;
+export const mergeInvitePermissions = rt.asyncNoop;
+export const migrateUserToSso = rt.asyncNoop;
+export const removeSsoDomain = rt.asyncNoop;
+export const seedSsoIdentityForUser = rt.asyncNoop;
+export class uncoveredSsoDomainError extends rt.StubError {}
+export const updateSsoRequireSso = rt.asyncNoop;
+export const upsertSsoConnection = rt.asyncEmptyObject;
+export const verifySsoDomain = rt.asyncNoop;

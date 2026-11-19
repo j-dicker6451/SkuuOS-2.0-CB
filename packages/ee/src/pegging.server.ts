@@ -3,9 +3,9 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const pegging = (..._args: unknown[]) => undefined as any;
-export const planningGroupMrpDeps = (..._args: unknown[]) => undefined as any;
-export const upsertPlanningGroup = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const pegging = rt.asyncNoop;
+export const planningGroupMrpDeps = rt.asyncNoop;
+export const upsertPlanningGroup = rt.asyncEmptyObject;

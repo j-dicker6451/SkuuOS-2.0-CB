@@ -3,7 +3,10 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
-export default function EnterpriseFeatureExcludedStub() {
-  return null;
-}
-export type StubRecord = Record<string, unknown>;
+import * as rt from "@carbon/ee/_runtime";
+
+export default rt.reactStub();
+export type EarnedValueData = Record<string, unknown>;
+export const EarnedValueData = class {} as any;
+export type EarnedValuePeriodOption = Record<string, unknown>;
+export const EarnedValuePeriodOption = class {} as any;

@@ -3,25 +3,20 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const assignSalesRule = (..._args: unknown[]) => undefined as any;
-export const assignStorageRule = (..._args: unknown[]) => undefined as any;
-export const dedupeViolations = (..._args: unknown[]) => undefined as any;
-export const deleteEnforcementRule = (..._args: unknown[]) => undefined as any;
-export const evaluateLinesForSurface = (..._args: unknown[]) =>
-  undefined as any;
-export const evaluateSalesRuleLines = (..._args: unknown[]) => undefined as any;
-export const evaluateSalesRulesForSalesDocument = (..._args: unknown[]) =>
-  undefined as any;
-export const getStorageRulesDataForTarget = (..._args: unknown[]) =>
-  undefined as any;
-export const isBlocked = (..._args: unknown[]) => false as any;
-export const resolveSalesInvoiceShipTo = (..._args: unknown[]) =>
-  undefined as any;
-export const resolveSalesOrderShipTo = (..._args: unknown[]) =>
-  undefined as any;
-export const unassignSalesRule = (..._args: unknown[]) => undefined as any;
-export const unassignStorageRule = (..._args: unknown[]) => undefined as any;
-export const upsertEnforcementRule = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const assignSalesRule = rt.asyncNoop;
+export const assignStorageRule = rt.asyncNoop;
+export const dedupeViolations = rt.asyncNoop;
+export const deleteEnforcementRule = rt.asyncNoop;
+export const evaluateLinesForSurface = rt.asyncNoop;
+export const evaluateSalesRuleLines = rt.asyncNoop;
+export const evaluateSalesRulesForSalesDocument = rt.asyncNoop;
+export const getStorageRulesDataForTarget = rt.asyncEmptyObject;
+export const isBlocked = rt.asyncNoop;
+export const resolveSalesInvoiceShipTo = rt.asyncNoop;
+export const resolveSalesOrderShipTo = rt.asyncNoop;
+export const unassignSalesRule = rt.asyncNoop;
+export const unassignStorageRule = rt.asyncNoop;
+export const upsertEnforcementRule = rt.asyncEmptyObject;

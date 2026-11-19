@@ -3,15 +3,13 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const assignUnattributedMachineTime = (..._args: unknown[]) =>
-  undefined as any;
-export const deleteWorkCenterDevice = (..._args: unknown[]) => undefined as any;
-export const dismissUnattributedMachineTime = (..._args: unknown[]) =>
-  undefined as any;
-export const getOeeProvider = (..._args: unknown[]) => undefined as any;
-export const postEndedMachineEvents = (..._args: unknown[]) => undefined as any;
-export const repairOeeWebhook = (..._args: unknown[]) => undefined as any;
-export const upsertWorkCenterDevice = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const assignUnattributedMachineTime = rt.asyncNoop;
+export const deleteWorkCenterDevice = rt.asyncNoop;
+export const dismissUnattributedMachineTime = rt.asyncNoop;
+export const getOeeProvider = rt.asyncEmptyObject;
+export const postEndedMachineEvents = rt.asyncNoop;
+export const repairOeeWebhook = rt.asyncNoop;
+export const upsertWorkCenterDevice = rt.asyncEmptyObject;

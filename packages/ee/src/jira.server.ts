@@ -3,18 +3,15 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type TiptapDocument = any;
-export const TiptapDocument = class {} as any;
-export const exchangeCodeForTokens = (..._args: unknown[]) => undefined as any;
-export const getAccessibleResources = (..._args: unknown[]) => undefined as any;
-export const getCompanyEmployees = (..._args: unknown[]) => undefined as any;
-export const getJiraClient = (..._args: unknown[]) => undefined as any;
-export const getJiraIssueFromExternalId = (..._args: unknown[]) =>
-  undefined as any;
-export const tiptapToAdf = (..._args: unknown[]) => undefined as any;
-export const unlinkActionFromJiraIssue = (..._args: unknown[]) =>
-  undefined as any;
-export const verifyJiraWebhook = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const TiptapDocument = rt.asyncNoop;
+export const exchangeCodeForTokens = rt.asyncNoop;
+export const getAccessibleResources = rt.asyncEmptyObject;
+export const getCompanyEmployees = rt.asyncEmptyObject;
+export const getJiraClient = rt.asyncEmptyObject;
+export const getJiraIssueFromExternalId = rt.asyncEmptyObject;
+export const tiptapToAdf = rt.asyncNoop;
+export const unlinkActionFromJiraIssue = rt.asyncNoop;
+export const verifyJiraWebhook = rt.asyncNoop;

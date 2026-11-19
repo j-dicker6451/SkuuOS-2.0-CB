@@ -3,14 +3,12 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type CompanyIntegration = any;
+export default rt.reactStub();
+export type CompanyIntegration = Record<string, unknown>;
 export const CompanyIntegration = class {} as any;
-export const notifyIssueCreated = (..._args: unknown[]) => undefined as any;
-export const notifyIssueStatusChanged = (..._args: unknown[]) =>
-  undefined as any;
-export const notifyTaskAssigned = (..._args: unknown[]) => undefined as any;
-export const notifyTaskStatusChanged = (..._args: unknown[]) =>
-  undefined as any;
+export const notifyIssueCreated = rt.deepStub;
+export const notifyIssueStatusChanged = rt.deepStub;
+export const notifyTaskAssigned = rt.deepStub;
+export const notifyTaskStatusChanged = rt.deepStub;

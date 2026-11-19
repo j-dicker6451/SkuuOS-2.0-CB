@@ -3,12 +3,10 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "../_runtime.ts";
 
-export {};
-export default {};
-export type ONSHAPE_PANEL_INTEGRATION_IDS = any;
-export const ONSHAPE_PANEL_INTEGRATION_IDS = class {} as any;
-export type ONSHAPE_V2_INTEGRATION_ID = any;
-export const ONSHAPE_V2_INTEGRATION_ID = class {} as any;
-export type OnshapeOAuthIntegrationId = any;
+export default rt.reactStub();
+export const ONSHAPE_PANEL_INTEGRATION_IDS: unknown[] = [];
+export const ONSHAPE_V2_INTEGRATION_ID = {} as const;
+export type OnshapeOAuthIntegrationId = Record<string, unknown>;
 export const OnshapeOAuthIntegrationId = class {} as any;

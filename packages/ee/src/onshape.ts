@@ -3,91 +3,78 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type DRAFT_MARKER_ENTITY_TYPE = any;
-export const DRAFT_MARKER_ENTITY_TYPE = class {} as any;
-export type DraftCandidate = any;
+export default rt.reactStub();
+export const DRAFT_MARKER_ENTITY_TYPE = {} as const;
+export type DraftCandidate = Record<string, unknown>;
 export const DraftCandidate = class {} as any;
-export type DrawingAssemblyElement = any;
+export type DrawingAssemblyElement = Record<string, unknown>;
 export const DrawingAssemblyElement = class {} as any;
-export type DrawingSource = any;
+export type DrawingSource = Record<string, unknown>;
 export const DrawingSource = class {} as any;
-export type DrawingTarget = any;
+export type DrawingTarget = Record<string, unknown>;
 export const DrawingTarget = class {} as any;
-export type ManualLineRow = any;
+export type ManualLineRow = Record<string, unknown>;
 export const ManualLineRow = class {} as any;
-export type MappedLineRow = any;
+export type MappedLineRow = Record<string, unknown>;
 export const MappedLineRow = class {} as any;
-export type ONSHAPE_GOVERNMENT_INTEGRATION_ID = any;
-export const ONSHAPE_GOVERNMENT_INTEGRATION_ID = class {} as any;
-export type ONSHAPE_INTEGRATION_IDS = any;
-export const ONSHAPE_INTEGRATION_IDS = class {} as any;
-export type ONSHAPE_OAUTH_SCOPES = any;
-export const ONSHAPE_OAUTH_SCOPES = class {} as any;
-export type ONSHAPE_V2_GOVERNMENT_INTEGRATION_ID = any;
-export const ONSHAPE_V2_GOVERNMENT_INTEGRATION_ID = class {} as any;
-export type ONSHAPE_V2_INTEGRATION_ID = any;
-export const ONSHAPE_V2_INTEGRATION_ID = class {} as any;
-export class OnshapeApiError extends Error {}
-export class OnshapeAssetTooLargeError extends Error {}
-export type OnshapeClient = any;
-export const OnshapeClient = class {} as any;
-export type OnshapeDocument = any;
+export const ONSHAPE_GOVERNMENT_INTEGRATION_ID = {} as const;
+export const ONSHAPE_INTEGRATION_IDS: unknown[] = [];
+export const ONSHAPE_OAUTH_SCOPES = {} as const;
+export const ONSHAPE_V2_GOVERNMENT_INTEGRATION_ID = {} as const;
+export const ONSHAPE_V2_INTEGRATION_ID = {} as const;
+export class OnshapeApiError extends rt.StubError {}
+export class OnshapeAssetTooLargeError extends rt.StubError {}
+export type OnshapeClient = (...args: unknown[]) => null;
+export const OnshapeClient = rt.reactStub("OnshapeClient");
+export type OnshapeDocument = Record<string, unknown>;
 export const OnshapeDocument = class {} as any;
-export type OnshapeDrawing = any;
-export const OnshapeDrawing = class {} as any;
-export type OnshapeElementType = any;
-export const OnshapeElementType = class {} as any;
-export type OnshapeOAuthIntegrationId = any;
+export type OnshapeDrawing = (...args: unknown[]) => null;
+export const OnshapeDrawing = rt.reactStub("OnshapeDrawing");
+export const OnshapeElementType = rt.deepStub;
+export type OnshapeOAuthIntegrationId = Record<string, unknown>;
 export const OnshapeOAuthIntegrationId = class {} as any;
-export type OnshapeTranslation = any;
+export type OnshapeTranslation = Record<string, unknown>;
 export const OnshapeTranslation = class {} as any;
-export type OnshapeWVMType = any;
-export const OnshapeWVMType = class {} as any;
-export type ReleaseExportSelection = any;
+export const OnshapeWVMType = rt.deepStub;
+export type ReleaseExportSelection = Record<string, unknown>;
 export const ReleaseExportSelection = class {} as any;
-export type StoredAssemblyPlan = any;
+export type StoredAssemblyPlan = Record<string, unknown>;
 export const StoredAssemblyPlan = class {} as any;
-export type StoredReleasePlan = any;
+export type StoredReleasePlan = Record<string, unknown>;
 export const StoredReleasePlan = class {} as any;
-export type WorkspaceSourceStates = any;
+export type WorkspaceSourceStates = Record<string, unknown>;
 export const WorkspaceSourceStates = class {} as any;
-export const chunkFilterValues = (..._args: unknown[]) => undefined as any;
-export const createPanelPlan = (..._args: unknown[]) => undefined as any;
-export const exchangeOnshapeAuthorizationCode = (..._args: unknown[]) =>
-  undefined as any;
-export const getConflictingOnshapeConnection = (..._args: unknown[]) =>
-  undefined as any;
-export const getOnshapeClient = (..._args: unknown[]) => undefined as any;
-export const getOnshapeIntegration = (..._args: unknown[]) => undefined as any;
-export const getOnshapePanelIntegration = (..._args: unknown[]) =>
-  undefined as any;
-export const getOnshapePanelOrigin = (..._args: unknown[]) => undefined as any;
-export const isOnshapeCustomerAppIntegrationId = (..._args: unknown[]) =>
-  false as any;
-export const isOnshapeIntegrationId = (..._args: unknown[]) => false as any;
-export const loadActiveMakeMethods = (..._args: unknown[]) => undefined as any;
-export const loadMethodLineOwnership = (..._args: unknown[]) =>
-  undefined as any;
-export const loadPartCustomFieldDefinitions = (..._args: unknown[]) =>
-  undefined as any;
-export const loadPlanMapping = (..._args: unknown[]) => undefined as any;
-export const loadPlanOptions = (..._args: unknown[]) => undefined as any;
-export const loadReleasedRevisions = (..._args: unknown[]) => undefined as any;
-export const loadReusableDrafts = (..._args: unknown[]) => undefined as any;
-export const loadStandardSources = (..._args: unknown[]) => undefined as any;
-export const onShapeDataValidator = (..._args: unknown[]) => false as any;
-export const onshapeFailure = (..._args: unknown[]) => undefined as any;
-export const pairOwnedCopiedLines = (..._args: unknown[]) => undefined as any;
-export const peekPanelPlan = (..._args: unknown[]) => undefined as any;
-export const readAssemblyDrawings = (..._args: unknown[]) => undefined as any;
-export const readDocumentDrawings = (..._args: unknown[]) => undefined as any;
-export const readDrawingReferences = (..._args: unknown[]) => undefined as any;
-export const releaseExportSelection = (..._args: unknown[]) => undefined as any;
-export const selectInBatches = (..._args: unknown[]) => undefined as any;
-export const settleBefore = (..._args: unknown[]) => undefined as any;
-export const takePanelPlan = (..._args: unknown[]) => undefined as any;
-export const tieDrawings = (..._args: unknown[]) => undefined as any;
-export const withRefusedMethods = (..._args: unknown[]) => undefined as any;
+export const chunkFilterValues = rt.deepStub;
+export const createPanelPlan = rt.deepStub;
+export const exchangeOnshapeAuthorizationCode = rt.deepStub;
+export const getConflictingOnshapeConnection = rt.deepStub;
+export const getOnshapeClient = rt.deepStub;
+export const getOnshapeIntegration = rt.deepStub;
+export const getOnshapePanelIntegration = rt.deepStub;
+export const getOnshapePanelOrigin = rt.deepStub;
+export const isOnshapeCustomerAppIntegrationId = rt.fnFalse;
+export const isOnshapeIntegrationId = rt.fnFalse;
+export const loadActiveMakeMethods = rt.deepStub;
+export const loadMethodLineOwnership = rt.deepStub;
+export const loadPartCustomFieldDefinitions = rt.deepStub;
+export const loadPlanMapping = rt.deepStub;
+export const loadPlanOptions = rt.deepStub;
+export const loadReleasedRevisions = rt.deepStub;
+export const loadReusableDrafts = rt.deepStub;
+export const loadStandardSources = rt.deepStub;
+export type onShapeDataValidator = import("zod").ZodTypeAny;
+export const onShapeDataValidator = rt.permissiveSchema();
+export const onshapeFailure = rt.deepStub;
+export const pairOwnedCopiedLines = rt.deepStub;
+export const peekPanelPlan = rt.deepStub;
+export const readAssemblyDrawings = rt.deepStub;
+export const readDocumentDrawings = rt.deepStub;
+export const readDrawingReferences = rt.deepStub;
+export const releaseExportSelection = rt.deepStub;
+export const selectInBatches = rt.deepStub;
+export const settleBefore = rt.deepStub;
+export const takePanelPlan = rt.deepStub;
+export const tieDrawings = rt.deepStub;
+export const withRefusedMethods = rt.deepStub;

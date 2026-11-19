@@ -3,10 +3,8 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const deleteDemandProjections = (..._args: unknown[]) =>
-  undefined as any;
-export const upsertDemandProjections = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const deleteDemandProjections = rt.asyncNoop;
+export const upsertDemandProjections = rt.asyncEmptyObject;

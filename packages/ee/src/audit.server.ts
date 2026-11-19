@@ -3,15 +3,15 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const disableAuditLog = (..._args: unknown[]) => undefined as any;
-export const enableAuditLog = (..._args: unknown[]) => undefined as any;
-export const getArchiveDownloadUrl = (..._args: unknown[]) => undefined as any;
-export const getAuditLogArchives = (..._args: unknown[]) => undefined as any;
-export const getEntityAuditLog = (..._args: unknown[]) => undefined as any;
-export const getGlobalAuditLog = (..._args: unknown[]) => undefined as any;
-export const insertAuditLogEntries = (..._args: unknown[]) => undefined as any;
-export const isAuditLogEnabled = (..._args: unknown[]) => false as any;
-export const syncAuditSubscriptions = (..._args: unknown[]) => undefined as any;
+export default rt.reactStub();
+export const disableAuditLog = rt.asyncNoop;
+export const enableAuditLog = rt.asyncNoop;
+export const getArchiveDownloadUrl = rt.asyncEmptyObject;
+export const getAuditLogArchives = rt.asyncEmptyObject;
+export const getEntityAuditLog = rt.asyncEmptyObject;
+export const getGlobalAuditLog = rt.asyncEmptyObject;
+export const insertAuditLogEntries = rt.asyncEmptyObject;
+export const isAuditLogEnabled = rt.asyncNoop;
+export const syncAuditSubscriptions = rt.asyncNoop;

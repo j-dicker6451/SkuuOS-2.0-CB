@@ -3,16 +3,17 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type BudgetCheckInput = any;
+export default rt.reactStub();
+export type BudgetCheckInput = Record<string, unknown>;
 export const BudgetCheckInput = class {} as any;
-export type BudgetCheckResult = any;
-export const BudgetCheckResult = class {} as any;
-export const elementEarnedValueValidator = (..._args: unknown[]) =>
-  false as any;
-export const projectControlSettingsValidator = (..._args: unknown[]) =>
-  false as any;
-export const stopWorkEnd = (..._args: unknown[]) => undefined as any;
-export const stopWorkValidator = (..._args: unknown[]) => false as any;
+export type BudgetCheckResult = (...args: unknown[]) => null;
+export const BudgetCheckResult = rt.reactStub("BudgetCheckResult");
+export type elementEarnedValueValidator = import("zod").ZodTypeAny;
+export const elementEarnedValueValidator = rt.permissiveSchema();
+export type projectControlSettingsValidator = import("zod").ZodTypeAny;
+export const projectControlSettingsValidator = rt.permissiveSchema();
+export const stopWorkEnd = rt.deepStub;
+export type stopWorkValidator = import("zod").ZodTypeAny;
+export const stopWorkValidator = rt.permissiveSchema();

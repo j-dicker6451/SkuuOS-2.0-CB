@@ -3,10 +3,8 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export const requireWorkflowsEntitlement = (..._args: unknown[]) =>
-  undefined as any;
-export const workflowsEnabledForCompany = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const requireWorkflowsEntitlement = rt.asyncNoop;
+export const workflowsEnabledForCompany = rt.asyncNoop;

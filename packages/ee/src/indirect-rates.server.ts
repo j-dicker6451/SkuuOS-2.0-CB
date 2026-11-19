@@ -3,32 +3,25 @@
  * See NOTICE.md at the repository root.
  */
 // @ts-nocheck
+import * as rt from "./_runtime.ts";
 
-export {};
-export default {};
-export type INDIRECT_POOL_BASE_PROJECT_ACCOUNT = any;
-export const INDIRECT_POOL_BASE_PROJECT_ACCOUNT = class {} as any;
-export const buildIceSchedule = (..._args: unknown[]) => undefined as any;
-export const deleteContractRateCeiling = (..._args: unknown[]) =>
-  undefined as any;
-export const deleteIndirectPool = (..._args: unknown[]) => undefined as any;
-export const deleteIndirectPoolAccount = (..._args: unknown[]) =>
-  undefined as any;
-export const getBurdenSettings = (..._args: unknown[]) => undefined as any;
-export const getContractRateCeilings = (..._args: unknown[]) =>
-  undefined as any;
-export const getIndirectExpenseStatement = (..._args: unknown[]) =>
-  undefined as any;
-export const getIndirectPool = (..._args: unknown[]) => undefined as any;
-export const getIndirectPools = (..._args: unknown[]) => undefined as any;
-export const getIndirectRateRuns = (..._args: unknown[]) => undefined as any;
-export const getIndirectRates = (..._args: unknown[]) => undefined as any;
-export const runFinalTrueUp = (..._args: unknown[]) => undefined as any;
-export const runIndirectRatePeriod = (..._args: unknown[]) => undefined as any;
-export const setIndirectRate = (..._args: unknown[]) => undefined as any;
-export const updateBurdenSettings = (..._args: unknown[]) => undefined as any;
-export const upsertContractRateCeiling = (..._args: unknown[]) =>
-  undefined as any;
-export const upsertIndirectPool = (..._args: unknown[]) => undefined as any;
-export const upsertIndirectPoolAccount = (..._args: unknown[]) =>
-  undefined as any;
+export default rt.reactStub();
+export const INDIRECT_POOL_BASE_PROJECT_ACCOUNT = {} as const;
+export const buildIceSchedule = rt.asyncEmptyObject;
+export const deleteContractRateCeiling = rt.asyncNoop;
+export const deleteIndirectPool = rt.asyncNoop;
+export const deleteIndirectPoolAccount = rt.asyncNoop;
+export const getBurdenSettings = rt.asyncEmptyObject;
+export const getContractRateCeilings = rt.asyncEmptyObject;
+export const getIndirectExpenseStatement = rt.asyncEmptyObject;
+export const getIndirectPool = rt.asyncEmptyObject;
+export const getIndirectPools = rt.asyncEmptyObject;
+export const getIndirectRateRuns = rt.asyncEmptyObject;
+export const getIndirectRates = rt.asyncEmptyObject;
+export const runFinalTrueUp = rt.asyncNoop;
+export const runIndirectRatePeriod = rt.asyncNoop;
+export const setIndirectRate = rt.asyncNoop;
+export const updateBurdenSettings = rt.asyncNoop;
+export const upsertContractRateCeiling = rt.asyncEmptyObject;
+export const upsertIndirectPool = rt.asyncEmptyObject;
+export const upsertIndirectPoolAccount = rt.asyncEmptyObject;
