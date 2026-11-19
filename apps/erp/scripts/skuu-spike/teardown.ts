@@ -7,18 +7,40 @@ import type { Kysely } from "kysely";
 type Db = Kysely<KyselyDatabase>;
 type Trx = Transaction<KyselyDatabase>;
 
+function savepointName(step: string) {
+  return `teardown_${step.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 48)}`;
+}
+
+async function teardownStep<T>(
+  trx: Trx,
+  step: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const sp = savepointName(step);
+  await sql.raw(`SAVEPOINT ${sp}`).execute(trx);
+  try {
+    const result = await fn();
+    await sql.raw(`RELEASE SAVEPOINT ${sp}`).execute(trx);
+    return result;
+  } catch (err) {
+    await sql.raw(`ROLLBACK TO SAVEPOINT ${sp}`).execute(trx);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`teardown step ${step}: ${message}`);
+  }
+}
+
 async function runTeardownTrx<T>(
   db: Db,
   fn: (trx: Trx) => Promise<T>
 ): Promise<T> {
   return db.transaction().execute(async (trx) => {
-    await sql`SET LOCAL "app.sync_in_progress" = 'true'`.execute(trx);
-    await sql`SET LOCAL session_replication_role = replica`.execute(trx);
-    try {
-      return await fn(trx);
-    } finally {
-      await sql`SET LOCAL session_replication_role = origin`.execute(trx);
-    }
+    await teardownStep(trx, "init-sync-in-progress", async () => {
+      await sql`SET LOCAL "app.sync_in_progress" = 'true'`.execute(trx);
+    });
+    await teardownStep(trx, "init-replication-replica", async () => {
+      await sql`SET LOCAL session_replication_role = replica`.execute(trx);
+    });
+    return fn(trx);
   });
 }
 
@@ -32,13 +54,11 @@ async function deleteCompanyRows(
     | "productionEvent"
     | "jobOperationTrackedEntity"
     | "jobMaterialScrap"
-    | "skuuJobMaterialDispense"
     | "jobMaterial"
     | "jobOperationStep"
     | "jobOperation"
     | "jobMakeMethod"
     | "job"
-    | "costLedger"
     | "itemLedger"
     | "journalLineDimension"
     | "journalLine"
@@ -52,7 +72,6 @@ async function deleteCompanyRows(
     | "jobOperationId"
     | "jobMaterialId"
     | "jobId"
-    | "jobOperationId"
     | "id"
     | "documentId"
     | "journalId"
@@ -73,30 +92,57 @@ async function deleteCompanyRows(
   }
 }
 
+type SpikeDbTable = "costLedger" | "skuuFormulaPhase" | "skuuJobMaterialDispense";
+
+async function deleteSpikeTableRows(
+  trx: Trx,
+  table: SpikeDbTable,
+  companyId: string,
+  column: string,
+  ids: string[]
+) {
+  if (ids.length === 0) return;
+  const chunk = 200;
+  for (let i = 0; i < ids.length; i += chunk) {
+    const slice = ids.slice(i, i + chunk);
+    await sql`
+      DELETE FROM ${sql.table(table)}
+      WHERE "companyId" = ${companyId}
+        AND ${sql.ref(column)} = ANY(${slice}::text[])
+    `.execute(trx);
+  }
+}
+
+async function deleteSpikeTableLike(
+  trx: Trx,
+  table: SpikeDbTable,
+  companyId: string,
+  column: string,
+  likePrefix: string
+) {
+  await sql`
+    DELETE FROM ${sql.table(table)}
+    WHERE "companyId" = ${companyId}
+      AND ${sql.ref(column)} LIKE ${likePrefix}
+  `.execute(trx);
+}
+
+/** Journals link to jobs/shipments via journalLine.documentId, not journal.sourceDocumentId. */
 async function deleteSpikeJournals(
   trx: Trx,
   companyId: string,
-  jobIds: string[],
-  shipmentIds: string[]
+  documentIds: string[]
 ) {
-  const sourceIds = [...jobIds, ...shipmentIds];
-  if (sourceIds.length === 0) return;
-  const journals = await trx
-    .selectFrom("journal")
-    .select("id")
+  if (documentIds.length === 0) return;
+  const lineRows = await trx
+    .selectFrom("journalLine")
+    .select(["id", "journalId"])
     .where("companyId", "=", companyId)
-    .where("sourceDocumentId", "in", sourceIds)
+    .where("documentId", "in", documentIds)
     .execute();
-  const journalIds = journals.map((r) => r.id);
+  const lineIds = lineRows.map((r) => r.id);
+  const journalIds = [...new Set(lineRows.map((r) => r.journalId))];
   if (journalIds.length === 0) return;
-  const lineIds = (
-    await trx
-      .selectFrom("journalLine")
-      .select("id")
-      .where("companyId", "=", companyId)
-      .where("journalId", "in", journalIds)
-      .execute()
-  ).map((r) => r.id);
   await deleteCompanyRows(
     trx,
     "journalLineDimension",
@@ -111,7 +157,6 @@ async function deleteSpikeJournals(
 async function deleteTrackedActivityGraph(
   trx: Trx,
   companyId: string,
-  jobIds: string[],
   jobOpIds: string[],
   trackedEntityIds: string[]
 ) {
@@ -126,15 +171,6 @@ async function deleteTrackedActivityGraph(
       .where("sourceDocumentId", "in", jobOpIds)
       .execute();
     for (const row of ops) activityIdSet.add(row.id);
-  }
-
-  if (jobIds.length > 0) {
-    const { rows } = await sql<{ id: string }>`
-      SELECT id FROM "trackedActivity"
-      WHERE "companyId" = ${companyId}
-        AND attributes->>'Job' = ANY(${jobIds}::text[])
-    `.execute(trx);
-    for (const row of rows) activityIdSet.add(row.id);
   }
 
   if (trackedEntityIds.length > 0) {
@@ -207,15 +243,80 @@ async function deleteSpikeLedgers(
   const ledgerIds = ledgers.map((r) => r.id);
   if (ledgerIds.length === 0) return;
 
-  await deleteCompanyRows(trx, "costLedger", companyId, "documentId", ledgerIds);
+  const costIds = new Set<string>();
   if (itemIds.length > 0) {
-    await trx
-      .deleteFrom("costLedger")
-      .where("companyId", "=", companyId)
-      .where("itemId", "in", itemIds)
-      .execute();
+    const rows = await sql<{ id: string }>`
+      SELECT id FROM "costLedger"
+      WHERE "companyId" = ${companyId}
+        AND "itemId" = ANY(${itemIds}::text[])
+    `.execute(trx);
+    for (const row of rows.rows) costIds.add(row.id);
   }
+  const docIds = [...jobIds, ...shipmentIds];
+  if (docIds.length > 0) {
+    const rows = await sql<{ id: string }>`
+      SELECT id FROM "costLedger"
+      WHERE "companyId" = ${companyId}
+        AND "documentId" = ANY(${docIds}::text[])
+    `.execute(trx);
+    for (const row of rows.rows) costIds.add(row.id);
+  }
+  if (trackedEntityIds.length > 0) {
+    const rows = await sql<{ id: string }>`
+      SELECT id FROM "costLedger"
+      WHERE "companyId" = ${companyId}
+        AND "trackedEntityId" = ANY(${trackedEntityIds}::text[])
+    `.execute(trx);
+    for (const row of rows.rows) costIds.add(row.id);
+  }
+  await deleteSpikeTableRows(trx, "costLedger", companyId, "id", [...costIds]);
+
   await deleteCompanyRows(trx, "itemLedger", companyId, "id", ledgerIds);
+}
+
+async function collectTrackedEntityIds(
+  trx: Trx,
+  companyId: string,
+  likePrefix: string,
+  itemIds: string[],
+  jobIds: string[]
+) {
+  const ids = new Set<string>();
+  const prefixRows = await trx
+    .selectFrom("trackedEntity")
+    .select("id")
+    .where("companyId", "=", companyId)
+    .where((eb) =>
+      eb.or([
+        eb("id", "like", likePrefix),
+        eb("readableId", "like", likePrefix),
+        ...(itemIds.length > 0 ? [eb("itemId", "in", itemIds)] : [])
+      ])
+    )
+    .execute();
+  for (const row of prefixRows) ids.add(row.id);
+
+  if (jobIds.length > 0) {
+    const { rows: byJobAttr } = await sql<{ id: string }>`
+      SELECT id FROM "trackedEntity"
+      WHERE "companyId" = ${companyId}
+        AND attributes->>'Job' = ANY(${jobIds}::text[])
+    `.execute(trx);
+    for (const row of byJobAttr) ids.add(row.id);
+
+    const { rows: byJmm } = await sql<{ id: string }>`
+      SELECT te.id
+      FROM "trackedEntity" te
+      INNER JOIN "jobMakeMethod" jmm
+        ON jmm.id = te.attributes->>'Job Make Method'
+       AND jmm."companyId" = te."companyId"
+      WHERE te."companyId" = ${companyId}
+        AND jmm."jobId" = ANY(${jobIds}::text[])
+    `.execute(trx);
+    for (const row of byJmm) ids.add(row.id);
+  }
+
+  return [...ids];
 }
 
 /** Drop every spike artifact for this tag (readableId prefix and legacy id prefix). */
@@ -227,102 +328,104 @@ export async function teardownTagged(
   await runTeardownTrx(db, async (trx) => {
     const likePrefix = `${prefix}%`;
 
-    const spikeItems = await trx
-      .selectFrom("item")
-      .select(["id", "readableId"])
-      .where("companyId", "=", companyId)
-      .where((eb) =>
-        eb.or([
-          eb("readableId", "like", likePrefix),
-          eb("id", "like", likePrefix)
-        ])
-      )
-      .execute();
-    const itemIds = spikeItems.map((r) => r.id);
-    const partNumbers = spikeItems
-      .map((r) => r.readableId)
-      .filter((id): id is string => id != null);
+    const { itemIds, partNumbers } = await teardownStep(
+      trx,
+      "discover-items",
+      async () => {
+        const spikeItems = await trx
+          .selectFrom("item")
+          .select(["id", "readableId"])
+          .where("companyId", "=", companyId)
+          .where((eb) =>
+            eb.or([
+              eb("readableId", "like", likePrefix),
+              eb("id", "like", likePrefix)
+            ])
+          )
+          .execute();
+        return {
+          itemIds: spikeItems.map((r) => r.id),
+          partNumbers: spikeItems
+            .map((r) => r.readableId)
+            .filter((id): id is string => id != null)
+        };
+      }
+    );
 
-    const jobRows = await trx
-      .selectFrom("job")
-      .select("id")
-      .where("companyId", "=", companyId)
-      .where((eb) =>
-        eb.or([
-          eb("jobId", "like", likePrefix),
-          eb("id", "like", likePrefix),
-          ...(itemIds.length > 0 ? [eb("itemId", "in", itemIds)] : [])
-        ])
-      )
-      .execute();
-    const jobIds = jobRows.map((r) => r.id);
+    const jobIds = await teardownStep(trx, "discover-jobs", async () => {
+      const jobRows = await trx
+        .selectFrom("job")
+        .select("id")
+        .where("companyId", "=", companyId)
+        .where((eb) =>
+          eb.or([
+            eb("jobId", "like", likePrefix),
+            eb("id", "like", likePrefix),
+            ...(itemIds.length > 0 ? [eb("itemId", "in", itemIds)] : [])
+          ])
+        )
+        .execute();
+      return jobRows.map((r) => r.id);
+    });
 
-    const jobOpRows =
-      jobIds.length > 0
-        ? await trx
-            .selectFrom("jobOperation")
-            .select("id")
-            .where("companyId", "=", companyId)
-            .where("jobId", "in", jobIds)
-            .execute()
-        : [];
-    const jobOpIds = jobOpRows.map((r) => r.id);
+    const jobOpIds = await teardownStep(trx, "discover-job-operations", async () => {
+      if (jobIds.length === 0) return [];
+      const jobOpRows = await trx
+        .selectFrom("jobOperation")
+        .select("id")
+        .where("companyId", "=", companyId)
+        .where("jobId", "in", jobIds)
+        .execute();
+      return jobOpRows.map((r) => r.id);
+    });
 
-    const salesOrders = await trx
-      .selectFrom("salesOrder")
-      .select("id")
-      .where("companyId", "=", companyId)
-      .where((eb) =>
-        eb.or([
-          eb("id", "like", likePrefix),
-          eb("salesOrderId", "like", likePrefix)
-        ])
-      )
-      .execute();
-    const salesOrderIds = salesOrders.map((r) => r.id);
+    const salesOrderIds = await teardownStep(trx, "discover-sales-orders", async () => {
+      const salesOrders = await trx
+        .selectFrom("salesOrder")
+        .select("id")
+        .where("companyId", "=", companyId)
+        .where((eb) =>
+          eb.or([
+            eb("id", "like", likePrefix),
+            eb("salesOrderId", "like", likePrefix)
+          ])
+        )
+        .execute();
+      return salesOrders.map((r) => r.id);
+    });
 
-    const shipmentRows = await trx
-      .selectFrom("shipment")
-      .select("id")
-      .where("companyId", "=", companyId)
-      .where((eb) =>
-        eb.or([
-          eb("id", "like", likePrefix),
-          eb("shipmentId", "like", likePrefix),
-          ...(salesOrderIds.length > 0
-            ? [
-                eb.and([
-                  eb("sourceDocument", "=", "Sales Order"),
-                  eb("sourceDocumentId", "in", salesOrderIds)
-                ])
-              ]
-            : [])
-        ])
-      )
-      .execute();
-    const shipmentIds = shipmentRows.map((r) => r.id);
+    const shipmentIds = await teardownStep(trx, "discover-shipments", async () => {
+      const shipmentRows = await trx
+        .selectFrom("shipment")
+        .select("id")
+        .where("companyId", "=", companyId)
+        .where((eb) =>
+          eb.or([
+            eb("id", "like", likePrefix),
+            eb("shipmentId", "like", likePrefix),
+            ...(salesOrderIds.length > 0
+              ? [
+                  eb.and([
+                    eb("sourceDocument", "=", "Sales Order"),
+                    eb("sourceDocumentId", "in", salesOrderIds)
+                  ])
+                ]
+              : [])
+          ])
+        )
+        .execute();
+      return shipmentRows.map((r) => r.id);
+    });
 
-    const trackedEntityRows = await trx
-      .selectFrom("trackedEntity")
-      .select("id")
-      .where("companyId", "=", companyId)
-      .where((eb) => {
-        const parts = [
-          eb("id", "like", likePrefix),
-          eb("readableId", "like", likePrefix)
-        ];
-        if (itemIds.length > 0) {
-          parts.push(eb("itemId", "in", itemIds));
-        }
-        if (jobIds.length > 0) {
-          parts.push(sql`attributes->>'Job' = ANY(${jobIds}::text[])`);
-        }
-        return eb.or(parts);
-      })
-      .execute();
-    const trackedEntityIds = trackedEntityRows.map((r) => r.id);
+    const trackedEntityIds = await teardownStep(
+      trx,
+      "discover-tracked-entities",
+      async () =>
+        collectTrackedEntityIds(trx, companyId, likePrefix, itemIds, jobIds)
+    );
 
-    if (shipmentIds.length > 0) {
+    await teardownStep(trx, "delete-shipments", async () => {
+      if (shipmentIds.length === 0) return;
       await trx
         .updateTable("shipment")
         .set({ status: "Draft", postedBy: null, postingDate: null })
@@ -337,9 +440,10 @@ export async function teardownTagged(
         shipmentIds
       );
       await deleteCompanyRows(trx, "shipment", companyId, "id", shipmentIds);
-    }
+    });
 
-    if (jobIds.length > 0) {
+    await teardownStep(trx, "delete-job-mes-rows", async () => {
+      if (jobIds.length === 0) return;
       await deleteCompanyRows(
         trx,
         "productionQuantity",
@@ -387,7 +491,7 @@ export async function teardownTagged(
           "jobMaterialId",
           jobMaterialIds
         );
-        await deleteCompanyRows(
+        await deleteSpikeTableRows(
           trx,
           "skuuJobMaterialDispense",
           companyId,
@@ -395,15 +499,40 @@ export async function teardownTagged(
           jobMaterialIds
         );
       }
+    });
 
-      await deleteSpikeJournals(trx, companyId, jobIds, shipmentIds);
+    await teardownStep(trx, "delete-journals", async () => {
+      const docIds = [...jobIds, ...shipmentIds];
+      const ledgerScope = await trx
+        .selectFrom("itemLedger")
+        .select("id")
+        .where("companyId", "=", companyId)
+        .where((eb) => {
+          const parts = [];
+          if (itemIds.length > 0) parts.push(eb("itemId", "in", itemIds));
+          if (jobIds.length > 0) parts.push(eb("documentId", "in", jobIds));
+          if (shipmentIds.length > 0) {
+            parts.push(eb("documentId", "in", shipmentIds));
+          }
+          return parts.length > 0 ? eb.or(parts) : eb.val(false);
+        })
+        .execute();
+      await deleteSpikeJournals(trx, companyId, [
+        ...docIds,
+        ...ledgerScope.map((r) => r.id)
+      ]);
+    });
+
+    await teardownStep(trx, "delete-tracked-activity", async () => {
       await deleteTrackedActivityGraph(
         trx,
         companyId,
-        jobIds,
         jobOpIds,
         trackedEntityIds
       );
+    });
+
+    await teardownStep(trx, "delete-ledgers-for-jobs", async () => {
       await deleteSpikeLedgers(
         trx,
         companyId,
@@ -412,7 +541,10 @@ export async function teardownTagged(
         shipmentIds,
         trackedEntityIds
       );
+    });
 
+    await teardownStep(trx, "delete-jobs", async () => {
+      if (jobIds.length === 0) return;
       await deleteCompanyRows(trx, "jobMaterial", companyId, "jobId", jobIds);
       await deleteCompanyRows(
         trx,
@@ -424,112 +556,138 @@ export async function teardownTagged(
       await deleteCompanyRows(trx, "jobOperation", companyId, "jobId", jobIds);
       await deleteCompanyRows(trx, "jobMakeMethod", companyId, "jobId", jobIds);
       await deleteCompanyRows(trx, "job", companyId, "id", jobIds);
-    }
+    });
 
-    await trx
-      .deleteFrom("skuuJobMaterialDispense")
-      .where("companyId", "=", companyId)
-      .where("id", "like", likePrefix)
-      .execute();
-
-    if (trackedEntityIds.length > 0) {
-      await deleteCompanyRows(
+    await teardownStep(trx, "delete-dispense-by-prefix", async () => {
+      await deleteSpikeTableLike(
         trx,
-        "trackedEntity",
+        "skuuJobMaterialDispense",
         companyId,
         "id",
-        trackedEntityIds
+        likePrefix
       );
-    } else if (itemIds.length > 0) {
-      await trx
-        .deleteFrom("trackedEntity")
-        .where("companyId", "=", companyId)
-        .where((eb) =>
-          eb.or([
-            eb("itemId", "in", itemIds),
-            eb("id", "like", likePrefix),
-            eb("readableId", "like", likePrefix)
-          ])
-        )
-        .execute();
-    } else {
-      await trx
-        .deleteFrom("trackedEntity")
-        .where("companyId", "=", companyId)
-        .where((eb) =>
-          eb.or([
-            eb("id", "like", likePrefix),
-            eb("readableId", "like", likePrefix)
-          ])
-        )
-        .execute();
-    }
+    });
 
-    for (const { id: salesOrderId } of salesOrders) {
+    await teardownStep(trx, "delete-tracked-entities", async () => {
+      if (trackedEntityIds.length > 0) {
+        await deleteCompanyRows(
+          trx,
+          "trackedEntity",
+          companyId,
+          "id",
+          trackedEntityIds
+        );
+      } else if (itemIds.length > 0) {
+        await trx
+          .deleteFrom("trackedEntity")
+          .where("companyId", "=", companyId)
+          .where((eb) =>
+            eb.or([
+              eb("itemId", "in", itemIds),
+              eb("id", "like", likePrefix),
+              eb("readableId", "like", likePrefix)
+            ])
+          )
+          .execute();
+      } else {
+        await trx
+          .deleteFrom("trackedEntity")
+          .where("companyId", "=", companyId)
+          .where((eb) =>
+            eb.or([
+              eb("id", "like", likePrefix),
+              eb("readableId", "like", likePrefix)
+            ])
+          )
+          .execute();
+      }
+    });
+
+    await teardownStep(trx, "delete-sales-orders", async () => {
+      if (salesOrderIds.length === 0) return;
       await trx
         .deleteFrom("salesOrderLine")
-        .where("salesOrderId", "=", salesOrderId)
+        .where("companyId", "=", companyId)
+        .where("salesOrderId", "in", salesOrderIds)
         .execute();
       await trx
         .deleteFrom("salesOrderShipment")
-        .where("id", "=", salesOrderId)
+        .where("companyId", "=", companyId)
+        .where("id", "in", salesOrderIds)
         .execute();
-      await trx.deleteFrom("salesOrder").where("id", "=", salesOrderId).execute();
-    }
+      await trx
+        .deleteFrom("salesOrder")
+        .where("companyId", "=", companyId)
+        .where("id", "in", salesOrderIds)
+        .execute();
+    });
 
-    const makeMethods = await trx
-      .selectFrom("makeMethod")
-      .select("id")
-      .where("companyId", "=", companyId)
-      .where((eb) =>
-        eb.or([
-          eb("id", "like", likePrefix),
-          itemIds.length > 0
-            ? eb("itemId", "in", itemIds)
-            : eb("id", "like", likePrefix)
-        ])
-      )
-      .execute();
-
-    for (const { id: makeMethodId } of makeMethods) {
-      const methodMaterialIds = await trx
-        .selectFrom("methodMaterial")
+    await teardownStep(trx, "delete-make-methods", async () => {
+      const makeMethods = await trx
+        .selectFrom("makeMethod")
         .select("id")
-        .where("makeMethodId", "=", makeMethodId)
+        .where("companyId", "=", companyId)
+        .where((eb) =>
+          eb.or([
+            eb("id", "like", likePrefix),
+            itemIds.length > 0
+              ? eb("itemId", "in", itemIds)
+              : eb("id", "like", likePrefix)
+          ])
+        )
         .execute();
-      const mmIds = methodMaterialIds.map((r) => r.id);
-      if (mmIds.length > 0) {
-        await trx
-          .deleteFrom("skuuMethodMaterialFormula")
-          .where("methodMaterialId", "in", mmIds)
+
+      for (const { id: makeMethodId } of makeMethods) {
+        const methodMaterialIds = await trx
+          .selectFrom("methodMaterial")
+          .select("id")
+          .where("makeMethodId", "=", makeMethodId)
           .execute();
+        const mmIds = methodMaterialIds.map((r) => r.id);
+        if (mmIds.length > 0) {
+          await trx
+            .deleteFrom("skuuMethodMaterialFormula")
+            .where("companyId", "=", companyId)
+            .where("methodMaterialId", "in", mmIds)
+            .execute();
+        }
+        await trx
+          .deleteFrom("skuuMakeMethodBulk")
+          .where("makeMethodId", "=", makeMethodId)
+          .execute();
+        await sql`
+          DELETE FROM "skuuFormulaPhase"
+          WHERE "makeMethodId" = ${makeMethodId}
+        `.execute(trx);
+        await trx
+          .deleteFrom("methodMaterial")
+          .where("makeMethodId", "=", makeMethodId)
+          .execute();
+        await trx
+          .deleteFrom("methodOperation")
+          .where("makeMethodId", "=", makeMethodId)
+          .execute();
+        await trx.deleteFrom("makeMethod").where("id", "=", makeMethodId).execute();
       }
-      await trx
-        .deleteFrom("skuuMakeMethodBulk")
-        .where("makeMethodId", "=", makeMethodId)
-        .execute();
-      await trx
-        .deleteFrom("skuuFormulaPhase")
-        .where("makeMethodId", "=", makeMethodId)
-        .execute();
-      await trx
-        .deleteFrom("methodMaterial")
-        .where("makeMethodId", "=", makeMethodId)
-        .execute();
-      await trx
-        .deleteFrom("methodOperation")
-        .where("makeMethodId", "=", makeMethodId)
-        .execute();
-      await trx.deleteFrom("makeMethod").where("id", "=", makeMethodId).execute();
-    }
+    });
 
-    await trx
-      .deleteFrom("process")
-      .where("companyId", "=", companyId)
-      .where("id", "like", likePrefix)
-      .execute();
+    await teardownStep(trx, "delete-processes", async () => {
+      await trx
+        .deleteFrom("process")
+        .where("companyId", "=", companyId)
+        .where("id", "like", likePrefix)
+        .execute();
+    });
 
-    if (itemIds.length > 0) {
+    await teardownStep(trx, "delete-items", async () => {
+      if (itemIds.length === 0) {
+        await trx
+          .deleteFrom("item")
+          .where("companyId", "=", companyId)
+          .where("id", "like", likePrefix)
+          .execute();
+        return;
+      }
       await deleteSpikeLedgers(trx, companyId, itemIds, [], [], []);
       if (partNumbers.length > 0) {
         await trx
@@ -557,12 +715,11 @@ export async function teardownTagged(
         .where("companyId", "=", companyId)
         .where("id", "in", itemIds)
         .execute();
-    }
-
-    await trx
-      .deleteFrom("item")
-      .where("companyId", "=", companyId)
-      .where("id", "like", likePrefix)
-      .execute();
+      await trx
+        .deleteFrom("item")
+        .where("companyId", "=", companyId)
+        .where("id", "like", likePrefix)
+        .execute();
+    });
   });
 }
