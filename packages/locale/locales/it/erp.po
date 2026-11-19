@@ -1441,6 +1441,9 @@ msgstr "% del totale"
 msgid "% of Total"
 msgstr "% del Totale"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "Funzionalità ERP, MES e QMS di base"
 msgid "Basic Information"
 msgstr "Informazioni di base"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "Lotto"
 
@@ -5767,6 +5773,9 @@ msgstr "Costruito e calcolato come proprio metodo"
 
 msgid "Built-in"
 msgstr "Integrato"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "Importazione in blocco"
@@ -10069,6 +10078,9 @@ msgstr "Dimostrazione"
 msgid "Density"
 msgstr "Densità"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "reparto"
 
@@ -11098,9 +11110,6 @@ msgstr "Modifica competenza dipendente"
 msgid "Edit Estimate Line"
 msgstr "Modifica Riga Preventivo"
 
-msgid "Edit expiration date"
-msgstr "Modifica data di scadenza"
-
 msgid "Edit Expiry"
 msgstr "Modifica Scadenza"
 
@@ -11154,6 +11163,9 @@ msgstr "Modifica Riga"
 
 msgid "Edit Location"
 msgstr "Modifica Ubicazione"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "Modifica Intervento di manutenzione"
@@ -11733,6 +11745,11 @@ msgstr "Inserisci i dare come importi positivi e gli avere come importi negativi
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "Inserisci i dare come importi positivi e gli avere come importi negativi. Il file CSV deve contenere le colonne accountNumber, dare e avere. Un'importazione sostituisce l'intero bilancio di verifica."
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "Indica quanto del lotto di {lotSize} ha superato il controllo. La quantità accettata è pronta per lo stoccaggio. Il resto resta bloccato finché la sua NCR non viene chiusa."
 
@@ -12240,6 +12257,9 @@ msgstr "Ricevimento Previsto"
 
 msgid "Expected Receipt Date"
 msgstr "Data di Ricezione Prevista"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "Anticipa"
@@ -16956,6 +16976,9 @@ msgstr "Responsabile"
 msgid "Manual"
 msgstr "Manuale"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "Produttore"
 
@@ -20960,9 +20983,6 @@ msgstr "Motivo della forzatura: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "Motivo della forzatura: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "Forza la scadenza su {label}."
-
 msgid "Overtime"
 msgstr "Straordinario"
 
@@ -24649,6 +24669,15 @@ msgstr "Utili non distribuiti"
 msgid "Retained Earnings (default)"
 msgstr "Utili non distribuiti (predefinito)"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "Il ritiro di un cespite dal servizio tramite rottamazione o vendita, registrando l'eventuale utile o perdita rispetto al valore netto contabile e impostando il suo stato su Dismesso."
 
@@ -25476,6 +25505,9 @@ msgstr "Salva applicazioni"
 
 msgid "Save as Draft"
 msgstr "Salva come bozza"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "Salva modifiche"
@@ -32157,6 +32189,9 @@ msgstr "Aggiorna"
 msgid "Update costs on"
 msgstr "Aggiorna i costi su"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "Aggiorna Previsione"
 
@@ -32366,6 +32401,9 @@ msgstr "Usa ... per ottenere il prossimo ID strumento"
 
 msgid "Use {earliest}"
 msgstr "Usa {earliest}"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "Usa un account diverso"
@@ -33455,6 +33493,9 @@ msgstr "Quando i numeri di serie delle unità di questo articolo vengono estratt
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "Quando sembra giusto, contrassegnalo come concordato. Questo completa il passaggio Discovery nel tuo centro di comando."
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "Quando questo traguardo si completa, il piano cambia solo tramite una richiesta di modifica"

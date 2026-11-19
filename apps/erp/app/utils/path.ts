@@ -2791,6 +2791,8 @@ export const path = {
     shippingMethod: (id: string) =>
       generatePath(`${x}/inventory/shipping-methods/${id}`),
     shippingMethods: `${x}/inventory/shipping-methods`,
+    skuuBulkFormula: `${x}/part/skuu-bulk/formula`,
+    skuuBulkFormulaMaterial: `${x}/part/skuu-bulk/formula-material`,
     splitIssueItem: `${x}/issue/item/split`,
     sso: `${x}/settings/sso`,
     stockMovementCorrect: (id: string) =>

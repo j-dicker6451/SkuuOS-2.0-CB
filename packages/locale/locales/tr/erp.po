@@ -1441,6 +1441,9 @@ msgstr "Toplamın %"
 msgid "% of Total"
 msgstr "% Toplam"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "Temel ERP, MES ve QMS işlevselliği"
 msgid "Basic Information"
 msgstr "Temel Bilgiler"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "Parti"
 
@@ -5767,6 +5773,9 @@ msgstr "Kendi yöntemi olarak oluşturulmuş ve maliyetlendirilmiş"
 
 msgid "Built-in"
 msgstr "Yerleşik"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "Toplu İçe Aktarma"
@@ -10069,6 +10078,9 @@ msgstr "Gösteri"
 msgid "Density"
 msgstr "Yoğunluk"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "departman"
 
@@ -11098,9 +11110,6 @@ msgstr "Çalışan Yetkinliğini Düzenle"
 msgid "Edit Estimate Line"
 msgstr "Tahmin Satırını Düzenle"
 
-msgid "Edit expiration date"
-msgstr "Son kullanma tarihini düzenle"
-
 msgid "Edit Expiry"
 msgstr "Son Kullanma Tarihini Düzenle"
 
@@ -11154,6 +11163,9 @@ msgstr "Satırı Düzenle"
 
 msgid "Edit Location"
 msgstr "Konumu Düzenle"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "Bakım Emri Düzenle"
@@ -11733,6 +11745,11 @@ msgstr "Borçları pozitif, alacakları negatif tutarlar olarak girin. CSV için
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "Borçları pozitif, alacakları negatif tutarlar olarak girin. CSV için accountNumber, debit ve credit sütunları gereklidir. Bir içe aktarma tüm deneme dengesini değiştirir."
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "{lotSize} lotunun ne kadarının geçtiğini girin. Kabul edilen miktar yerleştirmeye hazırdır. Kalanı NCR'si kapanana kadar bekletilir."
 
@@ -12240,6 +12257,9 @@ msgstr "Beklenen Teslim Alma"
 
 msgid "Expected Receipt Date"
 msgstr "Beklenen Teslim Alma Tarihi"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "Hızlandır"
@@ -16956,6 +16976,9 @@ msgstr "Yönetici"
 msgid "Manual"
 msgstr "Manuel"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "Üretici"
 
@@ -20960,9 +20983,6 @@ msgstr "Geçersiz kılma nedeni: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "Geçersiz kılma nedeni: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "{label} üzerindeki son kullanmayı geçersiz kıl."
-
 msgid "Overtime"
 msgstr "Fazla Mesai"
 
@@ -24649,6 +24669,15 @@ msgstr "Dağıtılmamış Kârlar"
 msgid "Retained Earnings (default)"
 msgstr "Dağıtılmamış Kârlar (varsayılan)"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "Bir varlığı hurdaya ayırarak veya satarak hizmetten çekmek; net defter değerine karşı oluşan kâr veya zararı kaydetmek ve durumunu Elden Çıkarıldı olarak ayarlamak."
 
@@ -25476,6 +25505,9 @@ msgstr "Uygulamaları kaydet"
 
 msgid "Save as Draft"
 msgstr "Taslak Olarak Kaydet"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "Değişiklikleri kaydet"
@@ -32157,6 +32189,9 @@ msgstr "Güncelle"
 msgid "Update costs on"
 msgstr "Maliyetleri şu konularda güncelle"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "Tahmini Güncelle"
 
@@ -32366,6 +32401,9 @@ msgstr "Sonraki araç kimliğini almak için ..."
 
 msgid "Use {earliest}"
 msgstr "{earliest} kullan"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "Farklı bir hesap kullan"
@@ -33455,6 +33493,9 @@ msgstr "Bu stok kartının adetleri seri numaralarını çiziğinde. Ayarlar →
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "Bu doğru göründüğünde, kabul edildi olarak işaretleyin. Bu, komut merkezinizde Keşif adımını tamamlar."
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "Bu dönüm noktası tamamlandığında, plan yalnızca bir değişiklik isteği aracılığıyla değişir"

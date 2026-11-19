@@ -1,6 +1,7 @@
 {
   "name": "carbon",
   "devDependencies": {
+    "pg": "8.20.0",
     "@biomejs/biome": "2.5.15",
     "@carbon/api": "workspace:*",
     "@lingui/cli": "catalog:",
@@ -90,7 +91,8 @@
     "typecheck": "turbo run typecheck --filter='*'",
     "typegen": "turbo run typegen",
     "generate:oss-stubs": "python3 scripts/generate-oss-stubs.py",
-    "verify:oss-stubs-runtime": "node scripts/verify-stub-chain.mjs && node scripts/verify-server-import.mjs"
+    "verify:oss-stubs-runtime": "node scripts/verify-stub-chain.mjs && node scripts/verify-server-import.mjs",
+    "skuu:spike": "node --experimental-vm-modules scripts/skuu-spike/run.mjs"
   },
   "workspaces": [
     "apps/*",

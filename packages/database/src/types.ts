@@ -76463,6 +76463,108 @@ export type Database = {
           }
         ]
       }
+      skuuItemRetest: {
+        Row: {
+          companyId: string
+          createdAt: string
+          createdBy: string
+          itemId: string
+          retestIntervalDays: number | null
+          updatedAt: string
+          updatedBy: string
+        }
+        Insert: {
+          companyId: string
+          createdAt?: string
+          createdBy: string
+          itemId: string
+          retestIntervalDays?: number | null
+          updatedAt?: string
+          updatedBy: string
+        }
+        Update: {
+          companyId?: string
+          createdAt?: string
+          createdBy?: string
+          itemId?: string
+          retestIntervalDays?: number | null
+          updatedAt?: string
+          updatedBy?: string
+        }
+        Relationships: []
+      }
+      skuuMakeMethodBulk: {
+        Row: {
+          batchBasisKg: number
+          companyId: string
+          createdAt: string
+          createdBy: string
+          enabled: boolean
+          expectedYieldPercent: number
+          makeMethodId: string
+          productDensityGPerMl: number | null
+          updatedAt: string
+          updatedBy: string
+          yieldLossPercent: number
+        }
+        Insert: {
+          batchBasisKg?: number
+          companyId: string
+          createdAt?: string
+          createdBy: string
+          enabled?: boolean
+          expectedYieldPercent?: number
+          makeMethodId: string
+          productDensityGPerMl?: number | null
+          updatedAt?: string
+          updatedBy: string
+          yieldLossPercent?: number
+        }
+        Update: {
+          batchBasisKg?: number
+          companyId?: string
+          createdAt?: string
+          createdBy?: string
+          enabled?: boolean
+          expectedYieldPercent?: number
+          makeMethodId?: string
+          productDensityGPerMl?: number | null
+          updatedAt?: string
+          updatedBy?: string
+          yieldLossPercent?: number
+        }
+        Relationships: []
+      }
+      skuuMethodMaterialFormula: {
+        Row: {
+          companyId: string
+          createdAt: string
+          createdBy: string
+          methodMaterialId: string
+          percentWw: number | null
+          updatedAt: string
+          updatedBy: string
+        }
+        Insert: {
+          companyId: string
+          createdAt?: string
+          createdBy: string
+          methodMaterialId: string
+          percentWw?: number | null
+          updatedAt?: string
+          updatedBy: string
+        }
+        Update: {
+          companyId?: string
+          createdAt?: string
+          createdBy?: string
+          methodMaterialId?: string
+          percentWw?: number | null
+          updatedAt?: string
+          updatedBy?: string
+        }
+        Relationships: []
+      }
       shipment: {
         Row: {
           assignee: string | null
@@ -84147,6 +84249,7 @@ export type Database = {
           createdAt: string
           createdBy: string
           expirationDate: string | null
+          retestDate: string | null
           id: string
           itemId: string | null
           quantity: number
@@ -84163,6 +84266,7 @@ export type Database = {
           createdAt?: string
           createdBy: string
           expirationDate?: string | null
+          retestDate?: string | null
           id?: string
           itemId?: string | null
           quantity: number
@@ -84179,6 +84283,7 @@ export type Database = {
           createdAt?: string
           createdBy?: string
           expirationDate?: string | null
+          retestDate?: string | null
           id?: string
           itemId?: string | null
           quantity?: number

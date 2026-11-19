@@ -36,6 +36,7 @@ import {
 import { toMethodCorrectionsProps } from "~/modules/items/ui/Item/MethodCorrections";
 import { getModelByItemId, getTagsList } from "~/modules/shared/shared.service";
 import type { MethodItemType, MethodType } from "~/modules/shared/types";
+import { SkuuBulkFormulaSection } from "~/modules/skuu/ui/SkuuBulkFormulaSection";
 import { path } from "~/utils/path";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -111,6 +112,31 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     companyId
   );
 
+  const [{ data: skuuBulkRow }, { data: skuuFormulaRows }] = await Promise.all([
+    client
+      .from("skuuMakeMethodBulk")
+      .select(
+        "enabled, batchBasisKg, yieldLossPercent, productDensityGPerMl, expectedYieldPercent"
+      )
+      .eq("makeMethodId", makeMethodId)
+      .eq("companyId", companyId)
+      .maybeSingle(),
+    client
+      .from("skuuMethodMaterialFormula")
+      .select("methodMaterialId, percentWw, phaseNumber, lineKind")
+      .eq("companyId", companyId)
+  ]);
+
+  const skuuMaterialPercents = (methodMaterials.data ?? []).map((m) => ({
+    methodMaterialId: m.id,
+    percentWw:
+      skuuFormulaRows?.find((f) => f.methodMaterialId === m.id)?.percentWw ??
+      null,
+    phaseNumber:
+      skuuFormulaRows?.find((f) => f.methodMaterialId === m.id)?.phaseNumber ??
+      null
+  }));
+
   return {
     corrections: toMethodCorrectionsProps(methodCorrections.data),
     makeMethod: makeMethod.data,
@@ -144,7 +170,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     makeMethods: getMakeMethods(client, makeMethod.data.itemId, companyId),
     tags: tags.data ?? [],
     revisionStatus: revisionLock.revisionStatus,
-    releaseControl: revisionLock.releaseControl
+    releaseControl: revisionLock.releaseControl,
+    skuuBulk: {
+      enabled: skuuBulkRow?.enabled ?? false,
+      batchBasisKg: skuuBulkRow?.batchBasisKg ?? 1,
+      productDensityGPerMl: skuuBulkRow?.productDensityGPerMl ?? null,
+      expectedYieldPercent: skuuBulkRow?.expectedYieldPercent ?? 100
+    },
+    skuuMaterialPercents
   };
 }
 
@@ -162,7 +195,9 @@ export default function PartMakeMethodPage() {
     configurationRules,
     tags,
     revisionStatus,
-    releaseControl
+    releaseControl,
+    skuuBulk,
+    skuuMaterialPercents
   } = loaderData;
 
   const { itemId, makeMethodId } = useParams();
@@ -213,6 +248,19 @@ export default function PartMakeMethodPage() {
         replenishmentSystem={partData?.partSummary?.replenishmentSystem}
         revisionStatus={revisionStatus}
         releaseControl={releaseControl}
+      />
+      <SkuuBulkFormulaSection
+        makeMethodId={makeMethodId}
+        enabled={skuuBulk.enabled}
+        batchBasisKg={Number(skuuBulk.batchBasisKg)}
+        productDensityGPerMl={
+          skuuBulk.productDensityGPerMl == null
+            ? null
+            : Number(skuuBulk.productDensityGPerMl)
+        }
+        expectedYieldPercent={Number(skuuBulk.expectedYieldPercent)}
+        materialPercents={skuuMaterialPercents}
+        readOnly={!permissions.can("update", "parts")}
       />
       <MethodCorrections
         key={`corrections:${makeMethod.id}`}

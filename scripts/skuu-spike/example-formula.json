@@ -1,0 +1,18 @@
+{
+  "product": "Skuu Demo Moisturiser Base",
+  "formulaRef": "SKU-DEMO-BASE-01",
+  "version": "1",
+  "batchKg": 100,
+  "expectedYieldPercent": 98,
+  "productDensityGPerMl": 1.04,
+  "ingredients": [
+    { "name": "Purified Water", "percentage": 62.5 },
+    { "name": "Glycerin", "percentage": 25 },
+    { "name": "Emulsifier Blend", "percentage": 10 },
+    { "name": "Preservative", "percentage": 2.5 }
+  ],
+  "fills": [
+    { "packSizeMl": 50, "units": 120 },
+    { "packSizeMl": 100, "units": 80 }
+  ]
+}

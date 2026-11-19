@@ -1441,6 +1441,9 @@ msgstr "% of total"
 msgid "% of Total"
 msgstr "% of Total"
 
+msgid "% w/w"
+msgstr "% w/w"
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "Basic ERP, MES, and QMS functionality"
 msgid "Basic Information"
 msgstr "Basic Information"
 
+msgid "Basis (kg)"
+msgstr "Basis (kg)"
+
 msgid "Batch"
 msgstr "Batch"
 
@@ -5767,6 +5773,9 @@ msgstr "Built and costed as its own method"
 
 msgid "Built-in"
 msgstr "Built-in"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr "Bulk formula (% w/w) — SkuuOS"
 
 msgid "Bulk Import"
 msgstr "Bulk Import"
@@ -10069,6 +10078,9 @@ msgstr "Demonstration"
 msgid "Density"
 msgstr "Density"
 
+msgid "Density (g/mL)"
+msgstr "Density (g/mL)"
+
 msgid "department"
 msgstr "department"
 
@@ -11098,9 +11110,6 @@ msgstr "Edit Employee Ability"
 msgid "Edit Estimate Line"
 msgstr "Edit Estimate Line"
 
-msgid "Edit expiration date"
-msgstr "Edit expiration date"
-
 msgid "Edit Expiry"
 msgstr "Edit Expiry"
 
@@ -11154,6 +11163,9 @@ msgstr "Edit Line"
 
 msgid "Edit Location"
 msgstr "Edit Location"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr "Edit lot dates (SkuuOS)"
 
 msgid "Edit Maintenance Dispatch"
 msgstr "Edit Maintenance Dispatch"
@@ -11733,6 +11745,11 @@ msgstr "Enter debits as positive and credits as negative amounts. The CSV needs 
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 
@@ -12240,6 +12257,9 @@ msgstr "Expected Receipt"
 
 msgid "Expected Receipt Date"
 msgstr "Expected Receipt Date"
+
+msgid "Expected yield %"
+msgstr "Expected yield %"
 
 msgid "Expedite"
 msgstr "Expedite"
@@ -16956,6 +16976,9 @@ msgstr "Manager"
 msgid "Manual"
 msgstr "Manual"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+
 msgid "Manufacturer"
 msgstr "Manufacturer"
 
@@ -20960,9 +20983,6 @@ msgstr "Override reason: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "Override reason: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "Override the expiration on {label}."
-
 msgid "Overtime"
 msgstr "Overtime"
 
@@ -24649,6 +24669,15 @@ msgstr "Retained Earnings"
 msgid "Retained Earnings (default)"
 msgstr "Retained Earnings (default)"
 
+msgid "Retest"
+msgstr "Retest"
+
+msgid "Retest date"
+msgstr "Retest date"
+
+msgid "Retest due"
+msgstr "Retest due"
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 
@@ -25476,6 +25505,9 @@ msgstr "Save applications"
 
 msgid "Save as Draft"
 msgstr "Save as Draft"
+
+msgid "Save bulk settings"
+msgstr "Save bulk settings"
 
 msgid "Save changes"
 msgstr "Save changes"
@@ -32157,6 +32189,9 @@ msgstr "Update"
 msgid "Update costs on"
 msgstr "Update costs on"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr "Update expiration and retest dates for {label}."
+
 msgid "Update Forecast"
 msgstr "Update Forecast"
 
@@ -32366,6 +32401,9 @@ msgstr "Use ... to get the next tool ID"
 
 msgid "Use {earliest}"
 msgstr "Use {earliest}"
+
+msgid "Use % w/w formula"
+msgstr "Use % w/w formula"
 
 msgid "Use a different account"
 msgstr "Use a different account"
@@ -33455,6 +33493,9 @@ msgstr "When this item's units draw their serial numbers. Leave empty to follow 
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "When this looks right, mark it agreed. That completes the Discovery step on your command center."
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr "When this lot must be retested (SkuuOS). Leave blank to clear."
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "When this milestone completes, the plan changes only through a change request"

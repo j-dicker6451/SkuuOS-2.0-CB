@@ -27,6 +27,7 @@ type EditExpiryModalProps = {
   trackedEntityId: string;
   /** Existing expirationDate (YYYY-MM-DD) — used to pre-fill the date input. */
   expirationDate?: string | null;
+  retestDate?: string | null;
   /** Optional readable label for the entity, shown in the modal header. */
   label?: string | null;
   open: boolean;
@@ -43,6 +44,7 @@ type EditExpiryModalProps = {
 export function EditExpiryModal({
   trackedEntityId,
   expirationDate,
+  retestDate,
   label,
   open,
   onClose
@@ -59,17 +61,18 @@ export function EditExpiryModal({
           defaultValues={{
             trackedEntityId,
             expirationDate: expirationDate ?? "",
+            retestDate: retestDate ?? "",
             reason: ""
           }}
           onSubmit={onClose}
         >
           <ModalHeader>
             <ModalTitle>
-              <Trans>Edit expiration date</Trans>
+              <Trans>Edit lot dates (SkuuOS)</Trans>
             </ModalTitle>
             {label && (
               <ModalDescription>
-                <Trans>Override the expiration on {label}.</Trans>
+                <Trans>Update expiration and retest dates for {label}.</Trans>
               </ModalDescription>
             )}
           </ModalHeader>
@@ -78,9 +81,14 @@ export function EditExpiryModal({
             <div className="flex flex-col gap-4">
               <DatePicker
                 name="expirationDate"
-                label={t`New expiration date`}
+                label={t`Expiration date`}
                 termId="traceability-expiration-edit-date"
                 helperText={t`Pick a date or leave blank to clear it.`}
+              />
+              <DatePicker
+                name="retestDate"
+                label={t`Retest date`}
+                helperText={t`When this lot must be retested (SkuuOS). Leave blank to clear.`}
               />
               <TextArea
                 name="reason"
