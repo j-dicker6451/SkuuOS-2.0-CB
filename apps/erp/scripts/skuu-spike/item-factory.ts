@@ -2,6 +2,7 @@
 
 import { upsertPart } from "~/modules/items/items.service";
 import type { SpikeContext } from "./context";
+import { spikeAuthHint } from "./supabase-local";
 
 type EnsurePartInput = {
   name: string;
@@ -52,7 +53,7 @@ export async function ensureSpikePart(
 
   if (created.error) {
     throw new Error(
-      `upsertPart failed for ${readableId}: ${created.error.message}`
+      spikeAuthHint(`upsertPart failed for ${readableId}: ${created.error.message}`)
     );
   }
 

@@ -22,5 +22,6 @@ Teardown deletes by **`readableId` prefix** (and legacy `id` prefix), including 
 | Ship | `createDocument` + `postShipment` |
 
 - Input: `example-formula.json` or `SKUU_SPIKE_INPUT`
+- PostgREST URL: `SUPABASE_URL` or **`SKUU_SPIKE_SUPABASE_URL`** (e.g. `http://[::1]:54321` when Cursor Agents shadows `127.0.0.1:54321`)
 - Local-only: `*.local.json` (gitignored)
 - Report: `report-last-run.txt` in this folder

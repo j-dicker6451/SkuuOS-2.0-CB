@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { zfd } from "@carbon/form";
+import { zfd } from "zod-form-data";
 import { z } from "zod";
 
 export const skuuBulkProfileValidator = z.object({

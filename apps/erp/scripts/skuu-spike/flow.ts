@@ -73,6 +73,9 @@ async function receiveLot(
   quantity: number,
   lotLabel: string
 ) {
+  // Batch positive adjustments mint a new trackedEntityId (same as the UI form);
+  // readableId alone books untracked ledger rows with no trackedEntity row.
+  const trackedEntityId = nanoid();
   const handles = handlesOf({
     db: ctx.db,
     companyId: ctx.companyId,
@@ -86,6 +89,7 @@ async function receiveLot(
       itemId,
       locationId: ctx.locationId,
       quantity,
+      trackedEntityId,
       readableId: lotLabel
     },
     postInventoryAdjustment
@@ -95,10 +99,32 @@ async function receiveLot(
     .selectFrom("trackedEntity")
     .select(["id", "readableId", "quantity"])
     .where("companyId", "=", ctx.companyId)
+    .where("id", "=", trackedEntityId)
+    .executeTakeFirst();
+  if (lot) {
+    return lot;
+  }
+  const ledgerRow = await ctx.db
+    .selectFrom("itemLedger")
+    .select("trackedEntityId")
+    .where("companyId", "=", ctx.companyId)
     .where("itemId", "=", itemId)
-    .where("readableId", "=", lotLabel)
-    .executeTakeFirstOrThrow();
-  return lot;
+    .where("entryType", "=", "Positive Adjmt.")
+    .where("trackedEntityId", "is not", null)
+    .orderBy("createdAt", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  if (ledgerRow?.trackedEntityId) {
+    return ctx.db
+      .selectFrom("trackedEntity")
+      .select(["id", "readableId", "quantity"])
+      .where("companyId", "=", ctx.companyId)
+      .where("id", "=", ledgerRow.trackedEntityId)
+      .executeTakeFirstOrThrow();
+  }
+  throw new Error(
+    `receiveLot: no trackedEntity for batch label ${lotLabel} on item ${itemId} — post-inventory-adjustment must receive trackedEntityId + readableId for Batch items`
+  );
 }
 
 async function setupBulkItem(
