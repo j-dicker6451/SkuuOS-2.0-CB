@@ -184,7 +184,7 @@
     "lint": "biome lint --write ",
     "start": "NODE_ENV=production node ./server/node.ts",
     "test": "vitest run",
-    "ssr:smoke": "SKIP_ENV_VALIDATION=1 tsx scripts/ssr-import.smoke.ts",
+    "ssr:smoke": "vitest run test/unit/ssr-module-graph.smoke.test.ts",
     "typecheck": "react-router typegen && ../../packages/dev/bin/heavy-lock tsc --noEmit",
     "typegen": "react-router typegen"
   },
