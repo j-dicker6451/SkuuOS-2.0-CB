@@ -1,0 +1,411 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import "./zod.client";
+import { CONTROLLED_ENVIRONMENT, error, getBrowserEnv } from "@carbon/auth";
+import { flashClientMiddleware } from "@carbon/auth/middleware/flash.client";
+import {
+  flashHeadersContext,
+  flashMiddleware,
+  flashResultContext
+} from "@carbon/auth/middleware/flash.server";
+import { formBodyMiddleware } from "@carbon/auth/middleware/form-body.server";
+import { maintenanceMiddleware } from "@carbon/auth/middleware/maintenance.server";
+import { securityMiddleware } from "@carbon/auth/middleware/security.server";
+import { validator } from "@carbon/form";
+import { LocaleProvider, resolveLanguage } from "@carbon/locale";
+import { requestMiddleware } from "@carbon/logger/middleware.server";
+import { createInvalidationMiddleware } from "@carbon/query/cache";
+import {
+  Button,
+  Heading,
+  OperatingSystemContextProvider,
+  Toaster,
+  useMode,
+  useUiScale
+} from "@carbon/react";
+import type { UiScale } from "@carbon/utils";
+import {
+  colorSchemeHintScript,
+  DENSITY_COOKIE,
+  densityValidator,
+  getPreferenceHeaders,
+  isRootActionPost,
+  modeValidator,
+  prefetchCacheMiddleware,
+  TEXT_SIZE_COOKIE,
+  textSizeValidator,
+  themeByName,
+  themeColorValidator,
+  uiScaleStyle
+} from "@carbon/utils";
+import { faviconLinks } from "@carbon/utils/favicon";
+import { I18nProvider } from "@react-aria/i18n";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Analytics } from "@vercel/analytics/react";
+import type React from "react";
+import { useContext, useState } from "react";
+import type {
+  ActionFunctionArgs,
+  LinksFunction,
+  LoaderFunctionArgs,
+  MetaFunction,
+  ShouldRevalidateFunction
+} from "react-router";
+import {
+  data,
+  isRouteErrorResponse,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  UNSAFE_FrameworkContext,
+  useLoaderData,
+  useRouteLoaderData
+} from "react-router";
+import { preloadCatalog, useCatalog } from "~/services/lingui";
+import {
+  getMode,
+  getUiScale,
+  setMode,
+  setUiScale
+} from "~/services/mode.server";
+import Background from "~/styles/background.css?url";
+import NProgress from "~/styles/nprogress.css?url";
+import Tailwind from "~/styles/tailwind.css?url";
+import { path } from "~/utils/path";
+import { getTheme, setTheme } from "./services/theme.server";
+
+export const middleware = [
+  requestMiddleware,
+  securityMiddleware,
+  maintenanceMiddleware,
+  formBodyMiddleware,
+  flashMiddleware,
+  prefetchCacheMiddleware
+];
+export const clientMiddleware = [
+  flashClientMiddleware,
+  // After every action, cached API reads (the account settings panes) refetch.
+  // The root action only writes appearance cookies: no cached data changed.
+  createInvalidationMiddleware({
+    getCache: () => window.clientCache,
+    skipPaths: [path.to.root]
+  })
+];
+
+// Appearance saves skip every other loader (`defaultShouldRevalidate`).
+export const shouldRevalidate: ShouldRevalidateFunction = (args) =>
+  isRootActionPost(args) || args.defaultShouldRevalidate;
+
+export const links: LinksFunction = () => [
+  { rel: "stylesheet", href: Tailwind },
+  { rel: "stylesheet", href: Background },
+  { rel: "stylesheet", href: NProgress },
+  ...faviconLinks
+];
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: "Carbon | Starter"
+    }
+  ];
+};
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const {
+    CARBON_EDITION,
+    LOG_LEVEL,
+    NODE_ENV,
+    POSTHOG_API_HOST,
+    POSTHOG_PROJECT_PUBLIC_KEY,
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+  } = getBrowserEnv();
+
+  // The starter shares the ERP's catalog: the account settings modal and the
+  // @carbon/react components it renders are extracted into it.
+  const { locale, platform } = getPreferenceHeaders(request);
+  const appLanguage = resolveLanguage(locale);
+  await preloadCatalog(appLanguage);
+
+  return data(
+    {
+      env: {
+        CARBON_EDITION,
+        LOG_LEVEL,
+        NODE_ENV,
+        POSTHOG_API_HOST,
+        POSTHOG_PROJECT_PUBLIC_KEY,
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY
+      },
+      appLanguage,
+      // React Aria formats dates and numbers in the full locale (en-GB).
+      locale,
+      // Shortcut hints (every Button) read it, on the server render too.
+      platform,
+      ...getMode(request),
+      ...getUiScale(request),
+      theme: getTheme(request),
+      result: context.get(flashResultContext)
+    },
+    {
+      headers: context.get(flashHeadersContext) ?? undefined
+    }
+  );
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (
+    !contentType.includes("multipart/form-data") &&
+    !contentType.includes("application/x-www-form-urlencoded")
+  ) {
+    return data({ error: "Invalid content type" }, { status: 400 });
+  }
+
+  const formData = await request.formData();
+
+  // The account settings Appearance pane posts its theme color here too.
+  if (formData.has("theme")) {
+    const themeValidation =
+      await validator(themeColorValidator).validate(formData);
+    if (themeValidation.error) {
+      return data(error(themeValidation.error, "Invalid theme"), {
+        status: 400
+      });
+    }
+    return data(
+      {},
+      {
+        headers: setTheme(themeValidation.data.theme, { inApp: true })
+      }
+    );
+  }
+
+  // The Appearance pane posts its text size and density here too.
+  if (formData.has("textSize")) {
+    const textSizeValidation =
+      await validator(textSizeValidator).validate(formData);
+    if (textSizeValidation.error) {
+      return data(error(textSizeValidation.error, "Invalid text size"), {
+        status: 400
+      });
+    }
+    return data(
+      {},
+      {
+        headers: {
+          "Set-Cookie": setUiScale(
+            TEXT_SIZE_COOKIE,
+            textSizeValidation.data.textSize
+          )
+        }
+      }
+    );
+  }
+
+  if (formData.has("density")) {
+    const densityValidation =
+      await validator(densityValidator).validate(formData);
+    if (densityValidation.error) {
+      return data(error(densityValidation.error, "Invalid density"), {
+        status: 400
+      });
+    }
+    return data(
+      {},
+      {
+        headers: {
+          "Set-Cookie": setUiScale(
+            DENSITY_COOKIE,
+            densityValidation.data.density
+          )
+        }
+      }
+    );
+  }
+
+  const validation = await validator(modeValidator).validate(formData);
+
+  if (validation.error) {
+    return data(error(validation.error, "Invalid mode"), {
+      status: 400
+    });
+  }
+
+  return data(
+    {},
+    {
+      headers: { "Set-Cookie": setMode(validation.data.mode) }
+    }
+  );
+}
+
+function Document({
+  children,
+  title = "Carbon",
+  mode = "light",
+  theme = "zinc",
+  uiScale,
+  lang = "en"
+}: {
+  children: React.ReactNode;
+  title?: string;
+  mode?: "light" | "dark";
+  theme?: string;
+  uiScale?: UiScale;
+  lang?: string;
+}) {
+  const nonce = useContext(UNSAFE_FrameworkContext)?.nonce;
+  const selectedTheme = themeByName(theme);
+
+  // Create style objects for both light and dark modes
+  const lightVars: Record<string, string> = {};
+  const darkVars: Record<string, string> = {};
+
+  Object.entries(selectedTheme.cssVars.light).forEach(([key, value]) => {
+    lightVars[`--${key}`] = `${value}`;
+  });
+  Object.entries(selectedTheme.cssVars.dark).forEach(([key, value]) => {
+    darkVars[`--${key}`] = `${value}`;
+  });
+
+  // Combine the styles with proper selectors
+  const themeStyle = {
+    ...(mode === "dark" ? darkVars : lightVars),
+    "--radius": "0.675rem",
+    ...(uiScale ? uiScaleStyle(uiScale) : {})
+  } as React.CSSProperties;
+
+  return (
+    <html
+      lang={lang}
+      className={`${mode} h-full overflow-x-hidden`}
+      style={themeStyle}
+    >
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* Before any paint: records the OS color scheme for a `system` user
+            and reloads once if the server rendered the wrong mode. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: colorSchemeHintScript }}
+        />
+        <Meta />
+        <title>{title}</title>
+        <Links />
+      </head>
+      <body className="h-full bg-card antialiased selection:bg-primary/10 selection:text-primary">
+        {children}
+        <Toaster position="bottom-right" visibleToasts={5} />
+        <ScrollRestoration />
+        <Scripts />
+        {!CONTROLLED_ENVIRONMENT && import.meta.env.PROD && <Analytics />}
+      </body>
+    </html>
+  );
+}
+
+export default function App() {
+  const nonce = useContext(UNSAFE_FrameworkContext)?.nonce;
+  const loaderData = useLoaderData<typeof loader>();
+  const env = loaderData?.env ?? {};
+  const theme = loaderData?.theme ?? "zinc";
+  const appLanguage = loaderData?.appLanguage ?? "en";
+  const locale = loaderData?.locale ?? appLanguage;
+  const catalog = useCatalog(appLanguage);
+
+  /* Dark/Light Mode */
+  const mode = useMode();
+  const uiScale = useUiScale();
+
+  // One client for useQuery and for the invalidation middleware, which
+  // reaches it as window.clientCache.
+  const [queryClient] = useState(() => {
+    if (typeof window !== "undefined" && window.clientCache) {
+      return window.clientCache;
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { refetchOnWindowFocus: false } }
+    });
+    if (typeof window !== "undefined") {
+      window.clientCache = client;
+    }
+    return client;
+  });
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <OperatingSystemContextProvider
+        platform={loaderData?.platform ?? "windows"}
+      >
+        <LocaleProvider locale={appLanguage} catalog={catalog}>
+          {/* Inside the root, so a language change re-renders it with the
+              new locale, as in the ERP and MES. */}
+          <I18nProvider locale={locale}>
+            <Document
+              mode={mode}
+              theme={theme}
+              uiScale={uiScale}
+              lang={appLanguage}
+            >
+              <Outlet />
+              <script
+                // Server render only: on the client the nonce is undefined (and browsers hide it).
+                nonce={nonce}
+                suppressHydrationWarning
+                dangerouslySetInnerHTML={{
+                  __html: `window.env = ${JSON.stringify(env)}`
+                }}
+              />
+            </Document>
+          </I18nProvider>
+        </LocaleProvider>
+      </OperatingSystemContextProvider>
+    </QueryClientProvider>
+  );
+}
+
+export function ErrorBoundary({ error }: { error: unknown }) {
+  const message = isRouteErrorResponse(error)
+    ? (error.data.message ?? error.data)
+    : error instanceof Error
+      ? error.message
+      : String(error);
+  // Undefined when the root loader itself failed or no route matched.
+  const platform =
+    useRouteLoaderData<typeof loader>("root")?.platform ?? "windows";
+
+  return (
+    <OperatingSystemContextProvider platform={platform}>
+      <Document title="Error!">
+        <div className="light">
+          <div className="flex flex-col w-full h-screen  items-center justify-center space-y-4 ">
+            <img
+              src="/carbon-mark-light.svg"
+              alt="Carbon Logo"
+              className="block max-w-[60px] dark:hidden"
+            />
+            <img
+              src="/carbon-mark-dark.svg"
+              alt="Carbon Logo"
+              className="max-w-[60px] hidden dark:block"
+            />
+            <Heading size="h1">Something went wrong</Heading>
+            <p className="text-muted-foreground max-w-2xl">{message}</p>
+            <Button onClick={() => (window.location.href = "/")}>
+              Back Home
+            </Button>
+          </div>
+        </div>
+      </Document>
+    </OperatingSystemContextProvider>
+  );
+}

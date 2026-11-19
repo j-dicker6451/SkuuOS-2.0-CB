@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon, respond } from "@carbon/api/carbon.server";
+import { error, notFound } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { validator } from "@carbon/form";
+import { useRouteDialog } from "@carbon/react";
+import { redirect } from "@carbon/utils";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import { fixedAssetDisposalValidator } from "~/modules/accounting/accounting.models";
+import { getFixedAsset } from "~/modules/accounting/accounting.service";
+import { FixedAssetDisposalForm } from "~/modules/accounting/ui/FixedAssets";
+import { path } from "~/utils/path";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "accounting"
+  });
+
+  const { fixedAssetId } = params;
+  if (!fixedAssetId) throw notFound("fixedAssetId not found");
+
+  const asset = await getFixedAsset(client, fixedAssetId, companyId);
+  if (asset.error) {
+    throw redirect(
+      path.to.fixedAssets,
+      await flash(request, error(asset.error, "Failed to get fixed asset"))
+    );
+  }
+
+  if (
+    asset.data.status !== "Active" &&
+    asset.data.status !== "Fully Depreciated"
+  ) {
+    throw redirect(
+      path.to.fixedAsset(fixedAssetId),
+      await flash(
+        request,
+        error(null, "Only Active or Fully Depreciated assets can be disposed")
+      )
+    );
+  }
+
+  const nbv =
+    Number(asset.data.acquisitionCost) -
+    Number(asset.data.accumulatedDepreciation);
+
+  return { asset: asset.data, currentNBV: nbv };
+}
+
+export async function action(args: ActionFunctionArgs) {
+  const input = await validator(fixedAssetDisposalValidator).request(args, {
+    params: ["fixedAssetId"]
+  });
+  if ("invalid" in input) return input.invalid;
+  const { fixedAssetId } = input.params;
+  const api = await carbon(args.request);
+  const result = await api.accounting.disposeFixedAsset({
+    fixedAssetId,
+    disposalDate: input.data.disposalDate
+  });
+  return respond(args.request, result).redirect(
+    path.to.fixedAsset(fixedAssetId),
+    { message: "Asset disposed successfully" }
+  );
+}
+
+export default function DisposeFixedAssetRoute() {
+  const { currentNBV } = useLoaderData<typeof loader>();
+  const dialog = useRouteDialog();
+
+  return (
+    <FixedAssetDisposalForm
+      currentNBV={currentNBV}
+      open={dialog.open}
+      onClose={dialog.close}
+    />
+  );
+}

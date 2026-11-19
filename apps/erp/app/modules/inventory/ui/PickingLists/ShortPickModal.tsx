@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { Hidden, NumberControlled, ValidatedForm } from "@carbon/form";
+import { useAction } from "@carbon/query";
+import {
+  Button,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle
+} from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { useEffect, useRef, useState } from "react";
+import { path } from "~/utils/path";
+import { pickQuantityValidator } from "../../inventory.models";
+
+type ShortPickModalProps = {
+  pickingListId: string;
+  lineId: string;
+  itemName: string;
+  quantityToPick: number;
+  quantityPicked: number;
+  unitOfMeasureCode?: string | null;
+  open?: boolean;
+  onClose: () => void;
+};
+
+export function ShortPickModal({
+  open = true,
+  onClose,
+  ...props
+}: ShortPickModalProps) {
+  return (
+    <Modal open={open} onOpenChange={(open) => !open && onClose()}>
+      <ModalContent>
+        <ShortPickBody onClose={onClose} {...props} />
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function ShortPickBody({
+  pickingListId,
+  lineId,
+  itemName,
+  quantityToPick,
+  quantityPicked,
+  unitOfMeasureCode,
+  onClose
+}: Omit<ShortPickModalProps, "open">) {
+  const { t } = useLingui();
+  const fetcher = useAction();
+  const [quantity, setQuantity] = useState(
+    quantityPicked > 0 ? quantityPicked : quantityToPick
+  );
+  const submitted = useRef(false);
+  const isSubmitting = fetcher.state !== "idle";
+
+  useEffect(() => {
+    if (submitted.current && fetcher.state === "idle") {
+      onClose();
+    }
+  }, [fetcher.state, onClose]);
+
+  return (
+    <ValidatedForm
+      method="post"
+      action={path.to.pickingListLineQuantity(pickingListId)}
+      validator={pickQuantityValidator}
+      defaultValues={{
+        pickingListLineId: lineId,
+        quantity,
+        markShort: "true"
+      }}
+      fetcher={fetcher}
+      onSubmit={() => {
+        submitted.current = true;
+      }}
+    >
+      <ModalHeader>
+        <ModalTitle>{t`Short pick ${itemName}`}</ModalTitle>
+        <ModalDescription>
+          <Trans>How many were actually picked?</Trans>
+        </ModalDescription>
+      </ModalHeader>
+      <ModalBody>
+        <Hidden name="pickingListLineId" />
+        <Hidden name="markShort" value="true" />
+        <NumberControlled
+          name="quantity"
+          label={
+            unitOfMeasureCode
+              ? `${t`Picked quantity`} (${unitOfMeasureCode})`
+              : t`Picked quantity`
+          }
+          value={quantity}
+          onChange={setQuantity}
+          minValue={0}
+          maxValue={quantityToPick}
+        />
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>
+          <Trans>Cancel</Trans>
+        </Button>
+        <Button type="submit" isLoading={isSubmitting}>
+          <Trans>Mark Short</Trans>
+        </Button>
+      </ModalFooter>
+    </ValidatedForm>
+  );
+}
+
+export default ShortPickModal;

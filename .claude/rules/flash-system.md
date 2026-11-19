@@ -1,0 +1,124 @@
+---
+description: Flash (toast) session-message system — flash/error/success API, cookie mechanism, and middleware-based toast rendering
+paths:
+  - "packages/auth/src/services/session.server.ts"
+  - "packages/auth/src/middleware/flash.*.ts"
+  - "packages/auth/src/utils/result.ts"
+  - "apps/*/app/root.tsx"
+---
+
+# Flash (Toast) System
+
+Carbon shows success/error toasts via a single-use **session flash cookie**. An action
+writes a `Result` into the session; the next request reads it once (it auto-clears) and a
+client middleware fires the toast. Defined in `@carbon/auth`, consumed by every app
+(`erp`, `mes`, `academy`, `starter`).
+
+## API (`@carbon/auth`)
+
+```ts
+import { error, success } from "@carbon/auth";          // result.ts (re-exported via index)
+import { flash } from "@carbon/auth/session.server";     // session.server.ts
+```
+
+- `success(message = "Request succeeded", data?): Result` → `{ success: true, message }`.
+  Note: the `data` arg is accepted but **ignored** (not returned).
+- `error(error: any, message = "Request failed"): Result` → `{ success: false, message, reason? }`.
+  Logs via `getLogger("auth").error(message, { error })` (`@carbon/logger`) when `error` is truthy.
+  `reason` is `describeCause(error)` (`@carbon/utils`): why it failed, as data. Pass the real
+  error object, never `params` or a string that repeats the title.
+- `flash(request, result): Promise<{ headers: { "Set-Cookie": ... } }>` — commits the
+  result into the `carbon` session cookie and returns a `ResponseInit`-shaped object you
+  spread as the response's second arg. That cookie also holds the signed-in session,
+  so `flash` and `getSessionFlash` commit with `maxAge: SESSION_MAX_AGE`; without it a
+  toast turned the session into one that ends when the browser closes.
+- `Result` type (`packages/auth/src/types.ts`):
+  `{ success: boolean; message?: string; description?: string; reason?: FailureReason; flash?: "success" | "error" }`.
+
+## Usage in actions
+
+`flash(...)` returns `{ headers }`, so pass it as the response init. Use `data(...)` /
+plain objects and `redirect(...)` from `react-router` — **not** the old Remix `json(...)`.
+
+```ts
+// Service error → stay on page, show error toast
+if (result.error) {
+  return data({}, await flash(request, error(result.error, "Failed to create")));
+}
+// Success → throw a redirect carrying the flash headers
+throw redirect(path.to.things, await flash(request, success("Created")));
+```
+
+- `flashData(request, result, value)` (`@carbon/auth/session.server`) is the same
+  stay-on-page response in one call. `respond(...).redirect` uses it for a refused
+  save: `{ formError }` plus the flash, so the toast shows and `ValidatedForm` shows the
+  error on the form (see `module-files.md`).
+- One `flash` call per response (the cookie holds a single message).
+- On success, **`throw redirect(...)`** with the flash headers (not `return redirect`).
+- Validation failures use `validationError(validation.error)` instead (no flash).
+
+## How the toast renders (middleware, not a component `useEffect`)
+
+Each app's `root.tsx` registers both middlewares and threads the result through React
+Router request `context`:
+
+```ts
+import {
+  flashMiddleware, flashClientMiddleware,
+  flashResultContext, flashHeadersContext,
+} from "@carbon/auth/middleware/flash.server"; // + .../flash.client for the client one
+
+export const middleware = [flashMiddleware];
+export const clientMiddleware = [flashClientMiddleware];
+
+// in the root loader:
+return data(
+  { /* ... */, result: context.get(flashResultContext) },
+  { headers: context.get(flashHeadersContext) ?? undefined }
+);
+```
+
+- `flashMiddleware` (server) calls `getSessionFlash(request)` and puts the result +
+  `Set-Cookie` headers into context. The root loader must surface both — returning the
+  headers is what commits the cleared session so the flash doesn't leak to the next page.
+- `flashClientMiddleware` (client) reads `root` route data after `next()` and calls
+  `toast.success(result.message)` / `toast.error(result.message, { description })` from
+  `@carbon/react`. The error description is `result.description`, else
+  `errorDescription(result.message, result.reason)`.
+  The toast fire lives here — there is **no** `useEffect`-on-`result` in the root
+  component anymore.
+- `getSessionFlash` returns `null` when there is no `message`, so empty flashes never toast.
+
+## Show why it failed
+
+Every error toast has a title (what failed) and, when the cause says something, a second
+line (why). The reason travels as data, `FailureReason` (`packages/utils/src/error-reason.ts`):
+a `code` and its `values`. The browser translates it with `<ErrorReason>`
+(`packages/react/src/ErrorReason.tsx`). A `raw` reason (a RAISE in our SQL, an exception's
+message) is shown as it is.
+
+| Where the error is | Use |
+|---|---|
+| A legacy action | `error(theRealError, "Failed to …")`; the flash carries the reason |
+| A service function | `ctx.error("internal", "Failed to …", cause)`; `toResult` sends `title` and `reason` |
+| A custom `useAction` `onError` | `toastServiceError(data)` (`@carbon/query`) |
+| A browser `catch`, a storage upload, a legacy fetcher result | `toastError(title, cause)` (`@carbon/react`) |
+| A single-record update or delete by id | `requireAffected(builder.select("id"))` (`@carbon/utils`); a write RLS skipped then fails with "You don't have permission to change this record, or it no longer exists." |
+
+On a page an outsider can reach (sign-in, invite, verify, callback, MFA, SSO, a share link),
+log the real error with the module logger and pass `null` as the cause: a raw reason there can
+tell an outsider that an account exists.
+
+## Gotchas
+
+- Root loader must return BOTH `result` (from `flashResultContext`) and the headers
+  (from `flashHeadersContext`); dropping the headers means the cookie never clears and the
+  message reappears on the next navigation.
+- `flash()` only writes when `typeof result.success === "boolean"` — always go through
+  `success()` / `error()`.
+- The `Result.flash` field (`"success" | "error"`) is still plumbed through
+  `flash`/`getSessionFlash`, but currently **nothing consumes it**:
+  `apps/mes/app/components/FlashOverlay.tsx` (radial-gradient overlay + `victory.mp3`,
+  300ms) exists but is **orphaned** — `flashOverlay.flash()` is never called and
+  `<FlashOverlay />` is not rendered in MES root. Treat the visual-overlay path as dead
+  code, not an active feature. <!-- UNVERIFIED: whether the overlay is intended to be re-wired -->

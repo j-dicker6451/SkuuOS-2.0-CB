@@ -1,0 +1,492 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import {
+  Button,
+  Checkbox,
+  MENU_ITEM_SHORTCUTS,
+  MenuIcon,
+  MenuItem,
+  useDisclosure
+} from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ColumnDef } from "@tanstack/react-table";
+import { memo, useCallback, useMemo, useState } from "react";
+import {
+  LuBookMarked,
+  LuCalendar,
+  LuCheck,
+  LuCirclePlus,
+  LuClipboardCheck,
+  LuClipboardX,
+  LuClock,
+  LuFileText,
+  LuHash,
+  LuPencil,
+  LuTrash,
+  LuUser
+} from "react-icons/lu";
+import { useFetcher, useNavigate } from "react-router";
+import {
+  DateTime,
+  EmployeeAvatar,
+  Hyperlink,
+  SupplierAvatar,
+  Table
+} from "~/components";
+import { Enumerable } from "~/components/Enumerable";
+import { ConfirmDelete } from "~/components/Modals";
+import { NewAction } from "~/components/New";
+import type { InfiniteOptions } from "~/components/Table";
+import { usePermissions, useUrlParams } from "~/hooks";
+import { useCustomColumns } from "~/hooks/useCustomColumns";
+import {
+  receiptInspectionStatusType,
+  receiptSourceDocumentType,
+  receiptStatusType
+} from "~/modules/inventory/inventory.models";
+import type { Receipt } from "~/modules/inventory/types";
+import { ReceiptStatus } from "~/modules/inventory/ui";
+import { usePeople, useSuppliers } from "~/stores";
+import { path } from "~/utils/path";
+import ReceiptInspectionStatus from "./ReceiptInspectionStatus";
+
+function NewReceipt() {
+  const fetcher = useFetcher();
+  const { t } = useLingui();
+  return (
+    <NewAction
+      label={t`Add Receipt`}
+      isDisabled={fetcher.state !== "idle"}
+      onClick={() =>
+        fetcher.submit(null, { method: "post", action: path.to.newReceipt })
+      }
+    >
+      <fetcher.Form method="post" action={path.to.newReceipt}>
+        <Button
+          type="submit"
+          leftIcon={<LuCirclePlus />}
+          variant="primary"
+          isLoading={fetcher.state !== "idle"}
+        >
+          <Trans>Add Receipt</Trans>
+        </Button>
+      </fetcher.Form>
+    </NewAction>
+  );
+}
+
+type ReceiptsTableProps = {
+  data: Receipt[];
+  count: number;
+  infinite: InfiniteOptions;
+};
+
+const ReceiptsTable = memo((props: ReceiptsTableProps) => {
+  const { data, count, infinite } = props;
+  // The route's `handle.realtime` follows every receipt of the company, so
+  // the rows of a later page refresh too.
+
+  const [params] = useUrlParams();
+  const { t } = useLingui();
+  const navigate = useNavigate();
+  const permissions = usePermissions();
+
+  const rows = useMemo(() => data, [data]);
+  const [people] = usePeople();
+  const [suppliers] = useSuppliers();
+  const customColumns = useCustomColumns<Receipt>("receipt");
+
+  const columns = useMemo<ColumnDef<Receipt>[]>(() => {
+    const result: ColumnDef<(typeof rows)[number]>[] = [
+      {
+        accessorKey: "receiptId",
+        header: t`Receipt ID`,
+        cell: ({ row }) => (
+          <Hyperlink to={path.to.receiptDetails(row.original.id!)}>
+            {row.original.receiptId}
+          </Hyperlink>
+        ),
+        meta: {
+          mobile: "P1",
+          icon: <LuBookMarked />
+        }
+      },
+      {
+        accessorKey: "sourceDocument",
+        header: t`Source Document`,
+        cell: (item) => <Enumerable value={item.getValue<string>()} />,
+        meta: {
+          mobile: "P2",
+          filter: {
+            type: "static",
+            options: receiptSourceDocumentType.map((type) => ({
+              value: type,
+              label: <Enumerable value={type} />
+            }))
+          },
+          icon: <LuFileText />
+        }
+      },
+      {
+        accessorKey: "sourceDocumentReadableId",
+        header: t`Source Document ID`,
+        cell: ({ row }) => {
+          if (!row.original.sourceDocumentId) return null;
+          switch (row.original.sourceDocument) {
+            case "Purchase Order":
+              return (
+                <Hyperlink
+                  to={path.to.purchaseOrderDetails(
+                    row.original.sourceDocumentId!
+                  )}
+                >
+                  {row.original.sourceDocumentReadableId}
+                </Hyperlink>
+              );
+            case "Purchase Invoice":
+              return (
+                <Hyperlink
+                  to={path.to.purchaseInvoice(row.original.sourceDocumentId!)}
+                >
+                  {row.original.sourceDocumentReadableId}
+                </Hyperlink>
+              );
+            case "Inbound Transfer":
+              return (
+                <Hyperlink
+                  to={path.to.warehouseTransferDetails(
+                    row.original.sourceDocumentId!
+                  )}
+                >
+                  {row.original.sourceDocumentReadableId}
+                </Hyperlink>
+              );
+            case "Rental Agreement":
+              return (
+                <Hyperlink
+                  to={path.to.rentalAgreementDetails(
+                    row.original.sourceDocumentId!
+                  )}
+                >
+                  {row.original.sourceDocumentReadableId}
+                </Hyperlink>
+              );
+            default:
+              return null;
+          }
+        },
+        meta: {
+          icon: <LuHash />
+        }
+      },
+
+      {
+        accessorKey: "status",
+        header: t`Status`,
+        cell: (item) => {
+          const status = item.getValue<(typeof receiptStatusType)[number]>();
+          return <ReceiptStatus status={status} />;
+        },
+        meta: {
+          mobile: "P2",
+          filter: {
+            type: "static",
+            options: receiptStatusType.map((type) => ({
+              value: type,
+              label: <ReceiptStatus status={type} />
+            }))
+          },
+          pluralHeader: t`Statuses`,
+          icon: <LuClock />
+        }
+      },
+      {
+        accessorKey: "inspectionStatus",
+        header: t`Inspection`,
+        cell: (item) => (
+          <ReceiptInspectionStatus
+            status={item.getValue<
+              (typeof receiptInspectionStatusType)[number]
+            >()}
+          />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: receiptInspectionStatusType.map((status) => ({
+              value: status,
+              label: <ReceiptInspectionStatus status={status} showNotRequired />
+            }))
+          },
+          pluralHeader: t`Inspection Statuses`,
+          icon: <LuClipboardCheck />
+        }
+      },
+      {
+        accessorKey: "rejectedAtInspection",
+        header: t`Rejected at Inspection`,
+        cell: (item) => (
+          <Checkbox
+            aria-label={t`Rejected at Inspection`}
+            isChecked={item.getValue<boolean>()}
+          />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: [
+              { value: "true", label: t`Yes` },
+              { value: "false", label: t`No` }
+            ]
+          },
+          icon: <LuClipboardX />
+        }
+      },
+      {
+        id: "postedBy",
+        header: t`Posted By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.postedBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "postingDate",
+        header: t`Posting Date`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          filter: {
+            type: "dateRange"
+          },
+          icon: <LuCalendar />
+        }
+      },
+      {
+        accessorKey: "assignee",
+        header: t`Assignee`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.assignee} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        id: "supplierId",
+        header: t`Supplier`,
+        cell: ({ row }) => {
+          return <SupplierAvatar supplierId={row.original.supplierId} />;
+        },
+        meta: {
+          mobile: "P3",
+          filter: {
+            type: "static",
+            options: suppliers?.map((supplier) => ({
+              value: supplier.id,
+              label: supplier.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+
+      {
+        accessorKey: "invoiced",
+        header: t`Invoiced`,
+        cell: (item) => {
+          const receiptId = item.row.original.receiptId;
+          return (
+            <Checkbox
+              isChecked={item.getValue<boolean>()}
+              aria-label={t`Invoiced: ${receiptId}`}
+            />
+          );
+        },
+        meta: {
+          filter: {
+            type: "static",
+            options: [
+              { value: "true", label: "Yes" },
+              { value: "false", label: "No" }
+            ]
+          },
+          pluralHeader: t`Invoiced Statuses`,
+          icon: <LuCheck />
+        }
+      },
+      {
+        accessorKey: "externalDocumentId",
+        header: t`External Ref.`,
+        cell: (item) => item.getValue(),
+        meta: {
+          icon: <LuHash />
+        }
+      },
+      {
+        id: "createdBy",
+        header: t`Created By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.createdBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "createdAt",
+        header: t`Created At`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          icon: <LuCalendar />
+        }
+      },
+      {
+        id: "updatedBy",
+        header: t`Updated By`,
+        cell: ({ row }) => (
+          <EmployeeAvatar employeeId={row.original.updatedBy} />
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: people.map((employee) => ({
+              value: employee.id,
+              label: employee.name
+            }))
+          },
+          icon: <LuUser />
+        }
+      },
+      {
+        accessorKey: "updatedAt",
+        header: t`Updated At`,
+        cell: (item) => (
+          <DateTime value={item.getValue<string>()} variant="date" />
+        ),
+        meta: {
+          icon: <LuCalendar />
+        }
+      }
+    ];
+
+    return [...result, ...customColumns];
+  }, [people, suppliers, customColumns, t]);
+
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const deleteReceiptModal = useDisclosure();
+
+  const renderContextMenu = useCallback(
+    (row: Receipt) => {
+      return (
+        <>
+          <MenuItem
+            shortcut={
+              row.postingDate
+                ? MENU_ITEM_SHORTCUTS.view
+                : MENU_ITEM_SHORTCUTS.edit
+            }
+            disabled={!permissions.can("update", "inventory")}
+            onClick={() => {
+              navigate(
+                `${path.to.receiptDetails(row.id!)}?${params.toString()}`
+              );
+            }}
+          >
+            <MenuIcon icon={<LuPencil />} />
+            {row.postingDate ? t`View Receipt` : t`Edit Receipt`}
+          </MenuItem>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.delete}
+            disabled={
+              !permissions.can("delete", "inventory") ||
+              !!row.postingDate ||
+              row.status === "Pending"
+            }
+            destructive
+            onClick={() => {
+              setSelectedReceipt(row);
+              deleteReceiptModal.onOpen();
+            }}
+          >
+            <MenuIcon icon={<LuTrash />} />
+            <Trans>Delete Receipt</Trans>
+          </MenuItem>
+        </>
+      );
+    },
+    [deleteReceiptModal, navigate, params, permissions, t]
+  );
+
+  return (
+    <>
+      <Table<(typeof data)[number]>
+        getRowLabel={(row) => row.receiptId ?? undefined}
+        data={data}
+        infinite={infinite}
+        columns={columns}
+        count={count}
+        defaultColumnPinning={{
+          left: ["receiptId"]
+        }}
+        defaultColumnVisibility={{
+          createdAt: false,
+          rejectedAtInspection: false,
+          createdBy: false,
+          updatedAt: false,
+          updatedBy: false
+        }}
+        primaryAction={permissions.can("create", "inventory") && <NewReceipt />}
+        renderContextMenu={renderContextMenu}
+        title={t`Receipts`}
+        table="receipt"
+        withSavedView
+      />
+      {selectedReceipt && selectedReceipt.id && (
+        <ConfirmDelete
+          action={path.to.deleteReceipt(selectedReceipt.id)}
+          isOpen={deleteReceiptModal.isOpen}
+          name={selectedReceipt.receiptId!}
+          text={`Are you sure you want to delete ${selectedReceipt.receiptId!}? This cannot be undone.`}
+          onCancel={() => {
+            deleteReceiptModal.onClose();
+          }}
+          onSubmit={() => {
+            deleteReceiptModal.onClose();
+          }}
+        />
+      )}
+    </>
+  );
+});
+
+ReceiptsTable.displayName = "ReceiptsTable";
+export default ReceiptsTable;

@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon, respond } from "@carbon/api/carbon.server";
+import { notFound } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { fetchAllFromTable } from "@carbon/database";
+import { validator } from "@carbon/form";
+import { RecordOutlet, useRouteDialog } from "@carbon/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import { storageUnitValidator } from "~/modules/inventory/inventory.models";
+import {
+  getEffectiveWorkCenterId,
+  getStorageUnit
+} from "~/modules/inventory/inventory.service";
+import {
+  type NonNettableUnit,
+  nonNettableSource
+} from "~/modules/inventory/inventory.utils";
+import { StorageUnitForm } from "~/modules/inventory/ui";
+import { getWorkCentersList } from "~/modules/resources/resources.service";
+import { getCustomFields, setCustomFields } from "~/utils/form";
+import { getParams, path } from "~/utils/path";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "inventory",
+    role: "employee"
+  });
+
+  const { storageUnitId } = params;
+  if (!storageUnitId) throw notFound("storageUnitId not found");
+
+  const [storageUnit, effectiveWorkCenter, workCenters] = await Promise.all([
+    getStorageUnit(client, storageUnitId),
+    getEffectiveWorkCenterId(client, storageUnitId),
+    getWorkCentersList(client, companyId)
+  ]);
+
+  const ownWorkCenterId = storageUnit?.data?.workCenterId ?? null;
+  const effectiveWorkCenterId = effectiveWorkCenter?.data ?? null;
+  const isInherited = !ownWorkCenterId && !!effectiveWorkCenterId;
+
+  // Find the name of the inherited work center for display
+  let inheritedWorkCenterName: string | null = null;
+  if (isInherited && effectiveWorkCenterId) {
+    const wc = workCenters?.data?.find((w) => w.id === effectiveWorkCenterId);
+    inheritedWorkCenterName = wc?.name ?? null;
+  }
+
+  // Nettable by its own flag, yet a parent or one of its storage types makes
+  // it non-nettable: say which.
+  const unit = storageUnit?.data;
+  let inheritedNonNettable: ReturnType<typeof nonNettableSource> = null;
+  if (unit?.nettable === true && unit.effectiveNettable === false) {
+    // Every ancestor is in the unit's location, inactive ones included.
+    const [units, types] = await Promise.all([
+      fetchAllFromTable<NonNettableUnit>(
+        client,
+        "storageUnit",
+        "id, name, parentId, nettable, storageTypeIds",
+        (query) =>
+          query
+            .eq("locationId", unit.locationId)
+            .eq("companyId", companyId)
+            .order("id")
+      ),
+      client
+        .from("storageType")
+        .select("id, name")
+        .eq("companyId", companyId)
+        .eq("nettable", false)
+    ]);
+    inheritedNonNettable = nonNettableSource(
+      unit,
+      new Map((units.data ?? []).map((u) => [u.id, u])),
+      new Map((types.data ?? []).map((t) => [t.id, t.name]))
+    );
+  }
+
+  return {
+    storageUnit: storageUnit?.data ?? null,
+    inheritedNonNettable,
+    inheritedWorkCenter: isInherited
+      ? {
+          workCenterId: effectiveWorkCenterId,
+          workCenterName: inheritedWorkCenterName
+        }
+      : null
+  };
+}
+
+export async function action(args: ActionFunctionArgs) {
+  const input = await validator(storageUnitValidator).request(args, {
+    params: ["storageUnitId"]
+  });
+  if ("invalid" in input) return input.invalid;
+  const { id: _, ...storageUnit } = input.data;
+  const api = await carbon(args.request);
+  const result = await api.inventory.updateStorageUnit({
+    ...storageUnit,
+    id: input.params.storageUnitId,
+    customFields: input.formData && setCustomFields(input.formData)
+  });
+  // An error is toasted and the drawer stays open.
+  if (result.error) return result;
+  return respond(args.request, result).redirect(
+    `${path.to.storageUnits}?${getParams(args.request)}`,
+    { message: "Updated storage unit" }
+  );
+}
+
+export default function EditStorageUnitRoute() {
+  const { storageUnit, inheritedWorkCenter, inheritedNonNettable } =
+    useLoaderData<typeof loader>();
+  const dialog = useRouteDialog();
+
+  const initialValues = {
+    id: storageUnit?.id ?? undefined,
+    name: storageUnit?.name ?? "",
+    locationId: storageUnit?.locationId ?? "",
+    warehouseId: storageUnit?.warehouseId ?? undefined,
+    parentId: storageUnit?.parentId ?? undefined,
+    workCenterId: storageUnit?.workCenterId ?? undefined,
+    storageTypeIds: storageUnit?.storageTypeIds ?? [],
+    nonNettable: storageUnit?.nettable === false,
+    kitRack: storageUnit?.kitRack ?? false,
+    ...getCustomFields(storageUnit?.customFields)
+  };
+
+  return (
+    <>
+      <StorageUnitForm
+        key={initialValues.id}
+        initialValues={initialValues}
+        locationId={initialValues.locationId}
+        inheritedWorkCenter={inheritedWorkCenter}
+        inheritedNonNettable={inheritedNonNettable}
+        open={dialog.open}
+        onClose={dialog.close}
+      />
+      <RecordOutlet />
+    </>
+  );
+}

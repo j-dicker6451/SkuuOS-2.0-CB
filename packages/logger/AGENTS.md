@@ -1,0 +1,206 @@
+# @carbon/logger
+
+Centralized, isomorphic logger built on [LogTape](https://logtape.org). Works in
+browser and Node (SSR + Inngest jobs). Replaces raw `console.*`. The Deno code
+cannot import workspace packages and uses `console` directly: the `embedding`
+edge function and the edge runtime's `edge-runtime/main/index.ts`. Structured records, hierarchical
+categories, env-driven levels, and cloud-agnostic request-id correlation.
+
+## Always
+
+- Get a logger with `getLogger(...segments)` — it prepends the `carbon` root:
+  `getLogger("auth")` → `["carbon","auth"]`, `getLogger("erp","sales")` →
+  `["carbon","erp","sales"]`. One module-level logger per file, never
+  `getLogger(...).x(` inline. A logger works the moment you ask for it: until
+  the app calls `ensureLoggingConfigured`, records go to a plain console sink,
+  so scripts, seeds and tests need no setup.
+- Categories are hierarchical, one segment per argument (never `"a/b"`):
+  packages → `getLogger("<pkg>", ...)`; ERP → `getLogger("erp","<module>"[,
+  "<area>"])`; MES → `getLogger("mes", ...)`; jobs → `getLogger("jobs","<fn>")`.
+- A message is a fixed sentence; values go in the properties
+  (`logger.error("Failed to post {document}", { document, error })`). Error
+  spans group by the message template, so a value interpolated into it (`${}`)
+  splits one error into many — `no-interpolated-error-log` enforces it for
+  errors. An error goes under `error`, as the error itself: the JSONL formatter
+  serializes its name, message, stack and own fields.
+- Levels: `trace | debug | info | warning | error | fatal` — `warning`, never
+  the `warn` alias (the `Logger` type has none). `LOG_LEVEL` overrides the
+  default: dev `debug`, server prod `info`, browser prod `warning`, tests
+  `warning`.
+- Every log line written during a request carries `requestId`, and
+  `companyId`/`userId` once `requirePermissions` (or the MCP OAuth path) has
+  resolved them (`addLogContext`, `@carbon/logger/context.server`, which also
+  takes a route's own fields, such as MCP's `authKind`). The dev terminal hides
+  the ids the request added and shows a record's own (a job's `companyId`). A call's own
+  property of the same name wins, so a loop over companies passes `companyId`.
+  Read the id with `getRequestId(context)` or `getRequestId()`
+  (`@carbon/logger/middleware.server`).
+- Inngest's `ctx.logger` takes the same call (`(message, properties)` or
+  `(message, error)`); use it in a function body, where Inngest suppresses its
+  lines on replay.
+- The layer that handles a failure logs it. A helper that throws or returns
+  the failure does not log it as well. The `error()` result helper
+  (`@carbon/auth`) logs the failure it returns, with an optional context
+  argument for the record ids — so a route does not log before calling it.
+  Its message is the log template, so it is a fixed sentence
+  (`error(err, "Failed to delete the quote")`), never the error's own text:
+  that reaches the person as the toast's reason. A refusal the person must
+  fix (a rule, a missing plan) passes `null`, so it is not logged as an error.
+- Request-scoped memoization: `oncePerRequest(key, fn)` computes once per HTTP
+  request; `oncePerRead(key, fn)` does the same but ONLY on GET/HEAD/OPTIONS.
+  Use `oncePerRead` for anything derived from database state — React Router runs
+  an action and its loader revalidation in one request, so a plain memo there
+  would serve pre-write data. `oncePerRequest` is for values that are not
+  database state (e.g. a Supabase client).
+- Request-body logging is **debug-only** and guarded: `requestMiddleware`
+  captures the body onto the access-log record's `body` prop **only** when
+  `LOG_LEVEL=debug` (skipped entirely at the prod `info` default — no clone, no
+  parse). It covers `POST/PUT/PATCH/DELETE` with `application/json` or
+  `application/x-www-form-urlencoded` bodies at/under 8KB (`content-length`
+  required); multipart uploads, oversized, and unknown-length bodies log a short
+  marker instead. Sensitive fields (`password`/`token`/`secret`/… — the
+  `REDACT_FIELD_PATTERNS` set in `src/redaction.ts`) are masked `[REDACTED]` in
+  the captured object. That set is LogTape's `DEFAULT_REDACT_FIELDS` minus
+  `email`/`phone`/`address` — ordinary ERP business data stays visible, and the
+  prod sink MASKS matched fields rather than deleting them (a deleted key once
+  made a PGRST204 failure unreconstructable from the log line). The body is read
+  from a clone, so the route handler's stream stays intact.
+
+## Ask First
+
+- Changing the sink/formatter setup in `config.server.ts` or the fallback in
+  `logger.ts` (affects every log line's shape — dev ANSI vs prod JSONL + field redaction).
+- Changing the category root or the `LOG_LEVEL` default derivation.
+- Adding a new log sink target (file, OTEL logs, Sentry) or a new trace exporter —
+  these change deploy shape.
+
+## Never
+
+- Import `./config.server`, `./middleware.server`, or anything Node-only from
+  client code. Node-only modules use the `.server.ts` suffix; the React Router
+  Vite plugin errors at build if one reaches the client graph.
+- Depend on `@carbon/env` from this package. `@carbon/env` throws at module load
+  on missing required vars; logging must stay importable in any context. It reads
+  `LOG_LEVEL` / `NODE_ENV` raw via `src/env.ts` instead.
+
+## Validation Commands
+
+```bash
+pnpm --filter @carbon/logger typecheck
+pnpm --filter @carbon/logger test
+```
+
+## Key Exports
+
+| Subpath | Provides |
+|---------|----------|
+| `.` | `getLogger`, `Logger` type (no `warn`) — isomorphic, safe everywhere |
+| `./config.server` | `ensureLoggingConfigured()` (ANSI dev / JSONL+redacted prod; adds the request log context to each record; logs unhandled rejections and uncaught exceptions, exiting on the second, under `carbon.logger.server`) |
+| `./configure.server` | Calls `ensureLoggingConfigured()` when imported: each app's first `entry.server.tsx` import |
+| `./context.server` | The request scope: `requestContextMiddleware`, `currentRequest`, `isReadRequest`, `getRouterContext`, `getRequestContext`, `oncePerRequest`, `oncePerRead`, `describeRequest(detail)` (access-log detail and request span name), `addLogContext` / `withRequestLogContext`, `runInRequestContext` (tests) |
+| `./middleware.server` | `requestMiddleware` (request context + request id + access log in one), `handleServerError` (each app's `handleError`), `requestIdContext`, `getRequestId`, `REQUEST_ID_HEADER` |
+| `./span` | Spans through the OpenTelemetry API only, safe in browser-reachable code: `withSpan(name, attributes, run(span))`, `startSpan`, `failSpan`, `annotateRequestSpan`, `nameRequestSpan` |
+| `./tracing.server` | `createTracing({ serviceName, afterRequest, spanProcessors })` — React Router `instrumentations` (OpenTelemetry); `timedMiddleware({ name: fn })`; `queryLog` — Kysely `log` hook, `undefined` when tracing is off; `traceConnectionWaits(pool)` |
+| `./inngest` | `createInngestLogger()` — adapter passed to `new Inngest({ logger })` |
+
+## Wiring (per app)
+
+- `entry.server.tsx`: `import "@carbon/logger/configure.server"` as the FIRST
+  import (modules evaluate in import order, so a line another module writes at
+  load time already gets the app's sinks), and
+  `export { handleServerError as handleError } from "@carbon/logger/middleware.server"`.
+  `handleServerError` skips a thrown `Response` or `data()` (control flow) and a
+  read the client abandoned; it logs everything else, a write that failed after
+  the client left included.
+- `entry.client.tsx`: nothing. The browser uses the fallback configuration.
+- `entry.server.tsx` in erp and mes also exports
+  `instrumentations = createTracing({ serviceName: "carbon-erp", afterRequest })`.
+- `root.tsx`: `requestMiddleware` FIRST in the root `middleware`, so every
+  downstream middleware and handler runs inside the request scope. erp and mes
+  wrap the list in `timedMiddleware({ request: requestMiddleware, security, … })`;
+  academy and starter use a plain array.
+
+## Tracing (OpenTelemetry)
+
+`src/tracing.server.ts`. **Off unless enabled**: with no
+`OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`),
+`createTracing` returns `[]`, no provider or fetch
+instrumentation is registered, `queryLog` is `undefined` so Kysely installs no
+hook, and `annotateRequestSpan` finds no request span and does nothing. The library code is loaded
+but nothing in it runs.
+
+Nothing here is specific to a vendor or host. Configuration is the standard OTel
+variables, read by the exporter and SDK themselves, so any OTLP backend works:
+
+```bash
+# Axiom — the host is your Axiom edge domain (api.axiom.co is the US default)
+OTEL_EXPORTER_OTLP_ENDPOINT="https://api.axiom.co"
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20<api-token>,X-Axiom-Dataset=<dataset>"
+# optional
+OTEL_SERVICE_NAME="carbon-erp"                     # default: the app's serviceName
+OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=production,service.version=<sha>"
+OTEL_TRACES_SAMPLER="parentbased_traceidratio"     # default: every request
+OTEL_TRACES_SAMPLER_ARG="0.1"
+```
+
+One trace per request:
+
+- **Request span** (`SERVER`) — named by method until a route handler reports the
+  matched pattern, then `GET /x/part/:itemId/details`. Carries `http.route`,
+  `url.path`, and — set by `requestMiddleware` through `annotateRequestSpan` —
+  `http.response.status_code` and `carbon.request_id` (the id on every log line
+  of that request). React Router 7.18's request instrumentation reports neither
+  the status nor the pattern, which is why they arrive from those two places.
+  A route that serves many things on one path calls `describeRequest(detail)`,
+  which names the span `POST /api/inngest carbon-event-queue` /
+  `POST /api/mcp call_tool sales_getCustomers` and puts the detail on the
+  access log; the v1 API renames it by path with `nameRequestSpan`
+  (`POST /api/v1/sales/getCustomers`).
+  Only known function ids and operations go into the name; the same values are
+  on `inngest.function.id` / `carbon.operation` for grouping.
+- **`loader|action <routeId>`** spans, one per route handler. Middleware get
+  no span: a middleware span contains everything after it, so it read as slow
+  whenever a loader was. The apps wrap the root list in
+  `timedMiddleware({ name: fn, ... })`, which records each middleware's OWN
+  time on the request span as `carbon.middleware.<name>.ms` (its total minus
+  the time in what it calls next). Named by key, not `fn.name`: the production
+  build minifies function names.
+- **Fetch spans** from `@opentelemetry/instrumentation-undici`, only for fetches
+  made inside a request (`requireParentforSpans`). `fetchSpanName` names a
+  Supabase call by what it does — `GET /rest/v1/methodMaterial`,
+  `storage download`, `auth GET user`, `function get-method` — and anything else
+  by host. Names never carry ids, bucket names or file paths; those are on
+  `url.path`. `url.full` and `url.query` get the access log's `redactSearch`
+  masking.
+
+- **Operation spans**, from `withSpan`. Every Carbon API operation runs through
+  its oRPC procedure (`api+/v1+/lib/router.server.ts`), whose outermost
+  middleware opens `operation sales_getCustomers` — so the HTTP API, MCP
+  `call_tool`, the agent and workflows are all named in one place. The MCP
+  server (`@carbon/ee/mcp.server`) wraps `registerTool` to open
+  `mcp call_tool sales_getCustomers` / `mcp search_tools` around each tool call.
+  Both also set `carbon.operation` (and `carbon.mcp.tool`) on the request span,
+  so a request can be grouped by what it ran without joining spans.
+
+- **Query spans** for Kysely, from `queryLog` passed as Kysely's `log` hook at
+  the three places a client is built (`apps/{erp,mes}/app/services/database.server.ts`,
+  `packages/jobs/src/db.ts`, through `getPostgresClient`'s third argument). Named
+  `SELECT item` / `INSERT jobMaterial` — the verb and the first quoted table —
+  with the SQL in `db.query.text`. Bound parameter values are never recorded.
+  Kysely reports a query after it ran, so the span is back-dated by the measured
+  duration, which covers the query but not the wait for a pooled connection, and
+  `BEGIN`/`COMMIT` are not reported at all.
+
+Not traced: Redis, and anything that talks HTTP through Node's `http` module
+rather than `fetch`. That time shows up inside the enclosing loader or action span.
+
+The batch is exported on a timer (every 5 s by default, `OTEL_BSP_*` to tune).
+A host that suspends the process once a response is sent would strand it, so
+`createTracing` takes an optional `afterRequest(flush)`; the apps pass one only
+when `VERCEL` is set, handing the flush to `waitUntil` from `@vercel/functions`.
+That host-specific line lives in each app's `entry.server.tsx`, not here.
+
+## Cross-References
+
+- `packages/lib/src/inngest/client.ts` — consumes `createInngestLogger()`.
+- `packages/env/` — defines `LOG_LEVEL` (also exposed to `window.env`).

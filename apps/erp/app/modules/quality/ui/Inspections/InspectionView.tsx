@@ -1,0 +1,1273 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useLoaderQuery } from "@carbon/query";
+import type { JSONContent } from "@carbon/react";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  ClientOnly,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  HStack,
+  IconButton,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  ModalTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  useDisclosure,
+  usePaneResize,
+  useViewport,
+  VStack
+} from "@carbon/react";
+import {
+  formatSpecLabel,
+  getReadableIdWithRevision,
+  INSPECTION_DRAWING_HIDDEN_STORAGE_KEY
+} from "@carbon/utils";
+import { Trans, useLingui } from "@lingui/react/macro";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
+import {
+  LuChevronDown,
+  LuChevronUp,
+  LuCircleX,
+  LuEllipsisVertical,
+  LuEye,
+  LuEyeOff,
+  LuFileText,
+  LuScan,
+  LuShieldAlert,
+  LuShieldX,
+  LuTrash,
+  LuTriangleAlert
+} from "react-icons/lu";
+import { Link, useFetcher } from "react-router";
+import {
+  RecordAction,
+  RecordHero,
+  RecordPhoneChrome
+} from "~/components/Layout/RecordHeader";
+import { Confirm } from "~/components/Modals";
+import { usePermissions, useUser } from "~/hooks";
+import type {
+  InspectionGauge,
+  InspectionIssue,
+  InspectionMeasurement,
+  InspectionRow,
+  InspectionSample,
+  InspectionSamplingPlan,
+  InspectionTrackedEntity,
+  IssueTypeListItem
+} from "~/modules/quality/types";
+import { useItems } from "~/stores/items";
+import { path } from "~/utils/path";
+import type { DrawingBalloon } from "./InspectionDrawingPane";
+import type {
+  InspectionParameter,
+  MeasurementSaveResult
+} from "./InspectionMeasurementGrid";
+import InspectionMeasurementGrid from "./InspectionMeasurementGrid";
+import { InspectionStatus } from "./InspectionStatus";
+import {
+  canCancelInspection,
+  canDeleteInspection,
+  type ManualInspectionAction,
+  ManualInspectionConfirm
+} from "./ManualInspectionConfirm";
+import OpenNcrModal from "./OpenNcrModal";
+import PartialLotModal from "./PartialLotModal";
+import type { FailedFeatureSummary } from "./RejectLotModal";
+import RejectLotModal from "./RejectLotModal";
+import ScanInspectionSample from "./ScanInspectionSample";
+
+const InspectionDrawingPane = lazy(() => import("./InspectionDrawingPane"));
+const ModelUploadPreview = lazy(
+  () => import("@carbon/viewer/model-upload-preview")
+);
+
+// Vertical-stack sizing, mirrored from InspectionDocumentEditor: the PDF pane
+// keeps a pinned height while the features grid is expanded; a draggable
+// splitter trades space between them.
+const STACK_SPLITTER_H = 8;
+const MIN_PDF_PANE_PX = 160;
+
+/** When the grid is expanded it keeps at least half the stack; PDF height is capped accordingly. */
+function clampPdfPaneHeight(
+  pdfPx: number,
+  stackH: number,
+  gridExpanded: boolean
+): number {
+  if (!gridExpanded || stackH <= STACK_SPLITTER_H + MIN_PDF_PANE_PX) {
+    return Math.max(MIN_PDF_PANE_PX, pdfPx);
+  }
+  const minGrid = stackH * 0.5;
+  const maxPdf = Math.max(MIN_PDF_PANE_PX, stackH - STACK_SPLITTER_H - minGrid);
+  return Math.min(maxPdf, Math.max(MIN_PDF_PANE_PX, pdfPx));
+}
+
+export type InspectionViewProps = {
+  inspection: InspectionRow;
+  sourceDocumentReadableId: string | null;
+  receiverId: string | null;
+  /** The receipt was voided: its stock was never received, so the lot is closed. */
+  receiptVoided: boolean;
+  itemName: string;
+  itemTrackingType: string | null;
+  supplierName: string | null;
+  samples: InspectionSample[];
+  features: InspectionSamplingPlan[];
+  measurements: InspectionMeasurement[];
+  // Active gauges, and the ones most recently recorded at this lot's work
+  // center (receipts are their own), newest first.
+  gauges: InspectionGauge[];
+  recentGaugeIds: string[];
+  balloons: {
+    id: string;
+    inspectionFeatureId: string;
+    pageNumber: number;
+    xCoordinate: number;
+    yCoordinate: number;
+    regionX: number;
+    regionY: number;
+    regionWidth: number;
+    regionHeight: number;
+  }[];
+  documentName: string | null;
+  /** The plan's parameters, read live from the plan. */
+  parameters: InspectionParameter[];
+  /** The plan's work instructions (Tiptap JSON), read live from the plan. */
+  workInstruction: JSONContent | null;
+  pdfUrl: string | null;
+  /** A plan made from a model's PMI: the drawing pane shows the model. */
+  model: { modelUploadId: string; modelPath: string | null } | null;
+  lotEntities: InspectionTrackedEntity[];
+  issueTypes: IssueTypeListItem[];
+  /** The issues linked to this lot (a rejected lot's NCR, or a manual link). */
+  issues: InspectionIssue[];
+  currentUserId: string;
+  enforceFourEyes: boolean;
+};
+
+// Full-screen inbound inspection execution view. One UI for every lot: the
+// measurement grid, with a ballooned drawing above it when the lot has a PDF and
+// a single "Overall result" pass/fail row when the document resolved no
+// features. Serial lots build their sample columns by scanning tracked entities.
+// Reusable as a data-prop component (AssemblyView pattern) so MES can consume it.
+const InspectionView = ({
+  inspection,
+  sourceDocumentReadableId,
+  receiverId,
+  receiptVoided,
+  itemName,
+  itemTrackingType,
+  supplierName,
+  samples,
+  features,
+  measurements,
+  gauges,
+  recentGaugeIds,
+  balloons,
+  documentName,
+  parameters,
+  workInstruction,
+  pdfUrl,
+  model,
+  lotEntities,
+  issueTypes,
+  issues,
+  currentUserId,
+  enforceFourEyes
+}: InspectionViewProps) => {
+  const { t } = useLingui();
+  const permissions = usePermissions();
+  const { isPhone } = useViewport();
+  const {
+    company: { id: companyId }
+  } = useUser();
+  const canUpdate = permissions.can("update", "quality");
+  const [items] = useItems();
+
+  const isSerial = itemTrackingType === "Serial";
+  // A manual lot's serials are its samples from the start; receipt lots scan
+  // theirs in.
+  const scansSamples = isSerial && inspection.sourceDocument !== "Manual";
+  const isBatch = itemTrackingType === "Batch";
+  const isTrackedLot = isSerial || isBatch;
+  // Accept/Reject dispositions here carry no physical production posting, so they
+  // are for Receipt and Manual lots only. Job Operation lots are verdict-only in
+  // the ERP — their complete/scrap/rework outcome is orchestrated by the MES
+  // disposition route (which closes the lot one-shot). Exposing Accept/Reject on
+  // a job-op lot would hard-terminate it with no posting and wedge the operation.
+  const isReceiptSource = inspection.sourceDocument === "Receipt";
+  const hasErpDisposition =
+    isReceiptSource || inspection.sourceDocument === "Manual";
+  const liveFeatures = useMemo(
+    () => features.filter((f) => f.inspectionFeature != null),
+    [features]
+  );
+  // The measurement grid is the single execution UI. A drawing pane shows when
+  // the lot has an assigned PDF; per-feature feature rows show when the
+  // document resolved features, otherwise the grid collapses to one pass/fail
+  // "Overall result" row.
+  const hasDrawing = pdfUrl != null || model != null;
+  // "Hide drawing" gives the grid the whole body (a large batch needs the
+  // rows); the choice persists per browser.
+  const [drawingHidden, setDrawingHidden] = useState(false);
+  useEffect(() => {
+    try {
+      setDrawingHidden(
+        window.localStorage.getItem(INSPECTION_DRAWING_HIDDEN_STORAGE_KEY) ===
+          "true"
+      );
+    } catch {
+      // Storage unavailable: keep the drawing shown.
+    }
+  }, []);
+  const toggleDrawing = useCallback(() => {
+    setDrawingHidden((hidden) => {
+      try {
+        window.localStorage.setItem(
+          INSPECTION_DRAWING_HIDDEN_STORAGE_KEY,
+          String(!hidden)
+        );
+      } catch {
+        // Storage unavailable: the choice lasts for this page only.
+      }
+      return !hidden;
+    });
+  }, []);
+  const showDrawing = hasDrawing && !drawingHidden;
+  // Grid position -> sample id, kept here so it survives the grid remount
+  // when the drawing is hidden or shown.
+  const placementRef = useRef<Record<number, string>>({});
+  // A save or bulk run in flight: Accept / Reject wait until every reading
+  // has landed, and the drawing toggle waits so no save is cut off.
+  const [gridBusy, setGridBusy] = useState(false);
+  const hasFeatures = liveFeatures.length > 0;
+
+  const scannerDisclosure = useDisclosure();
+  const rejectConfirmDisclosure = useDisclosure();
+  const partialDisclosure = useDisclosure();
+  const openNcrDisclosure = useDisclosure();
+  const acceptConfirmDisclosure = useDisclosure();
+  const [manualAction, setManualAction] =
+    useState<ManualInspectionAction | null>(null);
+  const documentSwitchDisclosure = useDisclosure();
+
+  const [activeFeatureId, setActiveFeatureId] = useState<string | null>(null);
+
+  // PDF-over-grid stack (InspectionDocumentEditor's layout model).
+  const [gridExpanded, setGridExpanded] = useState(true);
+  const [pdfPaneHeightPx, setPdfPaneHeightPx] = useState(360);
+  const [stackHeightPx, setStackHeightPx] = useState(0);
+  // Until the user drags the splitter, the PDF takes ~45% of the measured
+  // stack (capped by the grid's half-stack minimum) instead of a fixed pixel
+  // default — portrait drawings get a usable slice on tall viewports.
+  const hasUserResizedRef = useRef(false);
+  const stackRef = useRef<HTMLDivElement>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showDrawing re-attaches the observer when hiding and showing the drawing replaces the stack element.
+  useEffect(() => {
+    if (!stackRef.current) return;
+    const el = stackRef.current;
+    const ro = new ResizeObserver(() => {
+      const h = el.clientHeight;
+      setStackHeightPx(h);
+      setPdfPaneHeightPx((prev) =>
+        clampPdfPaneHeight(
+          hasUserResizedRef.current ? prev : h * 0.45,
+          h,
+          gridExpanded
+        )
+      );
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [gridExpanded, showDrawing]);
+
+  const splitResize = usePaneResize({
+    height: pdfPaneHeightPx,
+    clamp: (height) => clampPdfPaneHeight(height, stackHeightPx, gridExpanded),
+    enabled: gridExpanded && stackHeightPx > 0,
+    onStart: () => {
+      hasUserResizedRef.current = true;
+    },
+    onCommit: setPdfPaneHeightPx
+  });
+
+  // Per-cell saves are quiet (no revalidation), so measurement + derived
+  // sample statuses are mirrored locally from the save responses and merged
+  // with the loader data for gating.
+  const [measurementOverrides, setMeasurementOverrides] = useState<
+    Record<string, "Pending" | "Passed" | "Failed">
+  >({});
+  const [sampleStatusOverrides, setSampleStatusOverrides] = useState<
+    Record<string, "Pending" | "Passed" | "Failed">
+  >({});
+  const [measurementValueOverrides, setMeasurementValueOverrides] = useState<
+    Record<string, number | null>
+  >({});
+  const onMeasurementSaved = useCallback((result: MeasurementSaveResult) => {
+    const key = `${result.sampleId}:${result.inspectionFeatureId}`;
+    setMeasurementOverrides((prev) => ({
+      ...prev,
+      [key]: result.measurementStatus
+    }));
+    setMeasurementValueOverrides((prev) => ({ ...prev, [key]: result.value }));
+    setSampleStatusOverrides((prev) => ({
+      ...prev,
+      [result.sampleId]: result.sampleStatus
+    }));
+  }, []);
+
+  // Effective measurement statuses: loader data + local overrides (new cells
+  // exist only in overrides).
+  const effectiveMeasurements = useMemo(() => {
+    const byKey = new Map<
+      string,
+      { featureId: string; status: string; value: number | null }
+    >();
+    for (const m of measurements) {
+      byKey.set(`${m.inspectionSampleId}:${m.inspectionFeatureId}`, {
+        featureId: m.inspectionFeatureId,
+        status: m.status,
+        value: m.value == null ? null : Number(m.value)
+      });
+    }
+    for (const [key, status] of Object.entries(measurementOverrides)) {
+      const featureId = key.split(":")[1] ?? "";
+      byKey.set(key, {
+        featureId,
+        status,
+        value: measurementValueOverrides[key] ?? null
+      });
+    }
+    return byKey;
+  }, [measurements, measurementOverrides, measurementValueOverrides]);
+
+  const featureCounts = useMemo(() => {
+    const counts = new Map<string, { recorded: number; failed: number }>();
+    for (const feature of liveFeatures) {
+      counts.set(feature.inspectionFeatureId, { recorded: 0, failed: 0 });
+    }
+    for (const measurement of effectiveMeasurements.values()) {
+      const entry = counts.get(measurement.featureId);
+      if (!entry) continue;
+      if (measurement.status !== "Pending") entry.recorded += 1;
+      if (measurement.status === "Failed") entry.failed += 1;
+    }
+    return counts;
+  }, [liveFeatures, effectiveMeasurements]);
+
+  // Effective sample statuses: loader samples + derived-status overrides +
+  // anonymous samples created during this session (only in overrides).
+  const sampleStatuses = useMemo(() => {
+    const statuses = new Map<string, string>();
+    for (const sample of samples) {
+      statuses.set(sample.id, sample.status);
+    }
+    for (const [sampleId, status] of Object.entries(sampleStatusOverrides)) {
+      statuses.set(sampleId, status);
+    }
+    return statuses;
+  }, [samples, sampleStatusOverrides]);
+
+  const passes = [...sampleStatuses.values()].filter(
+    (s) => s === "Passed"
+  ).length;
+  const fails = [...sampleStatuses.values()].filter(
+    (s) => s === "Failed"
+  ).length;
+  const inspected = passes + fails;
+
+  const sampledIds = useMemo(
+    () => new Set(samples.map((s) => s.trackedEntityId)),
+    [samples]
+  );
+  const remaining = lotEntities.filter((e) => !sampledIds.has(e.id));
+  // Receipt and manual lots (hasErpDisposition) load their units; Add Sample
+  // shows only while one has no sample (an "inspect all" lot and a manual lot
+  // start with every unit sampled, prefillInspectionSamples). A job operation
+  // lot loads none here, so it can always add one.
+  const canAddSample = isSerial && (!hasErpDisposition || remaining.length > 0);
+
+  // Item display id from the live items store (snapshot may be stale).
+  const item = items.find((i) => i.id === inspection.itemId);
+  const [storeReadableId, storeRevision] = (() => {
+    const combined = (item as any)?.readableIdWithRevision as
+      | string
+      | undefined;
+    if (!combined) return [undefined, undefined] as const;
+    const dot = combined.lastIndexOf(".");
+    if (dot < 0) return [combined, undefined] as const;
+    return [combined.slice(0, dot), combined.slice(dot + 1)] as const;
+  })();
+  const displayReadableId =
+    storeReadableId != null
+      ? getReadableIdWithRevision(storeReadableId, storeRevision)
+      : (inspection.itemReadableId ?? "");
+  const displayItemName = item?.name ?? itemName;
+
+  const showFourEyesWarning =
+    enforceFourEyes && !!receiverId && receiverId === currentUserId;
+
+  const lotClosed =
+    receiptVoided ||
+    inspection.status === "Cancelled" ||
+    (inspection.dispositionedAt != null &&
+      (inspection.status === "Passed" ||
+        inspection.status === "Failed" ||
+        inspection.status === "Partial"));
+
+  // Serial lots build their sample columns by scanning tracked entities. The
+  // header "Add Sample" button stays primary until the plan's sample size is
+  // covered; a fresh serial lot auto-opens the scanner so the first scan is one
+  // tap away.
+  const allSamplesLoaded = samples.length >= inspection.sampleSize;
+  const hasAutoOpenedScanRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoOpenedScanRef.current) return;
+    if (
+      scansSamples &&
+      canAddSample &&
+      samples.length === 0 &&
+      !lotClosed &&
+      canUpdate
+    ) {
+      hasAutoOpenedScanRef.current = true;
+      scannerDisclosure.onOpen();
+    }
+  }, [
+    scansSamples,
+    canAddSample,
+    samples.length,
+    lotClosed,
+    canUpdate,
+    scannerDisclosure
+  ]);
+
+  const maxSampleSize = hasFeatures
+    ? Math.max(1, ...liveFeatures.map((f) => f.sampleSize))
+    : inspection.sampleSize;
+
+  // Gating. Feature-driven lots gate per feature (mirrors the
+  // server-side disposition guards); lots without features gate at the lot
+  // level on the "Overall result" pass/fail counts.
+  // A lot can be rejected for any reason (a suspected counterfeit, the wrong
+  // part); without a statistical failure the inspector must give one.
+  let canAccept: boolean;
+  let failedStatistically: boolean;
+  if (hasFeatures) {
+    const allFeaturesSatisfied = liveFeatures.every((feature) => {
+      const counts = featureCounts.get(feature.inspectionFeatureId) ?? {
+        recorded: 0,
+        failed: 0
+      };
+      return (
+        counts.recorded >= feature.sampleSize &&
+        counts.failed <= feature.acceptanceNumber
+      );
+    });
+    const anyFeatureRejectable = liveFeatures.some((feature) => {
+      const counts = featureCounts.get(feature.inspectionFeatureId);
+      return counts != null && counts.failed >= feature.rejectionNumber;
+    });
+    canAccept = hasErpDisposition && !lotClosed && allFeaturesSatisfied;
+    failedStatistically = anyFeatureRejectable || fails > 0;
+  } else {
+    canAccept =
+      hasErpDisposition &&
+      !lotClosed &&
+      inspected >= inspection.sampleSize &&
+      fails <= inspection.acceptanceNumber;
+    failedStatistically = fails > inspection.acceptanceNumber;
+  }
+  const canReject = hasErpDisposition && !lotClosed;
+  const sampledComplete = hasFeatures
+    ? liveFeatures.every(
+        (feature) =>
+          (featureCounts.get(feature.inspectionFeatureId)?.recorded ?? 0) >=
+          feature.sampleSize
+      )
+    : inspected >= inspection.sampleSize;
+  const hasFailedUnit = samples.some(
+    (sample) =>
+      !!sample.trackedEntityId &&
+      (sampleStatuses.get(sample.id) ?? sample.status) === "Failed"
+  );
+  // Partial is a receipt decision: a manual lot is accepted or rejected.
+  const canPartial =
+    isReceiptSource &&
+    canReject &&
+    !isBatch &&
+    itemTrackingType !== "Non-Inventory" &&
+    (!isSerial || (hasFailedUnit && passes > 0 && sampledComplete));
+  const ncrMissing =
+    isReceiptSource &&
+    !receiptVoided &&
+    inspection.status === "Partial" &&
+    issues.length === 0 &&
+    ((itemTrackingType === "Inventory" &&
+      inspection.acceptedQuantity !== null &&
+      Number(inspection.acceptedQuantity) < Number(inspection.lotSize)) ||
+      ((itemTrackingType === "Serial" || itemTrackingType === "Batch") &&
+        samples.some(
+          (sample) => sample.status === "Failed" && !!sample.trackedEntityId
+        )));
+
+  const failedFeatureSummary = useMemo<FailedFeatureSummary[]>(() => {
+    if (!hasFeatures) return [];
+    return liveFeatures
+      .map((lotFeature) => {
+        const feature = lotFeature.inspectionFeature!;
+        const failedValues: string[] = [];
+        for (const [key, m] of effectiveMeasurements.entries()) {
+          if (m.featureId !== feature.id || m.status !== "Failed") continue;
+          failedValues.push(m.value == null ? "F" : String(m.value));
+          void key;
+        }
+        if (failedValues.length === 0) return null;
+        return {
+          label: feature.label,
+          spec: formatSpecLabel(feature),
+          failedValues
+        };
+      })
+      .filter(Boolean) as FailedFeatureSummary[];
+  }, [hasFeatures, liveFeatures, effectiveMeasurements]);
+
+  const failedTrackedEntityIds = samples
+    .filter((s) => (sampleStatuses.get(s.id) ?? s.status) === "Failed")
+    .map((s) => s.trackedEntityId)
+    .filter(Boolean) as string[];
+
+  const newIssueHref = `/x/issue/new?itemId=${encodeURIComponent(inspection.itemId)}&trackedEntityIds=${encodeURIComponent(failedTrackedEntityIds.join(","))}${inspection.supplierId ? `&supplierId=${encodeURIComponent(inspection.supplierId)}` : ""}`;
+
+  const pmiLinks = useMemo(
+    () =>
+      liveFeatures.map((f) => ({
+        id: f.inspectionFeatureId,
+        pmiItemId: f.inspectionFeature!.pmiItemId ?? null
+      })),
+    [liveFeatures]
+  );
+  const drawingBalloons = useMemo<DrawingBalloon[]>(() => {
+    const labelByFeatureId = new Map(
+      liveFeatures.map((f) => [
+        f.inspectionFeatureId,
+        f.inspectionFeature!.label
+      ])
+    );
+    return balloons
+      .filter((b) => labelByFeatureId.has(b.inspectionFeatureId))
+      .map((b) => ({
+        id: b.id,
+        inspectionFeatureId: b.inspectionFeatureId,
+        pageNumber: b.pageNumber,
+        xCoordinate: b.xCoordinate,
+        yCoordinate: b.yCoordinate,
+        regionX: b.regionX,
+        regionY: b.regionY,
+        regionWidth: b.regionWidth,
+        regionHeight: b.regionHeight,
+        label: labelByFeatureId.get(b.inspectionFeatureId) ?? ""
+      }));
+  }, [balloons, liveFeatures]);
+
+  const hasMeasurements = effectiveMeasurements.size > 0;
+
+  const planSummary =
+    inspection.samplingPlanType === "AQL"
+      ? `AQL ${inspection.aql ?? ""} · Lvl ${inspection.inspectionLevel ?? ""} · ${inspection.severity ?? ""}`
+      : inspection.samplingPlanType;
+
+  const metaLine = [
+    `${displayReadableId} · ${displayItemName}`,
+    [sourceDocumentReadableId, supplierName].filter(Boolean).join(" — "),
+    planSummary,
+    `${inspected} / ${inspection.sampleSize} · Ac ${inspection.acceptanceNumber} · Re ${inspection.rejectionNumber}${inspection.codeLetter ? ` · ${inspection.codeLetter}` : ""}`,
+    documentName ?? null
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+
+  const acceptedQuantity = Number(inspection.acceptedQuantity);
+  const lotSize = Number(inspection.lotSize);
+  const partialDecision =
+    isReceiptSource &&
+    inspection.status === "Partial" &&
+    inspection.acceptedQuantity !== null
+      ? itemTrackingType === "Inventory" && acceptedQuantity < lotSize
+        ? t`${acceptedQuantity} of ${lotSize} accepted. The rest stays held until its NCR is closed.`
+        : t`${acceptedQuantity} of ${lotSize} accepted.`
+      : null;
+
+  const statusBadge = (
+    <HStack spacing={1}>
+      <InspectionStatus status={inspection.status} />
+      {receiptVoided && (
+        <Badge variant="red">
+          <Trans>Receipt voided</Trans>
+        </Badge>
+      )}
+    </HStack>
+  );
+
+  // The lot's less frequent actions, in one menu beside its name.
+  const lotActions = [
+    canUpdate && !lotClosed && !hasMeasurements
+      ? {
+          key: "change-document",
+          icon: <LuFileText />,
+          label: t`Change Document`,
+          onSelect: documentSwitchDisclosure.onOpen
+        }
+      : null,
+    canCancelInspection(inspection) && permissions.can("update", "quality")
+      ? {
+          key: "cancel",
+          icon: <LuCircleX />,
+          label: t`Cancel Inspection`,
+          onSelect: () => setManualAction("cancel")
+        }
+      : null,
+    canDeleteInspection(inspection, samples) &&
+    measurements.length === 0 &&
+    permissions.can("delete", "quality")
+      ? {
+          key: "delete",
+          icon: <LuTrash />,
+          label: t`Delete Inspection`,
+          onSelect: () => setManualAction("delete")
+        }
+      : null
+  ].filter((action) => action !== null);
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <RecordHero
+        subtitle={
+          partialDecision ? `${metaLine}  ·  ${partialDecision}` : metaLine
+        }
+        status={statusBadge}
+      />
+      <RecordPhoneChrome />
+      {/* Header bar — mirrors InspectionDocumentEditor's header */}
+      <div className="flex min-h-[var(--header-height)] flex-shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 overflow-x-auto border-b border-border bg-card px-4 py-2 scrollbar-hide max-md:hidden">
+        <div className="min-w-0 flex-1 pr-2">
+          <HStack spacing={2} className="items-center">
+            <h1 className="truncate text-base font-semibold">
+              {inspection.inspectionId}
+            </h1>
+            {lotActions.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label={t`Actions for ${inspection.inspectionId}`}
+                    icon={<LuEllipsisVertical />}
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-56">
+                  {lotActions.map((action) => (
+                    <DropdownMenuItem
+                      key={action.key}
+                      onClick={action.onSelect}
+                    >
+                      <span className="mr-2 flex size-4 items-center">
+                        {action.icon}
+                      </span>
+                      {action.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {statusBadge}
+          </HStack>
+          <p className="truncate text-xs text-muted-foreground">{metaLine}</p>
+          {partialDecision && (
+            <p className="truncate text-xs text-muted-foreground">
+              {partialDecision}
+            </p>
+          )}
+        </div>
+        <HStack spacing={2} className="flex-shrink-0 flex-wrap justify-end">
+          {isPhone &&
+            lotActions.map((action) => (
+              <RecordAction key={action.key} slot="overflow">
+                <Button
+                  variant="secondary"
+                  leftIcon={action.icon}
+                  onClick={action.onSelect}
+                >
+                  {action.label}
+                </Button>
+              </RecordAction>
+            ))}
+          {issues.length === 1 && (
+            <RecordAction slot="overflow">
+              <Button variant="secondary" leftIcon={<LuShieldX />} asChild>
+                <Link to={path.to.issue(issues[0].id)}>
+                  {issues[0].nonConformanceId}
+                </Link>
+              </Button>
+            </RecordAction>
+          )}
+          {issues.length > 1 && (
+            <RecordAction slot="overflow">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" leftIcon={<LuShieldX />}>
+                    <Trans>Issues</Trans>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {issues.map((issue) => (
+                    <DropdownMenuItem key={issue.id} asChild>
+                      <Link to={path.to.issue(issue.id)}>
+                        {issue.nonConformanceId}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </RecordAction>
+          )}
+          <RecordAction slot="overflow">
+            {/* A disabled link still navigates, so with nothing failed the
+                button is a real disabled button, not a link. */}
+            {failedTrackedEntityIds.length === 0 ? (
+              <Button
+                variant="secondary"
+                leftIcon={<LuShieldAlert />}
+                isDisabled
+              >
+                <Trans>Create Issue</Trans>
+              </Button>
+            ) : (
+              <Button variant="secondary" leftIcon={<LuShieldAlert />} asChild>
+                <a href={newIssueHref} target="_blank" rel="noreferrer">
+                  <Trans>Create Issue</Trans>
+                </a>
+              </Button>
+            )}
+          </RecordAction>
+          {canAddSample && !lotClosed && (
+            <RecordAction slot={hasErpDisposition ? "overflow" : "primary"}>
+              <Button
+                variant={allSamplesLoaded ? "secondary" : "primary"}
+                leftIcon={<LuScan />}
+                onClick={scannerDisclosure.onOpen}
+                isDisabled={!canUpdate}
+              >
+                <Trans>Add Sample</Trans>
+              </Button>
+            </RecordAction>
+          )}
+          {ncrMissing && (
+            <RecordAction slot={isTrackedLot ? "secondary" : "primary"}>
+              <Button
+                variant={isTrackedLot ? "secondary" : "primary"}
+                onClick={openNcrDisclosure.onOpen}
+                isDisabled={!canUpdate}
+              >
+                <Trans>Open NCR</Trans>
+              </Button>
+            </RecordAction>
+          )}
+          {hasErpDisposition && (
+            <>
+              <RecordAction slot="secondary">
+                <Button
+                  variant="destructive"
+                  onClick={rejectConfirmDisclosure.onOpen}
+                  isDisabled={!canUpdate || !canReject || gridBusy}
+                >
+                  <Trans>Reject Lot</Trans>
+                </Button>
+              </RecordAction>
+              {isReceiptSource && (
+                <RecordAction slot="secondary">
+                  {isBatch && !lotClosed ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span tabIndex={0} className="inline-flex">
+                          <Button variant="secondary" isDisabled>
+                            <Trans>Partial</Trans>
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <Trans>
+                          A batch lot is accepted or rejected as a whole.
+                        </Trans>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={partialDisclosure.onOpen}
+                      isDisabled={!canUpdate || !canPartial || gridBusy}
+                    >
+                      <Trans>Partial</Trans>
+                    </Button>
+                  )}
+                </RecordAction>
+              )}
+              <RecordAction slot="primary">
+                <Button
+                  onClick={acceptConfirmDisclosure.onOpen}
+                  isDisabled={!canUpdate || !canAccept || gridBusy}
+                >
+                  <Trans>Accept Lot</Trans>
+                </Button>
+              </RecordAction>
+            </>
+          )}
+        </HStack>
+      </div>
+
+      {showFourEyesWarning && (
+        <div className="shrink-0 px-4 pt-2">
+          <Alert variant="warning">
+            <LuTriangleAlert className="size-4" />
+            <AlertTitle>
+              <Trans>You received this lot</Trans>
+            </AlertTitle>
+            <AlertDescription>
+              <Trans>
+                Company policy asks for a different person to inspect inbound
+                items than the one who received them.
+              </Trans>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {/* ── Body ── */}
+      {showDrawing ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-4 pt-2">
+          <div
+            ref={stackRef}
+            className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
+          >
+            {/* PDF viewer — pinned height while the grid is expanded */}
+            <div
+              ref={splitResize.paneRef}
+              className={`flex min-h-0 min-w-full flex-col overflow-hidden rounded-lg border bg-muted ${
+                gridExpanded
+                  ? "shrink-0 max-md:!h-[40dvh]"
+                  : "min-h-[220px] flex-1"
+              }`}
+              style={{
+                ...(gridExpanded ? { height: pdfPaneHeightPx } : undefined),
+                minWidth: "100%"
+              }}
+            >
+              <ClientOnly
+                fallback={
+                  <div className="flex h-full items-center justify-center">
+                    <Spinner />
+                  </div>
+                }
+              >
+                {() => (
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center">
+                        <Spinner />
+                      </div>
+                    }
+                  >
+                    {model ? (
+                      <ModelUploadPreview
+                        modelUploadId={model.modelUploadId}
+                        modelPath={model.modelPath}
+                        companyId={companyId}
+                        pmiLinks={pmiLinks}
+                        selectedLinkId={activeFeatureId}
+                        onLinkSelect={setActiveFeatureId}
+                        className="h-full rounded-none"
+                      />
+                    ) : (
+                      <InspectionDrawingPane
+                        pdfUrl={pdfUrl!}
+                        balloons={drawingBalloons}
+                        activeFeatureId={activeFeatureId}
+                        onBalloonClick={setActiveFeatureId}
+                      />
+                    )}
+                  </Suspense>
+                )}
+              </ClientOnly>
+            </div>
+
+            {gridExpanded ? (
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label={t`Drag to resize drawing and characteristics`}
+                aria-valuenow={Math.round(pdfPaneHeightPx)}
+                className={`group flex h-2 shrink-0 cursor-row-resize touch-none items-center justify-center rounded-md px-2 hover:bg-muted/80 pointer-coarse:h-6 pointer-coarse:hit-area max-md:hidden ${
+                  splitResize.isResizing ? "bg-muted" : ""
+                }`}
+                {...splitResize.handleProps}
+              >
+                <span className="h-1 w-14 shrink-0 rounded-full bg-muted-foreground/40 group-hover:bg-muted-foreground/65" />
+              </div>
+            ) : null}
+
+            {/* Features grid — collapsible bottom panel */}
+            <div
+              className={
+                gridExpanded
+                  ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-card max-md:mt-2 max-md:!min-h-0"
+                  : "flex max-h-[14rem] min-w-0 shrink-0 flex-col overflow-hidden rounded-lg bg-card"
+              }
+              style={
+                gridExpanded && stackHeightPx > 0
+                  ? { minHeight: stackHeightPx * 0.5 }
+                  : undefined
+              }
+            >
+              <div
+                className={
+                  gridExpanded
+                    ? "min-h-0 flex-1 overflow-auto"
+                    : "overflow-hidden"
+                }
+              >
+                <InspectionMeasurementGrid
+                  parameters={
+                    inspection.inspectionDocumentId ? parameters : undefined
+                  }
+                  workInstruction={workInstruction}
+                  inspectionId={inspection.id}
+                  isReadOnly={!canUpdate || lotClosed}
+                  isSerial={isSerial}
+                  features={features}
+                  samples={samples}
+                  measurements={measurements}
+                  gauges={gauges}
+                  recentGaugeIds={recentGaugeIds}
+                  maxSampleSize={maxSampleSize}
+                  lotSize={inspection.lotSize}
+                  lotAcceptanceNumber={inspection.acceptanceNumber}
+                  lotRejectionNumber={inspection.rejectionNumber}
+                  activeFeatureId={activeFeatureId}
+                  onActiveFeatureChange={setActiveFeatureId}
+                  onMeasurementSaved={onMeasurementSaved}
+                  placementRef={placementRef}
+                  onBusyChange={setGridBusy}
+                  primaryAction={
+                    <>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t`Hide drawing`}
+                        title={t`Hide drawing`}
+                        icon={<LuEyeOff className="h-4 w-4" />}
+                        isDisabled={gridBusy}
+                        onClick={toggleDrawing}
+                      />
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-expanded={gridExpanded}
+                        aria-label={
+                          gridExpanded
+                            ? t`Collapse characteristics table`
+                            : t`Expand characteristics table`
+                        }
+                        icon={
+                          gridExpanded ? (
+                            <LuChevronDown className="h-4 w-4" />
+                          ) : (
+                            <LuChevronUp className="h-4 w-4" />
+                          )
+                        }
+                        onClick={() => setGridExpanded((v) => !v)}
+                      />
+                    </>
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        // No drawing: the grid takes the full body, edge to edge with no inset
+        // card. Feature-driven lots still render their features; lots without
+        // a document collapse to the single "Overall result" row.
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <InspectionMeasurementGrid
+                parameters={
+                  inspection.inspectionDocumentId ? parameters : undefined
+                }
+                workInstruction={workInstruction}
+                inspectionId={inspection.id}
+                isReadOnly={!canUpdate || lotClosed}
+                isSerial={isSerial}
+                features={features}
+                samples={samples}
+                measurements={measurements}
+                gauges={gauges}
+                recentGaugeIds={recentGaugeIds}
+                maxSampleSize={maxSampleSize}
+                lotSize={inspection.lotSize}
+                lotAcceptanceNumber={inspection.acceptanceNumber}
+                lotRejectionNumber={inspection.rejectionNumber}
+                activeFeatureId={activeFeatureId}
+                onActiveFeatureChange={setActiveFeatureId}
+                onMeasurementSaved={onMeasurementSaved}
+                placementRef={placementRef}
+                onBusyChange={setGridBusy}
+                primaryAction={
+                  hasDrawing ? (
+                    <IconButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t`Show drawing`}
+                      title={t`Show drawing`}
+                      icon={<LuEye className="h-4 w-4" />}
+                      isDisabled={gridBusy}
+                      onClick={toggleDrawing}
+                    />
+                  ) : undefined
+                }
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualAction && (
+        <ManualInspectionConfirm
+          action={manualAction}
+          lot={inspection}
+          onClose={() => setManualAction(null)}
+        />
+      )}
+      <ScanInspectionSample
+        open={scannerDisclosure.isOpen}
+        inspectionId={inspection.id}
+        isSerial={isSerial}
+        remaining={remaining}
+        inspected={inspected}
+        sampleSize={inspection.sampleSize}
+        fails={fails}
+        acceptanceNumber={inspection.acceptanceNumber}
+        onClose={scannerDisclosure.onClose}
+      />
+
+      <Confirm
+        isOpen={acceptConfirmDisclosure.isOpen}
+        action={path.to.inspectionAccept(inspection.id)}
+        title={t`Accept lot?`}
+        text={
+          isSerial
+            ? t`${lotEntities.length - inspected} un-sampled entities will be released to Available. Sampled passes stay Available and sampled failures stay Rejected.`
+            : t`The lot will be marked Passed. ${fails} sampled failure(s) are recorded for your records.`
+        }
+        confirmText={t`Accept Lot`}
+        onCancel={acceptConfirmDisclosure.onClose}
+        onSubmit={acceptConfirmDisclosure.onClose}
+      />
+
+      <RejectLotModal
+        open={rejectConfirmDisclosure.isOpen}
+        action={path.to.inspectionReject(inspection.id)}
+        issueTypes={issueTypes}
+        requiresReason={!failedStatistically}
+        summary={
+          failedStatistically
+            ? isSerial
+              ? t`Statistical acceptance failed, so the entire lot is considered non-conforming (ISO 9001:2015 §8.7). All ${lotEntities.length} entities — ${passes} sampled pass(es), ${fails} failure(s), and ${Math.max(0, lotEntities.length - inspected)} un-inspected — will be marked Rejected.`
+              : t`Statistical acceptance failed, so the entire lot of ${inspection.lotSize} is considered non-conforming (ISO 9001:2015 §8.7) — ${passes} sampled pass(es) and ${fails} failure(s).`
+            : isSerial
+              ? t`No characteristic has failed, so say why the lot is rejected. All ${lotEntities.length} entities will be marked Rejected.`
+              : t`No characteristic has failed, so say why the lot is rejected. The entire lot of ${inspection.lotSize} will be rejected.`
+        }
+        failedFeatureSummary={failedFeatureSummary}
+        onCancel={rejectConfirmDisclosure.onClose}
+        onSubmit={rejectConfirmDisclosure.onClose}
+      />
+
+      <PartialLotModal
+        open={partialDisclosure.isOpen}
+        action={path.to.inspectionPartial(inspection.id)}
+        issueTypes={issueTypes}
+        lotSize={inspection.lotSize}
+        isUntracked={itemTrackingType === "Inventory"}
+        onCancel={partialDisclosure.onClose}
+        onSubmit={partialDisclosure.onClose}
+      />
+
+      <OpenNcrModal
+        open={openNcrDisclosure.isOpen}
+        action={path.to.inspectionPartial(inspection.id)}
+        issueTypes={issueTypes}
+        isTrackedLot={isTrackedLot}
+        onCancel={openNcrDisclosure.onClose}
+        onSubmit={openNcrDisclosure.onClose}
+      />
+
+      <DocumentSwitchModal
+        open={documentSwitchDisclosure.isOpen}
+        inspectionId={inspection.id}
+        itemId={inspection.itemId}
+        currentDocumentId={inspection.inspectionDocumentId ?? null}
+        onClose={documentSwitchDisclosure.onClose}
+      />
+    </div>
+  );
+};
+
+type DocumentSwitchModalProps = {
+  inspectionId: string;
+  itemId: string;
+  currentDocumentId: string | null;
+  open: boolean;
+  onClose: () => void;
+};
+
+// Swap the assigned inspection document on an open, unmeasured lot. Options
+// are the item's documents (same source as the Form/InspectionDocument
+// combobox's api route).
+function DocumentSwitchModal({
+  open,
+  onClose,
+  ...props
+}: DocumentSwitchModalProps) {
+  // Not in the body: the modal closes on submit, and React Router drops the
+  // redirect this action answers with once its fetcher has unmounted.
+  const fetcher = useFetcher<{}>();
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <ModalOverlay />
+      <ModalContent>
+        <DocumentSwitchBody fetcher={fetcher} onClose={onClose} {...props} />
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function DocumentSwitchBody({
+  inspectionId,
+  itemId,
+  currentDocumentId,
+  fetcher,
+  onClose
+}: Omit<DocumentSwitchModalProps, "open"> & {
+  fetcher: ReturnType<typeof useFetcher<{}>>;
+}) {
+  const { t } = useLingui();
+  const optionsFetcher = useLoaderQuery<{
+    data:
+      | {
+          id: string;
+          fileName: string | null;
+          name: string | null;
+          version: number;
+        }[]
+      | null;
+  }>(path.to.api.inspectionDocuments(itemId));
+  const [documentId, setDocumentId] = useState(currentDocumentId ?? "none");
+
+  const options = optionsFetcher.data?.data ?? [];
+
+  return (
+    <>
+      <ModalHeader>
+        <ModalTitle>
+          <Trans>Change Inspection Plan</Trans>
+        </ModalTitle>
+      </ModalHeader>
+      <ModalBody>
+        <VStack spacing={2}>
+          <p className="text-sm text-muted-foreground">
+            <Trans>
+              The lot's per-characteristic sampling plan will be re-resolved
+              from the selected document.
+            </Trans>
+          </p>
+          <Select value={documentId} onValueChange={setDocumentId}>
+            <SelectTrigger aria-label={t`Inspection document`}>
+              <SelectValue placeholder={t`Select a document`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t`None`}</SelectItem>
+              {options.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {(option.name ?? option.fileName ?? option.id) +
+                    ` v${option.version}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </VStack>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>
+          <Trans>Cancel</Trans>
+        </Button>
+        <fetcher.Form
+          method="post"
+          action={path.to.inspectionAssignedDocument(inspectionId)}
+          onSubmit={onClose}
+        >
+          <input
+            type="hidden"
+            name="inspectionDocumentId"
+            value={documentId === "none" ? "" : documentId}
+          />
+          <Button type="submit" isLoading={fetcher.state !== "idle"}>
+            <Trans>Save</Trans>
+          </Button>
+        </fetcher.Form>
+      </ModalFooter>
+    </>
+  );
+}
+
+export default InspectionView;

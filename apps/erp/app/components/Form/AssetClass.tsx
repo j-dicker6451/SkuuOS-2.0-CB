@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { CreatableComboboxProps } from "@carbon/form";
+import { CreatableCombobox } from "@carbon/form";
+import { useLoaderQuery } from "@carbon/query";
+import { useMemo, useRef } from "react";
+import { useFetcher } from "react-router";
+import { useDrawerItem } from "~/hooks";
+import type { getFixedAssetClassesList } from "~/modules/accounting/accounting.service";
+import AssetClassForm from "~/modules/accounting/ui/FixedAssets/AssetClassForm";
+import type { loader as newAssetClassLoader } from "~/routes/x+/accounting+/asset-classes.new";
+import { path } from "~/utils/path";
+import { Enumerable } from "../Enumerable";
+import { useEmptyState } from "./emptyStates";
+
+type AssetClassSelectProps = Omit<
+  CreatableComboboxProps,
+  "options" | "inline"
+> & {
+  inline?: boolean;
+};
+
+const AssetClassPreview = (
+  value: string,
+  options: { value: string; label: string | JSX.Element }[]
+) => {
+  const assetClass = options.find((o) => o.value === value);
+  // @ts-expect-error TS2322 - TODO: fix type
+  return <Enumerable value={assetClass?.label ?? null} />;
+};
+
+const AssetClass = ({ inline = false, ...props }: AssetClassSelectProps) => {
+  const create = useDrawerItem<string>();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const defaultsFetcher = useFetcher<typeof newAssetClassLoader>();
+
+  const { options } = useAssetClasses();
+
+  const defaults = defaultsFetcher.data?.defaults;
+  const taxDepreciationEnabled =
+    defaultsFetcher.data?.taxDepreciationEnabled ?? false;
+
+  const emptyMessage = useEmptyState("assetClass", {
+    onCreate: () => {
+      defaultsFetcher.load(path.to.newAssetClass);
+      create.open("");
+    }
+  });
+
+  return (
+    <>
+      <CreatableCombobox
+        ref={triggerRef}
+        options={options.map((o) => ({
+          value: o.value,
+          label: <Enumerable value={o.label} />
+        }))}
+        emptyMessage={emptyMessage}
+        {...props}
+        label={props?.label ?? "Asset Class"}
+        inline={inline ? AssetClassPreview : undefined}
+        onCreateOption={(option) => {
+          defaultsFetcher.load(path.to.newAssetClass);
+          create.open(option);
+        }}
+      />
+      {create.item !== null && (
+        <AssetClassForm
+          key={create.key}
+          open={create.isOpen}
+          type="modal"
+          onClose={() => {
+            create.close();
+            create.afterClose(() => triggerRef.current?.click());
+          }}
+          taxDepreciationEnabled={taxDepreciationEnabled}
+          initialValues={{
+            name: create.item,
+            description: "",
+            depreciationMethod: "Straight Line" as const,
+            usefulLifeMonths: 60,
+            residualValuePercent: 0,
+            assetAccountId: defaults?.assetAquisitionCostAccount ?? "",
+            accumulatedDepreciationAccountId:
+              defaults?.accumulatedDepreciationAccount ?? "",
+            depreciationExpenseAccountId:
+              defaults?.assetDepreciationExpenseAccount ?? "",
+            writeOffAccountId: defaults?.assetLossOnDisposalAccount ?? "",
+            writeDownAccountId: defaults?.assetLossOnDisposalAccount ?? "",
+            gainOnDisposalAccountId: defaults?.assetGainOnDisposalAccount ?? "",
+            lossOnDisposalAccountId: defaults?.assetLossOnDisposalAccount ?? ""
+          }}
+        />
+      )}
+    </>
+  );
+};
+
+AssetClass.displayName = "AssetClass";
+
+export default AssetClass;
+
+export const useAssetClasses = () => {
+  const assetClassFetcher = useLoaderQuery<
+    Awaited<ReturnType<typeof getFixedAssetClassesList>>
+  >(path.to.api.assetClasses);
+
+  const assetClasses = useMemo(
+    () => assetClassFetcher.data?.data ?? [],
+    [assetClassFetcher.data]
+  );
+
+  const options = useMemo(
+    () =>
+      assetClasses.map((c) => ({
+        value: c.id,
+        label: c.name
+      })),
+    [assetClasses]
+  );
+
+  return { options, assetClasses };
+};

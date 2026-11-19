@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strictNullChecks": true
+  },
+  "exclude": ["node_modules"],
+  "extends": "@carbon/config/tsconfig/base.json",
+  "include": ["src"]
+}

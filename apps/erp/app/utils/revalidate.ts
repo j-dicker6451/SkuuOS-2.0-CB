@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { ShouldRevalidateFunction } from "react-router";
+
+/**
+ * Skips revalidation for navigations that keep the search params, such as
+ * opening or closing a child drawer. Report loaders depend on the search params
+ * only, and their balance RPCs are expensive. Mutations and any param change
+ * revalidate as usual.
+ */
+export const revalidateOnSearchChange: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate
+}) => {
+  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
+
+  const current = new URLSearchParams(currentUrl.search);
+  const next = new URLSearchParams(nextUrl.search);
+  current.sort();
+  next.sort();
+
+  if (current.toString() === next.toString()) return false;
+
+  return defaultShouldRevalidate;
+};
+
+// The pivot report display toggles that buildPivotTree applies in the browser —
+// they never change the loader's (expensive) journal RPC inputs, so a change to
+// only these can skip the refetch. The route component re-derives them from the
+// URL via applyPivotDisplayParams so the view stays in sync without a loader run.
+const PIVOT_DISPLAY_PARAMS = ["measure", "pct", "sort"];
+
+/**
+ * Skips revalidation for the analytics pivot reports when a navigation changes
+ * ONLY the client-only display params (`measure` / `pct` / `sort`). Any
+ * server-affecting param change, a different report, a mutation, and an
+ * unchanged URL (realtime journal revalidation, initial load) all revalidate as
+ * usual — so live updates and saved-view/filter/date changes still refetch.
+ */
+export const revalidateIgnoringPivotDisplay: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate
+}) => {
+  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
+  if (currentUrl.pathname !== nextUrl.pathname) return defaultShouldRevalidate;
+  // Unchanged URL → an explicit revalidation (e.g. realtime) or initial load.
+  if (currentUrl.search === nextUrl.search) return defaultShouldRevalidate;
+
+  const current = new URLSearchParams(currentUrl.search);
+  const next = new URLSearchParams(nextUrl.search);
+  for (const key of PIVOT_DISPLAY_PARAMS) {
+    current.delete(key);
+    next.delete(key);
+  }
+  current.sort();
+  next.sort();
+
+  // Only display params differ → same loader data; skip. Otherwise refetch.
+  if (current.toString() === next.toString()) return false;
+
+  return defaultShouldRevalidate;
+};
+
+/** Tree/list tabs only change client-side display, not the route's loader data. */
+export const revalidateIgnoringTabDisplay: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate
+}) => {
+  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
+  if (currentUrl.pathname !== nextUrl.pathname) return defaultShouldRevalidate;
+  if (currentUrl.search === nextUrl.search) return defaultShouldRevalidate;
+
+  const current = new URLSearchParams(currentUrl.search);
+  const next = new URLSearchParams(nextUrl.search);
+  current.delete("tab");
+  next.delete("tab");
+  current.sort();
+  next.sort();
+  return current.toString() === next.toString()
+    ? false
+    : defaultShouldRevalidate;
+};

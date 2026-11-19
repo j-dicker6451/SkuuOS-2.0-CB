@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error, notFound, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { useRouteDialog } from "@carbon/react";
+import { getDatabaseErrorMessage, redirect } from "@carbon/utils";
+import { useLingui } from "@lingui/react/macro";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useParams } from "react-router";
+import { ConfirmDelete } from "~/components/Modals";
+import {
+  deleteIssueType,
+  getIssueType
+} from "~/modules/quality/quality.service";
+import { getParams, path } from "~/utils/path";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client } = await requirePermissions(request, {
+    view: "quality",
+    role: "employee"
+  });
+  const { id } = params;
+  if (!id) throw notFound("id not found");
+
+  const nonConformanceType = await getIssueType(client, id);
+  if (nonConformanceType.error) {
+    throw redirect(
+      `${path.to.issueTypes}?${getParams(request)}`,
+      await flash(
+        request,
+        error(nonConformanceType.error, "Failed to get issue type")
+      )
+    );
+  }
+
+  return { nonConformanceType: nonConformanceType.data };
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  const { client } = await requirePermissions(request, {
+    delete: "quality"
+  });
+
+  const { id } = params;
+  if (!id) {
+    throw redirect(
+      `${path.to.issueTypes}?${getParams(request)}`,
+      await flash(request, error(null, "Failed to get an issue type id"))
+    );
+  }
+
+  const { error: deleteIssueTypeError } = await deleteIssueType(client, id);
+  if (deleteIssueTypeError) {
+    const errorMessage = getDatabaseErrorMessage(
+      deleteIssueTypeError,
+      "Failed to delete issue type",
+      { referenced: "Non-conformance type is used elsewhere, cannot delete" }
+    );
+
+    throw redirect(
+      `${path.to.issueTypes}?${getParams(request)}`,
+      await flash(request, error(deleteIssueTypeError, errorMessage))
+    );
+  }
+
+  throw redirect(
+    `${path.to.issueTypes}?${getParams(request)}`,
+    await flash(request, success("Successfully deleted issue type"))
+  );
+}
+
+export default function DeleteIssueTypesRoute() {
+  const { id } = useParams();
+  const { nonConformanceType } = useLoaderData<typeof loader>();
+  const dialog = useRouteDialog(path.to.issueTypes);
+  const { t } = useLingui();
+
+  if (!nonConformanceType) return null;
+  if (!id) throw notFound("id not found");
+
+  return (
+    <ConfirmDelete
+      action={path.to.deleteIssueType(id)}
+      name={nonConformanceType.name}
+      text={t`Are you sure you want to delete the issue type: ${nonConformanceType.name}? This cannot be undone.`}
+      isOpen={dialog.open}
+      onCancel={dialog.close}
+    />
+  );
+}

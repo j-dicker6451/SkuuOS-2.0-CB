@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { RecordOutlet, VStack } from "@carbon/react";
+import { msg } from "@lingui/core/macro";
+import { arrayToTree } from "performant-array-to-tree";
+import type { LoaderFunctionArgs } from "react-router";
+import { data, useLoaderData } from "react-router";
+import type { Group } from "~/modules/users/types";
+import { GroupsTable } from "~/modules/users/ui";
+import { getGroups } from "~/modules/users/users.service";
+import type { Handle } from "~/utils/handle";
+import { SINGLE_LOAD_LIMIT } from "~/utils/pagination";
+import { path } from "~/utils/path";
+import { getGenericQueryFilters } from "~/utils/query";
+
+export const handle: Handle = {
+  breadcrumb: msg`Groups`,
+  to: path.to.groups
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "users",
+    role: "employee"
+  });
+
+  const url = new URL(request.url);
+  const searchParams = new URLSearchParams(url.search);
+  const search = searchParams.get("search");
+  const uid = searchParams.get("uid");
+  const { sorts, filters } = getGenericQueryFilters(searchParams);
+
+  // The list is a tree (`arrayToTree`), and a page cut can split a group from
+  // its parent, so it loads once: the first SINGLE_LOAD_LIMIT groups.
+  const groups = await getGroups(client, companyId, {
+    search,
+    uid,
+    limit: SINGLE_LOAD_LIMIT,
+    offset: 0,
+    sorts,
+    filters
+  });
+
+  if (groups.error) {
+    return data(
+      { groups: [], count: 0, isTruncated: false, error: groups.error },
+      await flash(request, error(groups.error, "Failed to load groups"))
+    );
+  }
+
+  return {
+    groups: (groups.data ? arrayToTree(groups.data) : []) as Group[],
+    error: null,
+    count: groups.count ?? 0,
+    isTruncated: (groups.data?.length ?? 0) >= SINGLE_LOAD_LIMIT
+  };
+}
+
+export default function GroupsRoute() {
+  const { groups, count, isTruncated } = useLoaderData<typeof loader>();
+
+  return (
+    <VStack spacing={0} className="h-full">
+      <GroupsTable data={groups} count={count} isTruncated={isTruncated} />
+      <RecordOutlet />
+    </VStack>
+  );
+}

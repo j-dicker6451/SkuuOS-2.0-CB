@@ -1,0 +1,536 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { Hidden, Input, Submit, ValidatedForm } from "@carbon/form";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardFooter,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuIcon,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Heading,
+  HStack,
+  IconButton,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  toastError,
+  useDisclosure
+} from "@carbon/react";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
+import type {
+  Column,
+  ColumnOrderState,
+  ColumnPinningState
+} from "@tanstack/react-table";
+import type { ReactNode } from "react";
+import { useEffect, useMemo } from "react";
+import { BsThreeDotsVertical } from "react-icons/bs";
+import {
+  LuCheck,
+  LuDownload,
+  LuFilePen,
+  LuLayers,
+  LuLock
+} from "react-icons/lu";
+import { useFetcher } from "react-router";
+import { z } from "zod";
+import { zfd } from "zod-form-data";
+import { SearchFilter } from "~/components";
+import { ImportCSVModal } from "~/components/ImportCSVModal";
+import { CollapsibleSidebarTrigger } from "~/components/Layout/Navigation";
+import { useDrawerItem, useUrlParams } from "~/hooks";
+import { useSavedViews } from "~/hooks/useSavedViews";
+import type { fieldMappings } from "~/modules/shared/imports.models";
+import type { action as savedViewAction } from "~/routes/x+/shared+/views";
+import { path } from "~/utils/path";
+import type { ServerExportLinks } from "../types";
+import Columns from "./Columns";
+import Download, { type InfiniteExport } from "./Download";
+import { ActiveFilters, Filter } from "./Filter";
+import type { ColumnFilter } from "./Filter/types";
+import Sort from "./Sort";
+
+type HeaderProps<T> = {
+  renderActions?: (selectedRows: T[]) => ReactNode;
+  columnAccessors: Record<string, string>;
+  exportValues: Record<string, (row: T) => unknown>;
+  exportOnlyColumns: string[];
+  sortKeyToLabel: Record<string, string>;
+  columnOrder: ColumnOrderState;
+  columnPinning: ColumnPinningState;
+  columnVisibility: Record<string, boolean>;
+  columns: Column<T, unknown>[];
+  compact?: boolean;
+  // The number of matching rows. Exact below 1,000; above, an estimate
+  // until the exact count arrives (`useExactCount`).
+  count: number;
+  countIsExact: boolean;
+  data: object[];
+  // Infinite lists: the export loads the rest first, or hands it to a job.
+  infiniteExport?: InfiniteExport;
+  serverExport?: ServerExportLinks;
+  editMode: boolean;
+  filters: ColumnFilter[];
+  // True when the table has no rows and no active filter/sort/search — hides the
+  // toolbar row. Computed once by Table (single source) and passed down.
+  isEmpty: boolean;
+  importCSV?: {
+    table: keyof typeof fieldMappings;
+    label: string;
+  }[];
+  primaryAction?: ReactNode;
+  // Extra controls in the toolbar row next to search/filter (e.g. quick
+  // filter toggles that write their own `filter` URL params).
+  headerActions?: ReactNode;
+  selectedRows: T[];
+  // The selection's size: the matching count when every matching row is
+  // selected, else `selectedRows.length`.
+  selectedCount?: number;
+  hasRememberedChanges: boolean;
+  onResetRememberedState: () => void;
+  setColumnOrder: (newOrder: ColumnOrderState) => void;
+  setEditMode: (editMode: boolean) => void;
+  table?: string;
+  title?: string;
+  // The trigger toggles the app sidebar, which is meaningless for a Table
+  // rendered inside a drawer or modal. Opt out there.
+  withSidebarTrigger?: boolean;
+  titleBadge?: ReactNode;
+  withSavedView: boolean;
+  withInlineEditing: boolean;
+  forceEditMode: boolean;
+  withPagination: boolean;
+  withSearch: boolean;
+  withSelectableRows: boolean;
+  // Embedded tables (wizards/drawers) can turn off the column picker and the
+  // CSV download; both default on so ordinary tables are unchanged.
+  withColumnOrdering?: boolean;
+  withCsvExport?: boolean;
+  csvExportHref?: string;
+  sort?: ReactNode;
+};
+
+const TableHeader = <T extends object>({
+  compact,
+  columnAccessors,
+  exportValues,
+  exportOnlyColumns,
+  sortKeyToLabel,
+  columnOrder,
+  columnPinning,
+  columnVisibility,
+  columns,
+  count,
+  countIsExact,
+  data,
+  infiniteExport,
+  serverExport,
+  editMode,
+  filters,
+  isEmpty,
+  importCSV,
+  primaryAction,
+  headerActions,
+  selectedRows,
+  selectedCount,
+  hasRememberedChanges,
+  onResetRememberedState,
+  renderActions,
+  setColumnOrder,
+  setEditMode,
+  table,
+  title,
+  withSidebarTrigger = true,
+  titleBadge,
+  withInlineEditing,
+  forceEditMode,
+  withPagination,
+  withSavedView,
+  withSearch,
+  withSelectableRows,
+  withColumnOrdering = true,
+  withCsvExport = true,
+  csvExportHref,
+  sort
+}: HeaderProps<T>) => {
+  const { t } = useLingui();
+  const [params, setParams] = useUrlParams();
+  const currentFilters = params.getAll("filter").filter(Boolean);
+  const currentSorts = params.getAll("sort").filter(Boolean);
+
+  const importCSVModal = useDrawerItem<keyof typeof fieldMappings>();
+
+  const savedViewDisclosure = useDisclosure();
+  const canSaveView = withSavedView && !!table;
+
+  const fetcher = useFetcher<typeof savedViewAction>();
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: suppressed due to migration
+  useEffect(() => {
+    if (fetcher.data?.success && fetcher.data.id) {
+      setParams({ view: fetcher.data.id });
+      savedViewDisclosure.onClose();
+    } else if (fetcher.data?.success === false) {
+      toastError(fetcher.data.message, fetcher.data);
+    }
+  }, [fetcher.state, fetcher.data?.success]);
+
+  const { currentView, hasView } = useSavedViews();
+  const viewTitle = currentView?.name ?? title;
+  // const viewDescription = currentView?.description ?? "";
+  const savedViewFormValidator = useMemo(
+    () =>
+      z.object({
+        id: zfd.text(z.string().optional()),
+        table: z.string(),
+        name: z.string().min(1, {
+          message: t`A name is required to save a view`
+        }),
+        description: z.string().optional(),
+        filter: z.string().optional(),
+        sort: z.string().optional(),
+        state: z.string(),
+        type: z.enum(["Public", "Private"])
+      }),
+    [t]
+  );
+
+  const selectedTotal = selectedCount ?? selectedRows.length;
+
+  const hideTitleBar =
+    !viewTitle && !primaryAction && !canSaveView && !titleBadge;
+
+  // With every control opted out the toolbar row would render as an empty
+  // padded strip — skip it entirely (embedded wizard tables).
+  const hideToolbar =
+    !withSearch &&
+    !filters?.length &&
+    !headerActions &&
+    !(withSelectableRows && typeof renderActions === "function") &&
+    sort === null &&
+    !withColumnOrdering &&
+    !canSaveView &&
+    !withCsvExport &&
+    !withPagination &&
+    // Forced edit mode hides the Edit/Lock toggle, the only control inline
+    // editing adds to the toolbar.
+    (!withInlineEditing || forceEditMode);
+
+  return (
+    <div className={cn("w-full flex flex-col", !compact && "mb-8")}>
+      {canSaveView && savedViewDisclosure.isOpen ? (
+        <ValidatedForm
+          method="post"
+          action={path.to.saveViews}
+          validator={savedViewFormValidator}
+          resetAfterSubmit
+          className="w-full px-2 md:px-0"
+          defaultValues={currentView ?? {}}
+          fetcher={fetcher}
+        >
+          <Card className="my-4">
+            <Hidden name="id" value={currentView?.id} />
+            <Hidden
+              name="state"
+              value={JSON.stringify({
+                columnOrder,
+                columnPinning,
+                columnVisibility,
+                filters: currentFilters,
+                sorts: currentSorts
+              })}
+            />
+            <Hidden name="table" value={table} />
+            <Hidden name="type" value="Private" />
+            <CardContent>
+              <Input
+                autoFocus
+                name="name"
+                placeholder={t`My Saved View`}
+                label=""
+                className="font-medium text-base"
+                borderless
+              />
+              <Input
+                name="description"
+                label=""
+                placeholder={t`Description (optional)`}
+                className="text-sm"
+                borderless
+              />
+            </CardContent>
+            <CardFooter>
+              <Button variant="secondary" onClick={savedViewDisclosure.onClose}>
+                <Trans>Cancel</Trans>
+              </Button>
+              <Submit>
+                {hasView ? <Trans>Update</Trans> : <Trans>Save</Trans>}
+              </Submit>
+            </CardFooter>
+          </Card>
+        </ValidatedForm>
+      ) : (
+        !hideTitleBar && (
+          <HStack
+            className={cn(
+              compact
+                ? "px-4 py-2 justify-between bg-card border-b  w-full"
+                : "px-4 md:px-0 py-6 justify-between bg-card w-full relative"
+            )}
+          >
+            <HStack spacing={2}>
+              {withSidebarTrigger && <CollapsibleSidebarTrigger />}
+              {viewTitle && (
+                // A list page's title is its h1; a compact table sits inside a page.
+                <Heading
+                  as={compact ? "h2" : "h1"}
+                  size={compact ? "h3" : "h2"}
+                >
+                  {viewTitle}
+                </Heading>
+              )}
+              {titleBadge}
+            </HStack>
+
+            <HStack>
+              {serverExport && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="secondary" leftIcon={<LuDownload />}>
+                      <Trans>Export</Trans>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <a href={serverExport.csv}>
+                        <Trans>Download CSV</Trans>
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <a href={serverExport.xlsx}>
+                        <Trans>Download Excel</Trans>
+                      </a>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {/* <Button variant="secondary" leftIcon={<LuDownload />}>
+            Export
+            </Button> */}
+              <>{primaryAction}</>
+              {importCSV && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <IconButton
+                      aria-label={t`Table actions`}
+                      variant="secondary"
+                      icon={<BsThreeDotsVertical />}
+                    />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>
+                      <Trans>Bulk Import</Trans>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {importCSV.map(({ table, label }) => (
+                      <DropdownMenuItem
+                        key={table}
+                        onClick={() => {
+                          importCSVModal.open(table);
+                        }}
+                      >
+                        <DropdownMenuIcon icon={<LuDownload />} />
+                        {t`Import ${label} CSV`}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </HStack>
+          </HStack>
+        )
+      )}
+      {(!isEmpty || hasRememberedChanges) && !hideToolbar && (
+        <HStack
+          className={cn(
+            compact
+              ? "px-4 py-2 justify-between bg-card border-b border-border w-full"
+              : "px-4 md:px-0 justify-between bg-card w-full"
+          )}
+        >
+          <HStack>
+            {withSelectableRows &&
+              selectedRows.length > 0 &&
+              typeof renderActions === "function" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      className="pl-2 pr-1"
+                      leftIcon={<LuCheck />}
+                      variant="secondary"
+                      aria-label={t`${selectedTotal} selected — actions`}
+                    >
+                      <Badge variant="secondary">
+                        <span>{selectedTotal}</span>
+                      </Badge>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  {renderActions(selectedRows)}
+                </DropdownMenu>
+              )}
+            {withSearch && (
+              <SearchFilter param="search" size="sm" placeholder={t`Search`} />
+            )}
+            {!!filters?.length && <Filter filters={filters} />}
+            {headerActions}
+          </HStack>
+          <HStack>
+            {hasRememberedChanges && table && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onResetRememberedState}
+              >
+                <Trans>Reset</Trans>
+              </Button>
+            )}
+            {sort === undefined ? (
+              <Sort sortKeyToLabel={sortKeyToLabel} />
+            ) : (
+              sort
+            )}
+
+            {withColumnOrdering && (
+              <Columns
+                columnOrder={columnOrder}
+                columns={columns}
+                setColumnOrder={setColumnOrder}
+                withSelectableRows={withSelectableRows}
+              />
+            )}
+
+            {canSaveView && (
+              <>
+                {hasRememberedChanges && !hasView && (
+                  <span className="text-xs text-muted-foreground">
+                    <Trans>Save View</Trans>
+                  </span>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <IconButton
+                      aria-label={hasView ? t`Edit View` : t`Save View`}
+                      variant={
+                        savedViewDisclosure.isOpen || hasView
+                          ? "active"
+                          : "ghost"
+                      }
+                      icon={<LuLayers />}
+                      onClick={savedViewDisclosure.onToggle}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>
+                      {hasView ? (
+                        <Trans>Edit View</Trans>
+                      ) : (
+                        <Trans>Save View</Trans>
+                      )}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
+
+            {withCsvExport && (
+              <Download
+                href={csvExportHref}
+                data={data}
+                infinite={infiniteExport}
+                columnAccessors={columnAccessors}
+                exportValues={exportValues}
+                exportOnlyColumns={exportOnlyColumns}
+                columnOrder={columnOrder}
+                columnVisibility={columnVisibility}
+              />
+            )}
+
+            {withPagination && count > 0 && (
+              <RowCount count={count} isExact={countIsExact} />
+            )}
+
+            {withInlineEditing &&
+              !forceEditMode &&
+              (editMode ? (
+                <Button
+                  leftIcon={<LuLock />}
+                  variant="secondary"
+                  onClick={() => setEditMode(false)}
+                >
+                  <Trans>Lock</Trans>
+                </Button>
+              ) : (
+                <Button
+                  leftIcon={<LuFilePen />}
+                  variant="secondary"
+                  onClick={() => setEditMode(true)}
+                >
+                  <Trans>Edit</Trans>
+                </Button>
+              ))}
+          </HStack>
+        </HStack>
+      )}
+      {/* Only filters with a declared column filter render a chip — gate the
+          row on those so undeclared filters (e.g. headerActions toggles) don't
+          leave an empty strip behind. */}
+      {currentFilters.some((f) =>
+        filters.some((cf) => cf.accessorKey === f.split(":")[0])
+      ) && (
+        <HStack
+          className={cn(
+            compact
+              ? "px-4 py-1.5 justify-between bg-card border-b border-border w-full"
+              : "px-4 md:px-0 py-1.5 justify-between bg-card w-full"
+          )}
+        >
+          <ActiveFilters filters={filters} />
+        </HStack>
+      )}
+      {importCSVModal.item && (
+        <ImportCSVModal
+          key={importCSVModal.key}
+          open={importCSVModal.isOpen}
+          table={importCSVModal.item}
+          onClose={importCSVModal.close}
+        />
+      )}
+    </div>
+  );
+};
+
+// The list's total in place of the pager. `LIST_COUNT` is an estimate from
+// 1,000 rows up, so the number says "about" until the exact count arrives.
+function RowCount({ count, isExact }: { count: number; isExact: boolean }) {
+  return (
+    <span className="whitespace-nowrap px-2 text-sm text-muted-foreground tabular-nums">
+      {isExact ? (
+        <Plural value={count} one="# row" other="# rows" />
+      ) : (
+        <Plural value={count} one="about # row" other="about # rows" />
+      )}
+    </span>
+  );
+}
+
+export default TableHeader;

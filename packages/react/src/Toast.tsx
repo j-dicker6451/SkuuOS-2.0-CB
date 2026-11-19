@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+"use client";
+
+import { Toaster as Sonner, toast as sonnerToast } from "sonner";
+
+/**
+ * Sonner's `toast`, except an error stays until it is dismissed (with the
+ * close button or Escape): a 4-second error is gone before a screen reader
+ * user, or anyone reading slowly, can take it in. A caller's own `duration`
+ * still wins.
+ */
+const toast: typeof sonnerToast = Object.assign(
+  (...args: Parameters<typeof sonnerToast>) => sonnerToast(...args),
+  sonnerToast,
+  {
+    error: ((message, data) =>
+      sonnerToast.error(message, {
+        duration: Number.POSITIVE_INFINITY,
+        ...data
+      })) as typeof sonnerToast.error
+  }
+);
+
+type ToasterProps = React.ComponentProps<typeof Sonner>;
+
+const Toaster = ({ style, ...props }: ToasterProps) => {
+  return (
+    <Sonner
+      className="toaster group"
+      // An open modal, drawer or menu sets pointer-events: none on <body>;
+      // the toaster opts back in, so its close buttons and hover still work.
+      style={{ pointerEvents: "auto", ...style }}
+      closeButton
+      toastOptions={{
+        classNames: {
+          toast:
+            "group toast select-text group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg selection:bg-slate-900 selection:text-white",
+          description: "group-[.toast]:text-muted-foreground",
+          actionButton:
+            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
+          cancelButton:
+            "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          closeButton:
+            "group-[.toast]:!bg-transparent group-[.toast]:!text-current group-[.toast]:!border-transparent group-[.toast]:!size-5 group-[.toast]:!left-auto group-[.toast]:!right-2 group-[.toast]:!top-1/2 group-[.toast]:!-translate-y-1/2 group-[.toast]:!translate-x-0 group-[.toast]:!opacity-60 group-[.toast]:hover:!opacity-100 group-[.toast]:!transition-opacity group-[.toast]:!shadow-none",
+          success:
+            "group-[.toaster]:bg-blue-700 group-[.toaster]:text-white group-[.toaster]:border-blue-700 ",
+          error:
+            "group-[.toaster]:bg-red-600 group-[.toaster]:text-white group-[.toaster]:border-red-600 "
+        }
+      }}
+      {...props}
+    />
+  );
+};
+
+export { Toaster, toast };

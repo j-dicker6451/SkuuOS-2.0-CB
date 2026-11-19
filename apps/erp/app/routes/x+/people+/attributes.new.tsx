@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { assertIsPost, error } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { validationError, validator } from "@carbon/form";
+import { useRouteDialog } from "@carbon/react";
+import { redirect } from "@carbon/utils";
+import type { ActionFunctionArgs } from "react-router";
+import { attributeCategoryValidator } from "~/modules/people/people.models";
+import { insertAttributeCategory } from "~/modules/people/people.service";
+import { AttributeCategoryForm } from "~/modules/people/ui/Attributes";
+import { path } from "~/utils/path";
+
+export async function action({ request }: ActionFunctionArgs) {
+  assertIsPost(request);
+  const { client, companyId, userId } = await requirePermissions(request, {
+    update: "people"
+  });
+
+  const validation = await validator(attributeCategoryValidator).validate(
+    await request.formData()
+  );
+
+  if (validation.error) {
+    return validationError(validation.error);
+  }
+
+  const { name, emoji, isPublic } = validation.data;
+
+  const createAttributeCategory = await insertAttributeCategory(client, {
+    name,
+    emoji,
+    public: isPublic,
+    companyId,
+    createdBy: userId
+  });
+  if (createAttributeCategory.error) {
+    throw redirect(
+      path.to.attributes,
+      await flash(
+        request,
+        error(
+          createAttributeCategory.error,
+          "Failed to create attribute category"
+        )
+      )
+    );
+  }
+
+  throw redirect(path.to.attributes);
+}
+
+export default function NewAttributeCategoryRoute() {
+  const dialog = useRouteDialog(path.to.attributes);
+
+  const initialValues = {
+    name: "",
+    emoji: "",
+    isPublic: false
+  };
+
+  return (
+    <AttributeCategoryForm
+      open={dialog.open}
+      onClose={dialog.close}
+      initialValues={initialValues}
+    />
+  );
+}

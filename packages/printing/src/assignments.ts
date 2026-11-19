@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type {
+  ContextAssignment,
+  LocationAssignment,
+  PrintingSettings
+} from "./types";
+
+/** The contexts a location assigns a printer to, besides its default. */
+export const locationPrinterContexts = [
+  "shipping",
+  "receiving",
+  "inventory",
+  "kanban",
+  "documents"
+] as const;
+
+export const printerContexts = [
+  "default",
+  ...locationPrinterContexts,
+  "workCenter"
+] as const;
+
+export type PrinterContext = (typeof printerContexts)[number];
+
+const sourceDocumentContexts: Record<string, PrinterContext> = {
+  Shipment: "shipping",
+  Receipt: "receiving",
+  StockTransfer: "inventory",
+  PickingList: "inventory",
+  StorageUnit: "inventory",
+  Kanban: "kanban",
+  PackingSlip: "documents",
+  SalesInvoice: "documents"
+};
+
+/**
+ * Whether a context auto-prints before a company sets it. Full-page documents
+ * auto-print only once turned on, so adding the documents printer does not
+ * start printing slips on its own.
+ */
+export function defaultAutoPrint(context: PrinterContext): boolean {
+  return context !== "documents";
+}
+
+/**
+ * Maps a print job's source document to the printer context whose
+ * assignment should be used.
+ */
+export function getPrinterContextForSource(
+  sourceDocument: string,
+  workCenterId?: string
+): PrinterContext {
+  return (
+    sourceDocumentContexts[sourceDocument] ??
+    (workCenterId ? "workCenter" : "default")
+  );
+}
+
+/**
+ * Resolves the effective printer assignment for a context within a location.
+ *
+ * - "default" returns the location default.
+ * - "workCenter" with no explicit entry inherits the location default outright.
+ * - Other contexts fall back to the location's default printer when they have
+ *   no printer of their own, but keep their own autoPrint flag.
+ */
+export function resolveContextAssignment(
+  assignment: LocationAssignment,
+  context: PrinterContext,
+  workCenterId?: string
+): ContextAssignment {
+  const fallback: ContextAssignment = {
+    printerRouteId: assignment.defaultPrinterRouteId ?? null,
+    autoPrint: assignment.defaultAutoPrint ?? true
+  };
+
+  if (context === "default") return fallback;
+
+  const explicit =
+    context === "workCenter"
+      ? workCenterId
+        ? assignment.workCenters?.[workCenterId]
+        : undefined
+      : assignment[context];
+
+  if (context === "workCenter" && !explicit) return fallback;
+
+  return {
+    printerRouteId: explicit?.printerRouteId ?? fallback.printerRouteId,
+    autoPrint: explicit?.autoPrint ?? defaultAutoPrint(context)
+  };
+}
+
+export function emptyLocationAssignment(): LocationAssignment {
+  return {
+    defaultPrinterRouteId: null,
+    defaultAutoPrint: true,
+    shipping: { printerRouteId: null, autoPrint: true },
+    receiving: { printerRouteId: null, autoPrint: true },
+    inventory: { printerRouteId: null, autoPrint: true },
+    kanban: { printerRouteId: null, autoPrint: true },
+    documents: {
+      printerRouteId: null,
+      autoPrint: defaultAutoPrint("documents")
+    },
+    workCenters: {}
+  };
+}
+
+/**
+ * Returns a copy of the settings with one context assignment replaced.
+ */
+export function setContextAssignment(
+  settings: PrintingSettings,
+  locationId: string,
+  context: PrinterContext,
+  value: ContextAssignment,
+  workCenterId?: string
+): PrintingSettings {
+  const assignment: LocationAssignment = settings.assignments[locationId]
+    ? { ...settings.assignments[locationId] }
+    : emptyLocationAssignment();
+
+  switch (context) {
+    case "default":
+      assignment.defaultPrinterRouteId = value.printerRouteId;
+      assignment.defaultAutoPrint = value.autoPrint;
+      break;
+    case "workCenter":
+      if (!workCenterId) {
+        throw new Error("workCenterId is required for workCenter assignments");
+      }
+      assignment.workCenters = {
+        ...assignment.workCenters,
+        [workCenterId]: value
+      };
+      break;
+    default:
+      assignment[context] = value;
+  }
+
+  return {
+    ...settings,
+    assignments: { ...settings.assignments, [locationId]: assignment }
+  };
+}

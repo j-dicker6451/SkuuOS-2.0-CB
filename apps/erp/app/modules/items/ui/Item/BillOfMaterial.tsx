@@ -1,0 +1,1437 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+"use client";
+import { useCarbon } from "@carbon/auth";
+import type { Database } from "@carbon/database";
+import {
+  missingPullFromLocations,
+  needsPullFrom
+} from "@carbon/database/strict-backflush";
+import { ValidatedForm } from "@carbon/form";
+import { toastServiceError, useAction } from "@carbon/query";
+import {
+  Badge,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  HStack,
+  IconButton,
+  Label,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  toast,
+  toastError,
+  useDisclosure,
+  useThrottle,
+  useViewport
+} from "@carbon/react";
+import { getItemById, getItemReadableId } from "@carbon/utils";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { motion } from "motion/react";
+import { nanoid } from "nanoid";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import {
+  LuArrowLeft,
+  LuChevronDown,
+  LuChevronRight,
+  LuGitPullRequest,
+  LuGitPullRequestCreate,
+  LuGitPullRequestCreateArrow,
+  LuLock,
+  LuPackage,
+  LuRedoDot,
+  LuSquareFunction,
+  LuTrash,
+  LuTruck
+} from "react-icons/lu";
+import { useFetchers, useParams, useSearchParams } from "react-router";
+import type { z } from "zod";
+import { MethodIcon, SourcingTypeIcon } from "~/components";
+import { ConfigurationEditor } from "~/components/Configurator/ConfigurationEditor";
+import type { Configuration } from "~/components/Configurator/types";
+import {
+  DefaultMethodType,
+  Hidden,
+  Item,
+  Location,
+  Number,
+  Select,
+  StorageUnit,
+  Submit,
+  UnitOfMeasure
+} from "~/components/Form";
+import { useStorageUnits } from "~/components/Form/StorageUnit";
+import { useUnitOfMeasure } from "~/components/Form/UnitOfMeasure";
+import type {
+  Item as SortableItem,
+  SortableItemRenderProps
+} from "~/components/SortableList";
+import {
+  SortableList,
+  SortableListItem,
+  SortableListItemPanel,
+  SortableListItemToggle
+} from "~/components/SortableList";
+import { CompactEmpty } from "~/components/Table/components/Compact/CompactEmpty";
+import { usePermissions, useUrlParams, useUser } from "~/hooks";
+import { usePullFromLocationIds } from "~/hooks/usePullFromLocationIds";
+import { methodType, sourcingType } from "~/modules/shared/shared.models";
+import type {
+  MethodItemType,
+  MethodType,
+  SourcingType
+} from "~/modules/shared/types";
+import type { action as updateMaterialAction } from "~/routes/x+/items+/methods+/material.$id";
+import type { action as createMaterialAction } from "~/routes/x+/items+/methods+/material.new";
+import type { action as updateItemsAction } from "~/routes/x+/items+/update";
+import type { Item as ItemType } from "~/stores";
+import { useItems } from "~/stores";
+import { path } from "~/utils/path";
+import type { methodOperationValidator } from "../../items.models";
+import { methodMaterialValidator } from "../../items.models";
+import type {
+  ConfigurationParameter,
+  ConfigurationRule,
+  MakeMethod
+} from "../../types";
+import { MaterialRowDetails, MaterialRowTitle } from "./MethodRow";
+import type { ReleaseLockProps } from "./ReleaseLockAlert";
+import ReleaseLockAlert, { getReleaseLockFlags } from "./ReleaseLockAlert";
+
+type Material = z.infer<typeof methodMaterialValidator> & {
+  description: string;
+  item: {
+    name: string;
+    itemTrackingType: Database["public"]["Enums"]["itemTrackingType"];
+    replenishmentSystem: string | null;
+    defaultMethodType: Database["public"]["Enums"]["methodType"];
+    sourcingType: Database["public"]["Enums"]["sourcingType"];
+  };
+};
+
+type Operation = z.infer<typeof methodOperationValidator> & {
+  // The same operations data BillOfProcess gets — carries its steps at runtime, so the
+  // BoM editor can offer a per-step assignment (Phase 2). Narrow type, optional here.
+  methodOperationStep?: { id: string; name: string | null }[];
+};
+
+type ItemWithData = SortableItem & {
+  data: Material;
+};
+
+type BillOfMaterialProps = {
+  configurable?: boolean;
+  makeMethod: MakeMethod;
+  materials: Material[];
+  operations: Operation[];
+  parameters?: ConfigurationParameter[];
+  configurationRules?: ConfigurationRule[];
+  replenishmentSystem?: string;
+  parentItemId?: string;
+  // Extra read-only reason from the embedding surface (e.g. a change notice whose
+  // engineering content is frozen at Implementation).
+  isDisabled?: boolean;
+  // What to tell the user when isDisabled is what made this read-only.
+  disabledReason?: ReactNode;
+  // Set when this edits a correction's materials: new lines are created inside
+  // the correction, and the card takes `title`.
+  methodCorrectionId?: string;
+  title?: ReactNode;
+} & ReleaseLockProps;
+
+type OrderState = {
+  [key: string]: number;
+};
+
+type CheckedState = {
+  [key: string]: boolean;
+};
+
+type TemporaryItems = {
+  [key: string]: Material;
+};
+
+const initialMethodMaterial: Omit<Material, "makeMethodId" | "order"> & {
+  description: string;
+} = {
+  itemId: "",
+  // @ts-expect-error
+  itemType: "Item" as const,
+  methodType: "Purchase to Order" as const,
+  sourcingType: "Specified" as const,
+  description: "",
+  quantity: 1,
+  unitOfMeasureCode: "EA",
+  storageUnitIds: {}
+};
+
+const BillOfMaterial = ({
+  configurable = false,
+  configurationRules,
+  makeMethod,
+  materials: initialMaterials,
+  operations,
+  parameters,
+  replenishmentSystem,
+  parentItemId,
+  revisionStatus,
+  releaseControl,
+  isDisabled = false,
+  disabledReason,
+  methodCorrectionId,
+  title
+}: BillOfMaterialProps) => {
+  const permissions = usePermissions();
+  const { t } = useLingui();
+  const { isProductionRevision, isReleaseLocked } = getReleaseLockFlags({
+    revisionStatus,
+    releaseControl
+  });
+  const { isPhone } = useViewport();
+  const isReadOnly =
+    permissions.can("update", "parts") === false ||
+    makeMethod.status !== "Draft" ||
+    isReleaseLocked ||
+    isDisabled;
+
+  const addItemButtonRef = useRef<HTMLButtonElement>(null);
+
+  const [items] = useItems();
+  const itemName = getItemById(items, makeMethod.itemId)?.name;
+  const fetcher = useAction();
+  const deleteMaterialFetcher = useAction();
+  const [searchParams] = useSearchParams();
+
+  const makeMethodId = makeMethod.id;
+  const materialId = searchParams.get("materialId");
+
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [temporaryItems, setTemporaryItems] = useState<TemporaryItems>({});
+  const [checkedState, setCheckedState] = useState<CheckedState>({});
+  // Only the rows this session has reordered. Every other row takes its order
+  // from the loaded data: a copy of all of them taken at mount hid a reorder
+  // made anywhere else until the page was reloaded.
+  const [orderState, setOrderState] = useState<OrderState>({});
+
+  const materialsById = new Map<string, Material>();
+
+  // Add initial materials to map
+  initialMaterials.forEach((material) => {
+    if (!material.id) return;
+    materialsById.set(material.id, material);
+  });
+
+  const pendingMaterials = usePendingMaterials();
+
+  // Replace existing materials with pending ones
+  pendingMaterials.forEach((pendingMaterial) => {
+    if (!pendingMaterial.id) {
+      materialsById.set("temporary", {
+        ...pendingMaterial,
+        description: "",
+        item: {
+          name: "",
+          itemTrackingType: "Inventory",
+          replenishmentSystem: "Buy and Make",
+          defaultMethodType:
+            pendingMaterial.methodType ?? "Pull from Inventory",
+          sourcingType: pendingMaterial.sourcingType ?? "Specified"
+        }
+      });
+    } else {
+      materialsById.set(pendingMaterial.id, {
+        ...materialsById.get(pendingMaterial.id)!,
+        ...pendingMaterial
+      });
+    }
+  });
+
+  // Add temporary items
+  Object.entries(temporaryItems).forEach(([id, material]) => {
+    materialsById.set(id, material);
+  });
+
+  const rulesByField = new Map(
+    configurationRules?.map((rule) => [rule.field, rule]) ?? []
+  );
+
+  const pullFromLocationIds = usePullFromLocationIds();
+  const missingPullFrom = (material: Material) =>
+    pullFromLocationIds !== null &&
+    needsPullFrom({
+      methodType: material.methodType,
+      itemType: material.itemType,
+      itemTrackingType: material.item?.itemTrackingType ?? null
+    }) &&
+    missingPullFromLocations(material.storageUnitIds, pullFromLocationIds)
+      .length > 0;
+
+  const materials = makeItems(
+    items,
+    Array.from(materialsById.values()),
+    orderState,
+    checkedState,
+    rulesByField,
+    replenishmentSystem,
+    missingPullFrom
+  ).sort((a, b) => a.data.order - b.data.order);
+
+  const onToggleItem = (id: string) => {
+    if (isReadOnly) return;
+    setCheckedState((prev) => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const onAddItem = () => {
+    if (isReadOnly) return;
+    const materialId = nanoid();
+    setSelectedItemId(materialId);
+    setSearchParams({ materialId: materialId });
+
+    let newOrder = 1;
+    if (materials.length) {
+      newOrder = Math.max(...materials.map((item) => item.data.order)) + 1;
+    }
+
+    const newMaterial: Material = {
+      ...initialMethodMaterial,
+      id: materialId,
+      order: newOrder,
+      makeMethodId,
+      methodCorrectionId: methodCorrectionId ?? null
+    };
+
+    setTemporaryItems((prev) => ({
+      ...prev,
+      [materialId]: newMaterial
+    }));
+
+    setOrderState((prev) => ({
+      ...prev,
+      [materialId]: newOrder
+    }));
+  };
+
+  // One request for every saved row, so "Delete Selected" removes the checked
+  // rows together rather than racing one fetcher submit per row.
+  const onRemoveItems = (ids: string[]) => {
+    if (isReadOnly) return;
+
+    const without = <T,>(state: Record<string, T>) =>
+      Object.fromEntries(
+        Object.entries(state).filter(([id]) => !ids.includes(id))
+      );
+
+    // Temporary rows were never saved: dropping them from state is enough.
+    setTemporaryItems(without);
+    const savedIds = ids.filter((id) => !temporaryItems[id]);
+    if (savedIds.length > 0) {
+      const formData = new FormData();
+      for (const id of savedIds) formData.append("id", id);
+      deleteMaterialFetcher.submit(formData, {
+        method: "post",
+        action: path.to.deleteMethodMaterials
+      });
+    }
+
+    setSelectedItemId(null);
+    setOrderState(without);
+    setCheckedState(without);
+  };
+
+  const onRemoveItem = (id: string) => onRemoveItems([id]);
+  const checkedIds = materials
+    .filter((item) => item.checked)
+    .map((item) => item.id);
+
+  const updateSortOrder = useThrottle((updates: Record<string, number>) => {
+    let formData = new FormData();
+    formData.append("updates", JSON.stringify(updates));
+    fetcher.submit(formData, {
+      method: "post",
+      action: path.to.methodMaterialsOrder
+    });
+  }, 1000);
+
+  const onReorder = (items: ItemWithData[]) => {
+    if (isReadOnly) return;
+
+    // Create new order state
+    const newOrderState = items.reduce<OrderState>((acc, item, index) => {
+      acc[item.id] = index + 1;
+      return acc;
+    }, {});
+
+    // Update order state immediately
+    setOrderState(newOrderState);
+
+    // Only send non-temporary items to the server
+    const updates = Object.entries(newOrderState).reduce<
+      Record<string, number>
+    >((acc, [id, order]) => {
+      if (!temporaryItems[id]) {
+        acc[id] = order;
+      }
+      return acc;
+    }, {});
+
+    if (Object.keys(updates).length > 0) {
+      updateSortOrder(updates);
+    }
+  };
+
+  const onCloseOnDrag = useCallback(() => {
+    setCheckedState((prev) => {
+      const newState = { ...prev };
+      let changed = false;
+
+      materials.forEach((material) => {
+        if (material.checked) {
+          newState[material.id] = false;
+          changed = true;
+        }
+      });
+
+      return changed ? newState : prev;
+    });
+  }, [materials]);
+
+  const [, setSearchParams] = useUrlParams();
+
+  const renderListItem = ({
+    item,
+    items,
+    order,
+    onToggleItem,
+    onRemoveItem
+  }: SortableItemRenderProps<ItemWithData>) => {
+    const isOpen = item.id === selectedItemId;
+    const onSelectItem = (id: string | null) => {
+      setSearchParams({ materialId: id });
+      setSelectedItemId(id);
+    };
+
+    return (
+      <SortableListItem<Material>
+        isReadOnly={isReadOnly}
+        item={item}
+        items={items}
+        order={order}
+        key={item.id}
+        isExpanded={isOpen}
+        isHighlighted={item.id === materialId}
+        onSelectItem={onSelectItem}
+        onToggleItem={onToggleItem}
+        onRemoveItem={onRemoveItem}
+        handleDrag={onCloseOnDrag}
+        renderExtra={(item) => (
+          <div>
+            <SortableListItemToggle
+              isOpen={isOpen}
+              onToggle={() => {
+                if (isOpen) {
+                  onSelectItem(null);
+                } else {
+                  onSelectItem(item.id);
+                }
+              }}
+            />
+            <SortableListItemPanel isOpen={isOpen}>
+              <MaterialForm
+                configurable={configurable}
+                isReadOnly={isReadOnly}
+                item={item}
+                methodOperations={operations}
+                orderState={orderState}
+                temporaryItems={temporaryItems}
+                rulesByField={rulesByField}
+                onConfigure={onConfigure}
+                replenishmentSystem={replenishmentSystem}
+                parentItemId={parentItemId}
+                setOrderState={setOrderState}
+                setSelectedItemId={setSelectedItemId}
+                setTemporaryItems={setTemporaryItems}
+                onSubmit={() => {
+                  setSelectedItemId(null);
+                  addItemButtonRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "nearest",
+                    inline: "center"
+                  });
+                }}
+              />
+            </SortableListItemPanel>
+          </div>
+        )}
+      />
+    );
+  };
+
+  const configuratorDisclosure = useDisclosure();
+  const [configuration, setConfiguration] = useState<Configuration | null>(
+    null
+  );
+
+  const onConfigure = (configuration: Configuration) => {
+    flushSync(() => {
+      setConfiguration(configuration);
+    });
+    configuratorDisclosure.onOpen();
+  };
+
+  return (
+    <Card>
+      <HStack className="justify-between">
+        <CardHeader>
+          <CardTitle className="flex flex-row items-center gap-2">
+            {title ?? <Trans>Bill of Material</Trans>}
+            {itemName && (
+              <span className="text-xs text-muted-foreground font-normal">
+                {itemName}
+              </span>
+            )}
+            {isReadOnly && (
+              <Tooltip>
+                <TooltipTrigger className="text-muted-foreground">
+                  <LuLock />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  {makeMethod.status !== "Draft" ? (
+                    <Trans>
+                      This method version is read-only. Create a new version
+                      from the method menu to make changes.
+                    </Trans>
+                  ) : isDisabled && disabledReason ? (
+                    disabledReason
+                  ) : (
+                    <Trans>
+                      You don't have permission to edit this bill of material.
+                    </Trans>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </CardTitle>
+        </CardHeader>
+
+        <CardAction>
+          <div className="flex items-center gap-2">
+            {checkedIds.length > 1 && (
+              <Button
+                variant="destructive"
+                leftIcon={<LuTrash />}
+                isDisabled={isReadOnly}
+                onClick={() => onRemoveItems(checkedIds)}
+              >
+                <Trans>Delete Selected</Trans>
+              </Button>
+            )}
+            <Button
+              ref={addItemButtonRef}
+              variant="secondary"
+              isDisabled={isReadOnly}
+              onClick={onAddItem}
+            >
+              <Trans>Add Item</Trans>
+            </Button>
+            {configurable && materials.length > 0 && (
+              <IconButton
+                icon={<LuSquareFunction />}
+                aria-label={t`Configure`}
+                variant="ghost"
+                className={cn(
+                  rulesByField.has(
+                    `billOfMaterial:${makeMethodId}:${materialId}`
+                  ) && "text-emerald-500 hover:text-emerald-500"
+                )}
+                onClick={() =>
+                  onConfigure({
+                    label: t`Bill of Material`,
+                    field: `billOfMaterial:${makeMethodId}:${materialId}`,
+                    code: rulesByField.get(
+                      `billOfMaterial:${makeMethodId}:${materialId}`
+                    )?.code,
+                    returnType: {
+                      type: "list",
+                      listOptions: materials
+                        .map(
+                          (m) => getItemReadableId(items, m.data.itemId) ?? ""
+                        )
+                        .filter((i) => !!i)
+                    }
+                  })
+                }
+              />
+            )}
+          </div>
+        </CardAction>
+      </HStack>
+      <CardContent>
+        {isProductionRevision && (
+          <ReleaseLockAlert isLocked={isReleaseLocked} className="mb-4" />
+        )}
+        <SortableList
+          label={t`Bill of Materials`}
+          emptyState={
+            isPhone ? (
+              <CompactEmpty
+                className="py-10"
+                icon={<LuPackage />}
+                heading={<Trans>No materials yet</Trans>}
+                description={<Trans>Add the materials this item uses.</Trans>}
+                primaryAction={
+                  <Button
+                    variant="secondary"
+                    isDisabled={isReadOnly}
+                    onClick={onAddItem}
+                  >
+                    <Trans>Add Item</Trans>
+                  </Button>
+                }
+              />
+            ) : undefined
+          }
+          isReadOnly={isReadOnly}
+          items={materials}
+          onReorder={onReorder}
+          onToggleItem={onToggleItem}
+          onRemoveItem={onRemoveItem}
+          renderItem={renderListItem}
+        />
+      </CardContent>
+      {configuration && (
+        <ConfigurationEditor
+          configuration={configuration}
+          open={configuratorDisclosure.isOpen}
+          parameters={parameters ?? []}
+          onClose={configuratorDisclosure.onClose}
+        />
+      )}
+    </Card>
+  );
+};
+
+export default BillOfMaterial;
+
+function MaterialForm({
+  configurable,
+  isReadOnly,
+  item,
+  methodOperations,
+  temporaryItems,
+  rulesByField,
+  onConfigure,
+  replenishmentSystem,
+  parentItemId: propParentItemId,
+  setOrderState,
+  setSelectedItemId,
+  setTemporaryItems,
+  onSubmit
+}: {
+  configurable: boolean;
+  isReadOnly: boolean;
+  item: ItemWithData;
+  methodOperations: Operation[];
+  orderState: OrderState;
+  temporaryItems: TemporaryItems;
+  rulesByField: Map<string, ConfigurationRule>;
+  replenishmentSystem?: string;
+  parentItemId?: string;
+  setSelectedItemId: Dispatch<SetStateAction<string | null>>;
+  setTemporaryItems: Dispatch<SetStateAction<TemporaryItems>>;
+  setOrderState: Dispatch<SetStateAction<OrderState>>;
+  onConfigure: (configuration: Configuration) => void;
+  onSubmit: () => void;
+}) {
+  const { t } = useLingui();
+  const { carbon } = useCarbon();
+  const methodMaterialFetcher = useAction<
+    typeof createMaterialAction | typeof updateMaterialAction
+  >({
+    onSuccess: (data) => {
+      // A refused save returns `{ id: null }` and flashes its own error.
+      if (!data.id) return;
+      // The saved row replaces the temporary one when the page reloads.
+      setTemporaryItems((prev) => {
+        const { [item.id]: _, ...rest } = prev;
+        return rest;
+      });
+      if ("message" in data) toast.success(data.message);
+      onSubmit();
+    }
+  });
+  const params = useParams();
+  const parentItemId = propParentItemId ?? params.itemId;
+  const { company, defaults } = useUser();
+  const [locationId, setLocationId] = useState<string | undefined>(
+    defaults.locationId ?? undefined
+  );
+
+  const storageUnits = useStorageUnits(locationId);
+
+  useEffect(() => {
+    if (defaults.locationId) {
+      setLocationId(defaults.locationId);
+    }
+  }, [defaults.locationId]);
+
+  const unitOfMeasures = useUnitOfMeasure();
+
+  const sourceDisclosure = useDisclosure({
+    defaultIsOpen: true
+  });
+  const sourcingDisclosure = useDisclosure();
+  const backflushDisclosure = useDisclosure();
+
+  const [itemType, setItemType] = useState<MethodItemType>(item.data.itemType);
+  const [itemData, setItemData] = useState<{
+    itemId: string;
+    methodType: MethodType;
+    sourcingType: SourcingType;
+    description: string;
+    unitOfMeasureCode: string;
+    methodOperationId: string | undefined;
+    methodOperationStepIds?: string[];
+    quantity: number;
+    kit: boolean;
+    storageUnitIds: Record<string, string>;
+    requiresBatchTracking: boolean;
+    requiresSerialTracking: boolean;
+    itemReplenishmentSystem: string;
+  }>({
+    itemId: item.data.itemId ?? "",
+    methodType: item.data.methodType ?? "Pull from Inventory",
+    sourcingType: item.data.sourcingType ?? "Specified",
+    description: item.data.description ?? "",
+    unitOfMeasureCode: item.data.unitOfMeasureCode ?? "EA",
+    methodOperationId: item.data.methodOperationId ?? undefined,
+    methodOperationStepIds: (
+      (
+        item.data as {
+          methodMaterialStep?: { methodOperationStepId: string }[];
+        }
+      ).methodMaterialStep ?? []
+    ).map((s) => s.methodOperationStepId),
+    quantity: item.data.quantity ?? 1,
+    kit: item.data.kit ?? false,
+    storageUnitIds: item.data.storageUnitIds ?? {},
+    requiresBatchTracking: item.data.item?.itemTrackingType === "Batch",
+    requiresSerialTracking: item.data.item?.itemTrackingType === "Serial",
+    itemReplenishmentSystem:
+      item.data.item?.replenishmentSystem ?? replenishmentSystem ?? "Buy"
+  });
+
+  const pullFromLocationIds = usePullFromLocationIds();
+  const [changedItemTracking, setChangedItemTracking] = useState<{
+    itemId: string;
+    itemTrackingType: string | null;
+  } | null>(null);
+  const itemTrackingType =
+    changedItemTracking?.itemId === itemData.itemId
+      ? changedItemTracking.itemTrackingType
+      : (item.data.item?.itemTrackingType ?? null);
+  const requiresPullFrom =
+    pullFromLocationIds !== null &&
+    !!locationId &&
+    pullFromLocationIds.includes(locationId) &&
+    needsPullFrom({
+      methodType: itemData.methodType,
+      itemType,
+      itemTrackingType
+    });
+
+  // methodType/sourcingType are read-only mirrors of the component item
+  // (see method-material-sourcing rule). Re-sync them when the loader row
+  // changes — e.g. after the properties panel updates the default method type —
+  // since the useState initializer above only runs at mount.
+  useEffect(() => {
+    setItemData((d) => ({
+      ...d,
+      methodType: item.data.methodType ?? "Pull from Inventory",
+      sourcingType: item.data.sourcingType ?? "Specified"
+    }));
+  }, [item.data.methodType, item.data.sourcingType]);
+
+  const onTypeChange = (value: MethodItemType | "Item") => {
+    if (value === itemType) return;
+    setItemType(value as MethodItemType);
+
+    setItemData({
+      itemId: "",
+      methodType: "" as "Pull from Inventory",
+      sourcingType: "Specified",
+      quantity: 1,
+      description: "",
+      unitOfMeasureCode: "EA",
+      kit: false,
+      storageUnitIds: {},
+      methodOperationId: undefined,
+      requiresBatchTracking: false,
+      requiresSerialTracking: false,
+      itemReplenishmentSystem: replenishmentSystem ?? "Buy"
+    });
+  };
+
+  const onItemChange = async (itemId: string) => {
+    if (!carbon) return;
+    if (itemId === parentItemId) {
+      toast.error(t`An item cannot be added to itself.`);
+      return;
+    }
+
+    const item = await carbon
+      .from("item")
+      .select(
+        "name, readableIdWithRevision, type, unitOfMeasureCode, defaultMethodType, sourcingType, replenishmentSystem, itemTrackingType"
+      )
+      .eq("id", itemId)
+      .eq("companyId", company.id)
+      .single();
+
+    if (item.error) {
+      toastError(t`Failed to load item details`, item.error);
+      return;
+    }
+
+    // Method type and sourcing are item-level properties; mirror them here so
+    // the read-only display matches the item the moment it's selected.
+    setItemData((d) => ({
+      ...d,
+      itemId,
+      description: item.data?.name ?? "",
+      unitOfMeasureCode: item.data?.unitOfMeasureCode ?? "EA",
+      methodType: item.data?.defaultMethodType ?? "Pull from Inventory",
+      sourcingType: item.data?.sourcingType ?? "Specified",
+      kit: false,
+      requiresBatchTracking: item.data?.itemTrackingType === "Batch",
+      requiresSerialTracking: item.data?.itemTrackingType === "Serial",
+      itemReplenishmentSystem: item.data?.replenishmentSystem ?? "Buy"
+    }));
+    setChangedItemTracking({
+      itemId,
+      itemTrackingType: item.data?.itemTrackingType ?? null
+    });
+    if (item.data?.type) {
+      setItemType(item.data.type as MethodItemType);
+    }
+  };
+
+  const key = (field: string) => getFieldKey(field, item.id);
+
+  const isTracked =
+    itemData.requiresBatchTracking || itemData.requiresSerialTracking;
+  // Sourcing is how a "Buy and Make" parent's component is fulfilled, so the
+  // card follows the parent's replenishment (as the row's icon does), not the
+  // component's.
+  const showSourcing = replenishmentSystem === "Buy and Make";
+
+  // Sourcing belongs to the component item, not to this line: a change writes
+  // the item (as its Properties panel does), which cascades to every Draft
+  // method that uses it and may change its default method type.
+  const sourcingFetcher = useAction<typeof updateItemsAction>({
+    onError: (data) => {
+      toastServiceError(data);
+    }
+  });
+  const onSourcingChange = (value: SourcingType) => {
+    if (!itemData.itemId || value === itemData.sourcingType) return;
+    setItemData((d) => ({ ...d, sourcingType: value }));
+    const formData = new FormData();
+    formData.append("items", itemData.itemId);
+    formData.append("field", "sourcingType");
+    formData.append("value", value);
+    sourcingFetcher.submit(formData, {
+      method: "post",
+      action: path.to.bulkUpdateItems
+    });
+  };
+
+  return (
+    <ValidatedForm
+      action={
+        temporaryItems[item.id]
+          ? path.to.newMethodMaterial
+          : path.to.methodMaterial(item.id!)
+      }
+      method="post"
+      defaultValues={{
+        ...item.data
+      }}
+      validator={methodMaterialValidator}
+      className="w-full flex flex-col gap-y-4"
+      fetcher={methodMaterialFetcher}
+    >
+      <div>
+        <Hidden name="id" />
+        <Hidden name="makeMethodId" />
+        {/* Read on create only: a line stays in its correction. */}
+        <Hidden name="methodCorrectionId" />
+        <Hidden name="order" />
+        <Hidden name="kit" value={itemData.kit.toString()} />
+        <Hidden
+          name="storageUnitIds"
+          value={JSON.stringify(itemData.storageUnitIds)}
+        />
+        {/* methodType and sourcingType are item-level properties; the fields
+            above are read-only mirrors. They're still submitted to satisfy
+            methodMaterialValidator, but upsertMethodMaterial re-derives both
+            from the component item, so the submitted values are display-only —
+            don't treat them as the source of truth. */}
+        {!showSourcing && (
+          <Hidden name="sourcingType" value={itemData.sourcingType} />
+        )}
+      </div>
+
+      <div className="grid w-full gap-x-8 gap-y-4 grid-cols-1 lg:grid-cols-3 items-start">
+        <Item
+          blacklist={[parentItemId!]}
+          name="itemId"
+          label={itemType}
+          includeInactive
+          type={itemType}
+          validItemTypes={["Consumable", "Material", "Part"]}
+          isConfigured={rulesByField.has(key("itemId"))}
+          onChange={(value) => {
+            onItemChange(value?.value as string);
+          }}
+          onConfigure={
+            configurable && !temporaryItems[item.id]
+              ? () =>
+                  onConfigure({
+                    label: t`Part`,
+                    field: key("itemId"),
+                    code: rulesByField.get(key("itemId"))?.code,
+                    defaultValue: itemData.itemId,
+                    returnType: {
+                      type: "text",
+                      helperText:
+                        "the unique item identifier of the item (not the part number). you can get the item id from the key icon in the properties panel."
+                    }
+                  })
+              : undefined
+          }
+          onTypeChange={onTypeChange}
+        />
+        <Number
+          name="quantity"
+          label={t`Quantity`}
+          isConfigured={rulesByField.has(key("quantity"))}
+          onConfigure={
+            configurable && !temporaryItems[item.id]
+              ? () =>
+                  onConfigure({
+                    label: t`Quantity`,
+                    field: key("quantity"),
+                    code: rulesByField.get(key("quantity"))?.code,
+                    defaultValue: itemData.quantity,
+                    returnType: { type: "numeric" }
+                  })
+              : undefined
+          }
+        />
+        <UnitOfMeasure
+          name="unitOfMeasureCode"
+          value={itemData.unitOfMeasureCode}
+          onChange={(newValue) =>
+            setItemData((d) => ({
+              ...d,
+              unitOfMeasureCode: newValue?.value ?? "EA"
+            }))
+          }
+          isReadOnly={true}
+          isConfigured={rulesByField.has(key("unitOfMeasureCode"))}
+          onConfigure={
+            configurable && !temporaryItems[item.id]
+              ? () =>
+                  onConfigure({
+                    label: t`Unit of Measure`,
+                    field: key("unitOfMeasureCode"),
+                    code: rulesByField.get(key("unitOfMeasureCode"))?.code,
+                    defaultValue: itemData.unitOfMeasureCode,
+                    returnType: {
+                      type: "enum",
+                      listOptions: unitOfMeasures.map((u) => u.value)
+                    }
+                  })
+              : undefined
+          }
+        />
+      </div>
+      {showSourcing && (
+        <div className="border border-border rounded-md shadow-sm p-4 flex flex-col gap-4 w-full">
+          <HStack
+            className="w-full justify-between cursor-pointer"
+            onClick={sourcingDisclosure.onToggle}
+          >
+            <HStack>
+              <LuTruck className="text-foreground" />
+              <Label>Sourcing</Label>
+            </HStack>
+            <HStack>
+              <Badge variant="secondary">
+                <SourcingTypeIcon
+                  type={itemData.sourcingType}
+                  className="size-3 mr-1"
+                />
+                {itemData.sourcingType}
+              </Badge>
+              <IconButton
+                aria-expanded={sourcingDisclosure.isOpen}
+                icon={<LuChevronRight />}
+                aria-label={
+                  sourcingDisclosure.isOpen
+                    ? "Collapse Sourcing"
+                    : "Expand Sourcing"
+                }
+                variant="ghost"
+                size="md"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  sourcingDisclosure.onToggle();
+                }}
+                className={`transition-transform ${
+                  sourcingDisclosure.isOpen ? "rotate-90" : ""
+                }`}
+              />
+            </HStack>
+          </HStack>
+          <div
+            className={`grid w-full gap-x-8 gap-y-4 grid-cols-1 lg:grid-cols-3 pb-4 ${
+              sourcingDisclosure.isOpen ? "" : "hidden"
+            }`}
+          >
+            <Select
+              name="sourcingType"
+              label={t`Sourcing Type`}
+              value={itemData.sourcingType}
+              isReadOnly={
+                isReadOnly ||
+                !itemData.itemId ||
+                sourcingFetcher.state !== "idle"
+              }
+              options={sourcingType
+                // Drop Ship sets Purchase to Order, which a Make item does
+                // not allow.
+                .filter(
+                  (s) =>
+                    itemData.itemReplenishmentSystem !== "Make" ||
+                    s !== "Drop Ship"
+                )
+                .map((s) => ({
+                  value: s,
+                  label: (
+                    <span className="flex items-center gap-2">
+                      <SourcingTypeIcon type={s} />
+                      {s}
+                    </span>
+                  )
+                }))}
+              onChange={(option) => {
+                if (option) onSourcingChange(option.value as SourcingType);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="border border-border rounded-md shadow-sm p-4 flex flex-col gap-4 w-full">
+        <HStack
+          className="w-full justify-between cursor-pointer max-md:flex-wrap max-md:gap-y-2"
+          onClick={sourceDisclosure.onToggle}
+        >
+          <HStack>
+            {itemData.methodType === "Make to Order" ? (
+              <>
+                <LuGitPullRequestCreate />
+                <Label>Finish To</Label>
+              </>
+            ) : (
+              <>
+                <LuGitPullRequest />
+                <Label>Pull From</Label>
+              </>
+            )}
+          </HStack>
+          <HStack className="max-md:flex-wrap max-md:gap-y-1">
+            <Badge variant="secondary">
+              <MethodIcon type={itemData.methodType} className="size-3 mr-1" />
+              {itemData.methodType === "Purchase to Order"
+                ? t`Purchase to Order`
+                : itemData.methodType === "Pull from Inventory"
+                  ? t`Pull from Inventory`
+                  : t`Make to Order`}
+            </Badge>
+            <LuArrowLeft
+              className={cn(
+                itemData.methodType !== "Pull from Inventory"
+                  ? "rotate-180"
+                  : ""
+              )}
+            />
+            {requiresPullFrom && !itemData.storageUnitIds[locationId ?? ""] ? (
+              <Badge variant="red">
+                <LuGitPullRequest className="size-3 mr-1" />
+                <Trans>No storage unit</Trans>
+              </Badge>
+            ) : (
+              <Badge variant="secondary">
+                <LuGitPullRequest className="size-3 mr-1" />
+                {storageUnits.options?.find(
+                  (s) => s.value === itemData.storageUnitIds[locationId ?? ""]
+                )?.label ??
+                  (itemData.methodType === "Make to Order"
+                    ? t`WIP`
+                    : t`Default Storage Unit`)}
+              </Badge>
+            )}
+            <IconButton
+              aria-expanded={sourceDisclosure.isOpen}
+              icon={<LuChevronRight />}
+              aria-label={
+                sourceDisclosure.isOpen ? "Collapse Source" : "Expand Source"
+              }
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                sourceDisclosure.onToggle();
+              }}
+              className={`transition-transform ${
+                sourceDisclosure.isOpen ? "rotate-90" : ""
+              }`}
+            />
+          </HStack>
+        </HStack>
+        <div
+          className={`grid w-full gap-x-8 gap-y-4 grid-cols-1 lg:grid-cols-3 pb-4 ${
+            sourceDisclosure.isOpen ? "" : "hidden"
+          }`}
+        >
+          {/* Read-only: method type is the item's default method type
+              (Properties sidebar) and mirrored here. */}
+          <DefaultMethodType
+            name="methodType"
+            label={t`Method Type`}
+            termId="method-type"
+            value={itemData.methodType}
+            isReadOnly
+            isConfigured={rulesByField.has(key("methodType"))}
+            onConfigure={
+              configurable && !temporaryItems[item.id]
+                ? () =>
+                    onConfigure({
+                      label: t`Method Type`,
+                      field: key("methodType"),
+                      code: rulesByField.get(key("methodType"))?.code,
+                      defaultValue: itemData.methodType,
+                      returnType: {
+                        type: "enum",
+                        listOptions: methodType
+                      }
+                    })
+                : undefined
+            }
+            replenishmentSystem={itemData.itemReplenishmentSystem}
+          />
+          <Location
+            name="locationId"
+            label={t`Location`}
+            value={locationId}
+            onChange={(value) => {
+              setLocationId(value?.value as string);
+            }}
+          />
+          <StorageUnit
+            name="storageUnitId"
+            label={t`Storage Unit`}
+            value={itemData.storageUnitIds[locationId ?? ""]}
+            locationId={locationId}
+            onChange={(value) => {
+              setItemData((d) => ({
+                ...d,
+                storageUnitIds: {
+                  ...d.storageUnitIds,
+                  [locationId ?? ""]: value?.id ?? ""
+                }
+              }));
+            }}
+            isOptional={!requiresPullFrom}
+          />
+        </div>
+      </div>
+
+      <div className="border border-border rounded-md shadow-sm p-4 flex flex-col gap-4 w-full">
+        <HStack
+          className="w-full justify-between cursor-pointer"
+          onClick={backflushDisclosure.onToggle}
+        >
+          <HStack>
+            <LuGitPullRequestCreateArrow />
+            <Label>{isTracked ? t`Operation` : t`Backflush`}</Label>
+          </HStack>
+          <HStack>
+            <Badge
+              variant={
+                methodOperations.length > 0 ? "secondary" : "destructive"
+              }
+            >
+              <LuRedoDot className="size-3 mr-1" />
+              {itemData.methodOperationId
+                ? methodOperations.find(
+                    (o) => o.id === itemData.methodOperationId
+                  )?.description || "Selected Operation"
+                : "First Operation"}
+            </Badge>
+            <IconButton
+              aria-expanded={backflushDisclosure.isOpen}
+              icon={<LuChevronRight />}
+              aria-label={
+                backflushDisclosure.isOpen
+                  ? "Collapse Operation"
+                  : "Expand Operation"
+              }
+              variant="ghost"
+              size="md"
+              onClick={(e) => {
+                e.stopPropagation();
+                backflushDisclosure.onToggle();
+              }}
+              className={`transition-transform ${
+                backflushDisclosure.isOpen ? "rotate-90" : ""
+              }`}
+            />
+          </HStack>
+        </HStack>
+        <div
+          className={`grid w-full gap-x-8 gap-y-4 grid-cols-1 lg:grid-cols-3 pb-4 ${
+            backflushDisclosure.isOpen ? "" : "hidden"
+          }`}
+        >
+          <Select
+            name="methodOperationId"
+            label={t`Operation`}
+            isOptional
+            options={methodOperations.map((o) => ({
+              value: o.id!,
+              label: o.description
+            }))}
+            onChange={(value) => {
+              setItemData((d) => ({
+                ...d,
+                methodOperationId: value?.value,
+                // Steps belong to an operation — clear them when the operation changes.
+                methodOperationStepIds: []
+              }));
+            }}
+          />
+          {/* Part ↔ step assignment now lives on the STEP (the BoP step editor's "Parts"
+              picker), not here — so there is no per-material "Steps" dropdown in the BOM. */}
+        </div>
+      </div>
+
+      <div className="flex flex-1 items-center justify-end w-full">
+        <motion.div
+          layout
+          className="flex items-center justify-between gap-2 w-full"
+        >
+          {itemData.methodType === "Make to Order" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  leftIcon={
+                    <MethodIcon type={"Make to Order"} isKit={itemData.kit} />
+                  }
+                  variant="secondary"
+                  size="sm"
+                  rightIcon={<LuChevronDown />}
+                >
+                  {itemData.kit ? t`Kit` : t`Subassembly`}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuRadioGroup
+                  value={itemData.kit ? "Kit" : "Subassembly"}
+                  onValueChange={(value) => {
+                    setItemData((d) => ({
+                      ...d,
+                      kit: value === "Kit"
+                    }));
+                  }}
+                >
+                  <DropdownMenuRadioItem
+                    value="Subassembly"
+                    className="items-start"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span>
+                        <Trans>Subassembly</Trans>
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        <Trans>Built and costed as its own method</Trans>
+                      </span>
+                    </div>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="Kit" className="items-start">
+                    <div className="flex flex-col gap-0.5">
+                      <span>
+                        <Trans>Kit</Trans>
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        <Trans>
+                          Picked and consumed as separate components
+                        </Trans>
+                      </span>
+                    </div>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div />
+          )}
+
+          <div className="flex items-center gap-2">
+            <Submit
+              isDisabled={isReadOnly || methodMaterialFetcher.state !== "idle"}
+              isLoading={methodMaterialFetcher.state === "submitting"}
+            >
+              <Trans>Save</Trans>
+            </Submit>
+          </div>
+        </motion.div>
+      </div>
+    </ValidatedForm>
+  );
+}
+
+function makeItems(
+  items: ItemType[],
+  materials: Material[],
+  orderState: OrderState,
+  checkedState: CheckedState,
+  rulesByField?: Map<string, ConfigurationRule>,
+  replenishmentSystem?: string,
+  missingPullFrom?: (material: Material) => boolean
+): ItemWithData[] {
+  return materials.map((material) => {
+    const order = material.id
+      ? (orderState[material.id] ?? material.order)
+      : material.order;
+    const checked = material.id ? (checkedState[material.id] ?? false) : false;
+    return makeItem(
+      items,
+      material,
+      order,
+      checked,
+      rulesByField,
+      replenishmentSystem,
+      missingPullFrom?.(material) ?? false
+    );
+  });
+}
+
+function materialHasRules(
+  materialId: string,
+  rulesByField?: Map<string, ConfigurationRule>
+): boolean {
+  if (!rulesByField) return false;
+  const fields = ["itemId", "quantity", "unitOfMeasureCode", "methodType"];
+  return fields.some((field) =>
+    rulesByField.has(getFieldKey(field, materialId))
+  );
+}
+
+function makeItem(
+  items: ItemType[],
+  material: Material,
+  order: number,
+  checked: boolean,
+  rulesByField?: Map<string, ConfigurationRule>,
+  replenishmentSystem?: string,
+  missingPullFrom = false
+): ItemWithData {
+  const hasRules = material.id
+    ? materialHasRules(material.id, rulesByField)
+    : false;
+
+  return {
+    id: material.id!,
+    title: (
+      <MaterialRowTitle
+        readableId={getItemReadableId(items, material.itemId)}
+        description={material?.description}
+        itemId={material.itemId}
+        itemType={material.itemType}
+        supersessionMode={
+          items.find((i) => i.id === material.itemId)?.supersessionMode
+        }
+        hasRules={hasRules}
+        missingPullFrom={missingPullFrom}
+      />
+    ),
+    checked,
+    details: (
+      <MaterialRowDetails
+        trackingType={material.item?.itemTrackingType}
+        methodType={material.methodType}
+        isKit={material.kit}
+        sourcingType={
+          replenishmentSystem === "Buy and Make"
+            ? material.sourcingType
+            : undefined
+        }
+        quantity={material.quantity}
+        itemType={material.itemType}
+      />
+    ),
+    data: {
+      ...material,
+      order
+    }
+  };
+}
+
+function getFieldKey(field: string, itemId: string) {
+  return `${field}:${itemId}`;
+}
+
+const usePendingMaterials = () => {
+  type PendingItem = ReturnType<typeof useFetchers>[number] & {
+    formData: FormData;
+  };
+
+  return useFetchers()
+    .filter((fetcher): fetcher is PendingItem => {
+      return (
+        (fetcher.formAction === path.to.newMethodMaterial ||
+          fetcher.formAction?.includes("/items/methods/material/")) ??
+        false
+      );
+    })
+    .reduce<z.infer<typeof methodMaterialValidator>[]>((acc, fetcher) => {
+      const formData = fetcher.formData;
+      const material = methodMaterialValidator.safeParse(
+        Object.fromEntries(formData)
+      );
+
+      if (material.success) {
+        return [...acc, material.data];
+      }
+      return acc;
+    }, []);
+};

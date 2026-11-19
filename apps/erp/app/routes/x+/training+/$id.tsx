@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { getLogger } from "@carbon/logger";
+import { toastServiceError } from "@carbon/query";
+import type { JSONContent } from "@carbon/react";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  HStack,
+  isRichTextEmpty,
+  RecordOutlet,
+  RichTextView,
+  ToggleGroup,
+  ToggleGroupItem,
+  toast,
+  useDebounce,
+  VStack
+} from "@carbon/react";
+import { Editor } from "@carbon/react/Editor";
+import { redirect } from "@carbon/utils";
+import { msg } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { useState } from "react";
+import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import { useLoaderData, useParams } from "react-router";
+import { PanelProvider, ResizablePanels } from "~/components/Layout/Panels";
+import { Confirm } from "~/components/Modals";
+import { useImageUpload, usePermissions } from "~/hooks";
+import { getTraining } from "~/modules/resources/resources.service";
+import {
+  TrainingExplorer,
+  TrainingGuide,
+  TrainingHeader,
+  TrainingProperties,
+  TrainingVideo
+} from "~/modules/resources/ui";
+import { getTagsList } from "~/modules/shared/shared.service";
+import { detailBreadcrumb, type Handle } from "~/utils/handle";
+import { recordMeta } from "~/utils/meta";
+import { path } from "~/utils/path";
+
+const logger = getLogger("erp", "training-detail");
+
+export const handle: Handle = {
+  breadcrumb: detailBreadcrumb(
+    { breadcrumb: msg`Training`, to: path.to.trainings },
+    (data) => data?.training?.name
+  ),
+  module: "resources"
+};
+
+export const meta: MetaFunction<typeof loader> = ({ data }) =>
+  recordMeta(data?.training?.name, "Training");
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "resources",
+    bypassRls: true
+  });
+
+  const { id } = params;
+  if (!id) throw new Error("Could not find id");
+
+  const [training, tags] = await Promise.all([
+    getTraining(client, id),
+    getTagsList(client, companyId, "training")
+  ]);
+
+  if (training.error) {
+    throw redirect(
+      path.to.trainings,
+      await flash(request, error(training.error, "Failed to load training"))
+    );
+  }
+
+  // bypassRls makes `client` the service role, so the URL id is only proven to
+  // exist — not to be this company's.
+  if (training.data.companyId !== companyId) {
+    logger.error("Training is not in the caller's company", {
+      companyId,
+      trainingId: id
+    });
+    throw redirect(path.to.trainings);
+  }
+
+  return {
+    training: training.data,
+    tags: tags.data ?? []
+  };
+}
+
+export default function TrainingRoute() {
+  const { t } = useLingui();
+  const { id } = useParams();
+  if (!id) throw new Error("Could not find id");
+
+  return (
+    <PanelProvider key={id}>
+      <div className="flex flex-col h-[calc(100dvh-var(--topbar-height)-var(--content-inset))] overflow-hidden w-full">
+        <TrainingHeader />
+        <div className="flex h-[calc(100dvh-var(--topbar-height)-var(--header-height)-var(--content-inset))] overflow-hidden w-full">
+          <div className="flex flex-grow overflow-hidden">
+            <ResizablePanels
+              explorerLabel={t`Questions`}
+              explorer={<TrainingExplorer key={`explorer-${id}`} />}
+              content={
+                <div className="bg-card h-[calc(100dvh-var(--topbar-height)-var(--header-height)-var(--content-inset))] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-accent w-full">
+                  <VStack spacing={4} className="p-4">
+                    <TrainingContent key={`content-${id}`} />
+                    <RecordOutlet />
+                  </VStack>
+                </div>
+              }
+              properties={<TrainingProperties key={`properties-${id}`} />}
+            />
+          </div>
+        </div>
+      </div>
+    </PanelProvider>
+  );
+}
+
+const contentTypes = ["write", "pdf", "video"] as const;
+type ContentType = (typeof contentTypes)[number];
+const isContentType = (value: string): value is ContentType =>
+  (contentTypes as readonly string[]).includes(value);
+
+function TrainingContent() {
+  const { id } = useParams();
+  if (!id) throw new Error("Could not find id");
+
+  const { t } = useLingui();
+  const permissions = usePermissions();
+  const loaderData = useLoaderData<typeof loader>();
+
+  const [content, setContent] = useState<JSONContent>(
+    (loaderData?.training?.content ?? {}) as JSONContent
+  );
+
+  // A quiet POST, not a fetcher: an autosave every pause in typing must not
+  // reload every loader on the page.
+  const updateTraining = useDebounce(
+    async (content: JSONContent) => {
+      const formData = new FormData();
+      formData.append("ids", id);
+      formData.append("field", "content");
+      formData.append("value", JSON.stringify(content ?? {}));
+      const response = await fetch(path.to.bulkUpdateTraining, {
+        method: "post",
+        body: formData
+      }).catch((error) => {
+        logger.warning("Failed to save the training content", { id, error });
+        return null;
+      });
+      const body = (await response?.json().catch(() => null)) as {
+        error?: { message: string } | null;
+      } | null;
+      if (body?.error) {
+        toastServiceError(body);
+      } else if (!response?.ok) {
+        toast.error(t`Failed to save the content`);
+      }
+    },
+    500,
+    true
+  );
+
+  const onUploadImage = useImageUpload("training");
+
+  const canEdit =
+    permissions.can("update", "people") &&
+    permissions.can("update", "resources") &&
+    loaderData?.training?.status === "Draft";
+
+  const guidePath = loaderData?.training?.guidePath ?? null;
+  const videoUrl = loaderData?.training?.videoUrl ?? null;
+  // Content is written text, a PDF or a video, never two of them. A training
+  // with a guide is a PDF training and one with a video a video training; the
+  // toggle only remembers the choice before the first upload or link.
+  const savedType: ContentType | null = guidePath
+    ? "pdf"
+    : videoUrl
+      ? "video"
+      : null;
+  const [chosenType, setChosenType] = useState<ContentType>("write");
+  const [switchTo, setSwitchTo] = useState<ContentType | null>(null);
+  const [isSwitchOpen, setIsSwitchOpen] = useState(false);
+  const contentType = savedType ?? chosenType;
+
+  return (
+    <Card>
+      <HStack className="w-full justify-between items-start">
+        <CardHeader>
+          <CardTitle>
+            <Trans>Content</Trans>
+          </CardTitle>
+          <CardDescription>
+            <Trans>What employees read or watch before the questions</Trans>
+          </CardDescription>
+        </CardHeader>
+        <CardAction>
+          <ToggleGroup
+            type="single"
+            value={contentType}
+            disabled={!canEdit}
+            onValueChange={(value) => {
+              if (!isContentType(value) || value === contentType) return;
+              if (savedType) {
+                setSwitchTo(value);
+                setIsSwitchOpen(true);
+              } else setChosenType(value);
+            }}
+          >
+            <ToggleGroupItem size="sm" value="write">
+              <Trans>Write</Trans>
+            </ToggleGroupItem>
+            <ToggleGroupItem size="sm" value="pdf">
+              <Trans>Upload PDF</Trans>
+            </ToggleGroupItem>
+            <ToggleGroupItem size="sm" value="video">
+              <Trans>YouTube Video</Trans>
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </CardAction>
+      </HStack>
+      <CardContent
+        className={
+          canEdit && contentType === "write" ? "p-0 overflow-hidden" : undefined
+        }
+      >
+        {contentType === "pdf" ? (
+          <TrainingGuide
+            trainingId={id}
+            guidePath={guidePath}
+            canEdit={canEdit}
+          />
+        ) : contentType === "video" ? (
+          <TrainingVideo
+            trainingId={id}
+            videoUrl={videoUrl}
+            canEdit={canEdit}
+          />
+        ) : canEdit ? (
+          // Flush toolbar: pad the text, not the panel.
+          <Editor
+            label={t`Training content`}
+            toolbar
+            toolbarClassName="static bg-transparent px-4"
+            className="w-full [&_.ProseMirror]:min-h-[240px] [&_.ProseMirror]:px-6 [&_.ProseMirror]:py-4 max-md:[&_.ProseMirror]:px-4"
+            initialValue={content}
+            onUpload={onUploadImage}
+            onChange={(value) => {
+              setContent(value);
+              updateTraining(value);
+            }}
+          />
+        ) : // RichTextView shows its empty text on phones only, so say it here.
+        isRichTextEmpty(content) ? (
+          <p className="text-sm text-muted-foreground">
+            <Trans>No content</Trans>
+          </p>
+        ) : (
+          <RichTextView
+            content={content}
+            empty={<Trans>No content</Trans>}
+            className="prose dark:prose-invert max-w-none"
+          />
+        )}
+      </CardContent>
+      {savedType && switchTo && (
+        <Confirm
+          action={path.to.bulkUpdateTraining}
+          title={
+            switchTo === "write"
+              ? t`Switch to Written Content`
+              : switchTo === "pdf"
+                ? t`Switch to PDF`
+                : t`Switch to Video`
+          }
+          text={
+            savedType === "pdf"
+              ? t`This removes the PDF. Employees will see the new content instead.`
+              : t`This removes the video. Employees will see the new content instead.`
+          }
+          confirmText={savedType === "pdf" ? t`Remove PDF` : t`Remove Video`}
+          confirmVariant="destructive"
+          isOpen={isSwitchOpen}
+          onCancel={() => setIsSwitchOpen(false)}
+          onSubmit={() => {
+            setChosenType(switchTo);
+            setIsSwitchOpen(false);
+          }}
+        >
+          <input type="hidden" name="ids" value={id} />
+          <input
+            type="hidden"
+            name="field"
+            value={savedType === "pdf" ? "guidePath" : "videoUrl"}
+          />
+          <input type="hidden" name="value" value="" />
+        </Confirm>
+      )}
+    </Card>
+  );
+}

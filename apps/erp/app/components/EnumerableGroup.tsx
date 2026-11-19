@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import {
+  Badge,
+  cn,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  useEnumerableAsText
+} from "@carbon/react";
+import { useLingui } from "@lingui/react/macro";
+import { Link } from "react-router";
+import { Enumerable } from "./Enumerable";
+
+type EnumerableGroupItem = {
+  label: string;
+  /** Where the chip links to. Prefer this over `onClick` for navigation: a
+   * link is reachable by keyboard and named for assistive tech. */
+  to?: string;
+  onClick?: () => void;
+};
+
+type EnumerableGroupProps = {
+  items: EnumerableGroupItem[];
+  limit?: number;
+  // "enumerable" = colored entity chips; "outline" = readable-id badges,
+  // matching how item ids render across the app.
+  chip?: "enumerable" | "outline";
+  chipClassName?: string;
+};
+
+// Single-line sibling of AvatarGroup for Enumerable chips: the first `limit`
+// render inline and the rest collapse behind a +N chip that opens them (click,
+// tap or keyboard — a hover card left touch and keyboard users out), so
+// a list cell never wraps and every table row keeps the same height.
+const EnumerableGroup = ({
+  items,
+  limit = 2,
+  chip = "enumerable",
+  chipClassName
+}: EnumerableGroupProps) => {
+  const { t } = useLingui();
+  const asText = useEnumerableAsText();
+  if (items.length === 0) return null;
+  const visible = items.slice(0, limit);
+  const overflow = items.slice(limit);
+
+  // Phones, compact row context line: plain comma-joined text plus "+N".
+  if (asText) {
+    return (
+      <span>
+        {visible.map((item) => item.label).join(", ")}
+        {overflow.length > 0 ? ` +${overflow.length}` : null}
+      </span>
+    );
+  }
+
+  const renderBadge = (item: EnumerableGroupItem, clickable: boolean) =>
+    chip === "outline" ? (
+      <Badge
+        key={item.label}
+        variant="outline"
+        onClick={item.onClick}
+        title={item.label}
+        className={cn(clickable && "cursor-pointer", chipClassName)}
+      >
+        {item.label}
+      </Badge>
+    ) : (
+      <Enumerable
+        key={item.label}
+        value={item.label}
+        onClick={item.onClick}
+        className={cn(clickable && "cursor-pointer", chipClassName)}
+      />
+    );
+
+  const renderChip = (item: EnumerableGroupItem) =>
+    item.to ? (
+      <Link
+        key={item.label}
+        to={item.to}
+        onClick={(e) => e.stopPropagation()}
+        className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {renderBadge({ ...item, to: undefined, onClick: undefined }, true)}
+      </Link>
+    ) : (
+      renderBadge(item, !!item.onClick)
+    );
+
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      {visible.map(renderChip)}
+      {overflow.length > 0 && (
+        <Popover>
+          <PopoverTrigger
+            aria-label={t`Show ${overflow.length} more`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex min-h-[1.5rem] items-center rounded-md border bg-secondary px-2 text-[0.75rem] font-bold tabular-nums text-secondary-foreground outline-none transition-colors hover:bg-secondary/80 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            +{overflow.length}
+          </PopoverTrigger>
+          <PopoverContent className="w-auto max-w-[280px] p-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {overflow.map(renderChip)}
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
+    </span>
+  );
+};
+
+export { EnumerableGroup };

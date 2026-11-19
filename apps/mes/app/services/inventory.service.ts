@@ -1,0 +1,930 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { SUPABASE_URL } from "@carbon/auth";
+import type { Database } from "@carbon/database";
+import {
+  fetchAllByIds,
+  fetchAllRecords,
+  getLocationTimeZone
+} from "@carbon/database";
+import type {
+  DocumentTemplate,
+  DocumentTemplateType
+} from "@carbon/documents/template";
+import { toDocumentTemplate } from "@carbon/documents/template";
+import { datetime } from "@carbon/utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import { zfd } from "zod-form-data";
+import { erpPosting } from "~/services/erp";
+import {
+  buildFlow,
+  buildLaneBoard,
+  buildLineFeedRows,
+  buildStationBoard,
+  summarizeLanes
+} from "~/services/line-feed";
+import type { SuggestedAllocationLot } from "./allocation";
+import { greedyFillAllocation, sortLotsByPickMethod } from "./allocation";
+
+export type { SuggestedAllocationLot };
+export { greedyFillAllocation, sortLotsByPickMethod };
+
+/**
+ * Load a stored document template as a `DocumentTemplate | null` to pass to a
+ * PDF/ZPL generator (which runs it through `resolveTemplate`). Returns null when
+ * nothing is stored, so the output falls back to the type's default.
+ */
+export async function getDocumentTemplateConfig(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  documentType: DocumentTemplateType
+): Promise<DocumentTemplate | null> {
+  const stored = await client
+    .from("documentTemplate")
+    .select("*")
+    .eq("companyId", companyId)
+    .eq("documentType", documentType)
+    .maybeSingle();
+  return toDocumentTemplate(stored.data, documentType);
+}
+
+export const inventoryAdjustmentValidator = z.object({
+  itemId: z.string().min(1, { message: "Item ID is required" }),
+  locationId: z.string().min(1, { message: "Location is required" }),
+  storageUnitId: zfd.text(z.string().optional()),
+  entryType: z.enum(["Positive Adjmt.", "Negative Adjmt."]),
+  quantity: zfd.numeric(z.number().min(1, { message: "Quantity is required" }))
+});
+
+/**
+ * Where a job operation draws stock: its job's location and stock stripes, in
+ * draw order (its project's stock first when the project has project stock,
+ * then common stock). One read, plus one for a job charged to a project.
+ */
+export async function getJobOperationIssueScope(
+  client: SupabaseClient<Database>,
+  args: { jobOperationId: string; companyId: string }
+): Promise<{ locationId: string | null; stripes: (string | null)[] }> {
+  const operation = await client
+    .from("jobOperation")
+    .select("job(locationId, projectId)")
+    .eq("id", args.jobOperationId)
+    .eq("companyId", args.companyId)
+    .maybeSingle();
+  const job = operation.data?.job;
+  const project = job?.projectId
+    ? await client
+        .from("project")
+        .select("projectStock")
+        .eq("id", job.projectId)
+        .eq("companyId", args.companyId)
+        .maybeSingle()
+    : null;
+  return {
+    locationId: job?.locationId ?? null,
+    stripes: project?.data?.projectStock ? [job!.projectId, null] : [null]
+  };
+}
+
+/** An item's id, plus every revision of it when it is a Material. */
+async function getIssueItemIds(
+  client: SupabaseClient<Database>,
+  args: { itemId: string; companyId: string }
+): Promise<string[]> {
+  const item = await client
+    .from("item")
+    .select("type, readableId")
+    .eq("id", args.itemId)
+    .eq("companyId", args.companyId)
+    .single();
+  if (item.data?.type !== "Material") return [args.itemId];
+  const revisions = await client
+    .from("item")
+    .select("id")
+    .eq("readableId", item.data.readableId)
+    .eq("companyId", args.companyId);
+  return revisions.data?.length
+    ? revisions.data.map((revision) => revision.id)
+    : [args.itemId];
+}
+
+/**
+ * The Available stock of an item's lots a job can draw at a location: nettable
+ * bins, the job's stripes. One row per lot and stripe, read in ordered pages
+ * so an item with more lots than one page holds loses none. `trackedEntityId`
+ * narrows the read to one lot (a label scan).
+ */
+export async function getIssueLotStock(
+  client: SupabaseClient<Database>,
+  args: {
+    companyId: string;
+    locationId: string;
+    itemIds: string[];
+    stripes: (string | null)[];
+    trackedEntityId?: string;
+  }
+) {
+  return fetchAllRecords<{
+    trackedEntityId: string;
+    storageUnitName: string | null;
+    availableQuantity: number;
+  }>(() => {
+    const query = client.rpc("get_issue_tracked_entity_stock", {
+      p_company_id: args.companyId,
+      p_location_id: args.locationId,
+      p_item_ids: args.itemIds,
+      // A null element is common stock; the generated type cannot say so.
+      p_project_ids: args.stripes as string[]
+    });
+    return (
+      args.trackedEntityId
+        ? query.eq("trackedEntityId", args.trackedEntityId)
+        : query
+    )
+      .order("trackedEntityId")
+      .order("availableQuantity");
+  });
+}
+
+type IssueLot = {
+  id: string;
+  readableId: string | null;
+  quantity: number;
+  status: Database["public"]["Enums"]["trackedEntityStatus"];
+  expirationDate: string | null;
+  createdAt: string;
+};
+
+/**
+ * The serial or batch lots of an item a job operation can issue: Available
+ * stock in nettable bins at the job's own location, in the job's stripes
+ * (`issue` refuses any other lot). The operator cannot pick what is at another
+ * location, so those lots are never offered. Ordered expiring soonest first
+ * (FEFO, no expiry last), then oldest first (FIFO).
+ */
+export async function getIssueLotsForItem(
+  client: SupabaseClient<Database>,
+  args: { itemId: string; companyId: string; jobOperationId: string }
+): Promise<{
+  data: Array<IssueLot & { storageUnitName: string | null }> | null;
+  error: unknown;
+}> {
+  const [scope, itemIds] = await Promise.all([
+    getJobOperationIssueScope(client, args),
+    getIssueItemIds(client, args)
+  ]);
+  if (!scope.locationId) return { data: [], error: null };
+
+  const stock = await getIssueLotStock(client, {
+    companyId: args.companyId,
+    locationId: scope.locationId,
+    itemIds,
+    stripes: scope.stripes
+  });
+  if (stock.error) return { data: null, error: stock.error };
+
+  const stockByLot = new Map<string, { quantity: number; bins: Set<string> }>();
+  for (const row of stock.data ?? []) {
+    const current = stockByLot.get(row.trackedEntityId) ?? {
+      quantity: 0,
+      bins: new Set<string>()
+    };
+    current.quantity += row.availableQuantity ?? 0;
+    if (row.storageUnitName) current.bins.add(row.storageUnitName);
+    stockByLot.set(row.trackedEntityId, current);
+  }
+
+  const lots = await fetchAllByIds<IssueLot>([...stockByLot.keys()], (batch) =>
+    client
+      .from("trackedEntity")
+      .select("id, readableId, quantity, status, expirationDate, createdAt")
+      .in("id", batch)
+      .eq("companyId", args.companyId)
+      .gt("quantity", 0)
+      .order("id")
+  );
+  if (lots.error) return { data: null, error: lots.error };
+
+  return {
+    error: null,
+    data: lots.data
+      .sort(
+        (a, b) =>
+          (a.expirationDate ?? "9999").localeCompare(
+            b.expirationDate ?? "9999"
+          ) || a.createdAt.localeCompare(b.createdAt)
+      )
+      .map((lot) => {
+        const held = stockByLot.get(lot.id)!;
+        return {
+          ...lot,
+          quantity: Math.min(lot.quantity, held.quantity),
+          storageUnitName: [...held.bins].join(", ") || null
+        };
+      })
+  };
+}
+
+/**
+ * The tracking type a traveler label prints for each unit, from its item's
+ * tracking type (Serial or Batch) — never from the unit's quantity, since a
+ * batch lot can hold 1 or 0.5. A unit's item is `itemId`, else its
+ * `sourceDocumentId` (as the print job resolves it). One paged read.
+ */
+export async function getLabelTrackingTypes(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  units: { id: string; itemId: string | null; sourceDocumentId: string }[]
+): Promise<
+  | { data: Map<string, "Serial" | "Batch">; error: null }
+  | { data: null; error: unknown }
+> {
+  const itemIdOf = (unit: (typeof units)[number]) =>
+    unit.itemId ?? unit.sourceDocumentId;
+  const items = await fetchAllByIds(
+    [...new Set(units.map(itemIdOf))],
+    (batch) =>
+      client
+        .from("item")
+        .select("id, itemTrackingType")
+        .in("id", batch)
+        .eq("companyId", companyId)
+        .order("id")
+  );
+  if (items.error) return { data: null, error: items.error };
+  const typeByItem = new Map(
+    items.data.map((item) => [item.id, item.itemTrackingType])
+  );
+  return {
+    data: new Map(
+      units.map((unit) => [
+        unit.id,
+        typeByItem.get(itemIdOf(unit)) === "Batch" ? "Batch" : "Serial"
+      ])
+    ),
+    error: null
+  };
+}
+
+export async function getCompanySettings(
+  client: SupabaseClient<Database>,
+  companyId: string
+) {
+  return client
+    .from("companySettings")
+    .select("*")
+    .eq("id", companyId)
+    .single();
+}
+
+const PUBLIC_STORAGE_URL_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/public/`;
+
+export async function getCompany(
+  client: SupabaseClient<Database>,
+  companyId: string
+) {
+  const company = await client
+    .from("company")
+    .select("*")
+    .eq("id", companyId)
+    .single();
+  if (company.error || !company.data) return company;
+  // Logos are stored as storage paths; expand to full public URLs (matches the
+  // ERP getCompany) so they're fetchable by the PDF/ZPL pipeline.
+  const url = (p: string | null) =>
+    p ? `${PUBLIC_STORAGE_URL_PREFIX}${p}` : p;
+  return {
+    data: {
+      ...company.data,
+      logoLight: url(company.data.logoLight),
+      logoDark: url(company.data.logoDark),
+      logoLightIcon: url(company.data.logoLightIcon),
+      logoDarkIcon: url(company.data.logoDarkIcon)
+    },
+    error: null
+  };
+}
+
+/**
+ * Available tracked entities for an item at a location, one row per entity, with
+ * its bin, on-hand, and FEFO/FIFO order keys — for the shared TrackedEntityPicker.
+ * `excludeLineside` drops lineside (work-center) bins; `excludeNonNettable` drops
+ * non-nettable bins (a quarantine area); `excludeAllocated` nets out quantities
+ * already allocated to other non-cancelled picking lines.
+ */
+export async function getAvailableTrackedEntities(
+  client: SupabaseClient<Database>,
+  args: {
+    itemId: string;
+    companyId: string;
+    locationId: string;
+    excludeLineside?: boolean;
+    excludeNonNettable?: boolean;
+    excludeAllocated?: boolean;
+    excludeLineId?: string | null;
+    sortMethod?: Database["public"]["Enums"]["pickMethodSortMethod"];
+    // The stock stripes to list, in draw order: a project id, or null for
+    // common stock. Common stock only when omitted.
+    projectIds?: (string | null)[];
+  }
+) {
+  return client.rpc("get_available_tracked_entities", {
+    p_item_id: args.itemId,
+    p_company_id: args.companyId,
+    p_location_id: args.locationId,
+    p_exclude_lineside: args.excludeLineside ?? false,
+    p_exclude_allocated: args.excludeAllocated ?? false,
+    p_exclude_line_id: args.excludeLineId ?? undefined,
+    p_sort_method: args.sortMethod ?? undefined,
+    // A null element is common stock; the generated type cannot say so.
+    p_project_ids: args.projectIds as string[] | undefined,
+    p_exclude_non_nettable: args.excludeNonNettable ?? false
+  });
+}
+
+/**
+ * The configured tracked-entity pick order for an item at a location, used as
+ * the picker's default sort. Falls back to "Default" (smart) when unset.
+ */
+export async function getPickOrder(
+  client: SupabaseClient<Database>,
+  args: { itemId: string; locationId: string; companyId: string }
+): Promise<Database["public"]["Enums"]["pickMethodSortMethod"]> {
+  const { data } = await client
+    .from("pickMethod")
+    .select("sortMethod")
+    .eq("itemId", args.itemId)
+    .eq("locationId", args.locationId)
+    .eq("companyId", args.companyId)
+    .maybeSingle();
+  return data?.sortMethod ?? "Default";
+}
+
+export type PickingListRecommendation = {
+  trackedEntityId: string;
+  readableId: string | null;
+};
+
+/**
+ * The recommended tracked entities (serial/batch lots) for each tracked picking
+ * line, in pick order — surfaced as at-a-glance subtext before the picker opens.
+ * One batched RPC fetches every available lot for every item on the list; we then
+ * greedily assign distinct lots to lines in pick order so the same serial is never
+ * recommended to two lines, and a batch lot is split across lines by remaining qty.
+ * Returns a map of pickingListLineId → recommended lots (empty/partial if short).
+ */
+export async function getPickingListRecommendations(
+  client: SupabaseClient<Database>,
+  pickingListId: string
+): Promise<Record<string, PickingListRecommendation[]>> {
+  const [linesResult, availableResult] = await Promise.all([
+    client
+      .from("pickingListLine")
+      .select(
+        "id, itemId, projectId, quantityToPick, quantityPicked, status, item(itemTrackingType)"
+      )
+      .eq("pickingListId", pickingListId)
+      .order("jobOperationId")
+      .order("itemId"),
+    client.rpc("get_picking_list_tracked_available", {
+      p_picking_list_id: pickingListId
+    })
+  ]);
+
+  const recommendations: Record<string, PickingListRecommendation[]> = {};
+  if (linesResult.error || availableResult.error) return recommendations;
+
+  // Ordered, mutable pool of available lots per item and stock stripe (the RPC
+  // already orders each item's rows by its configured pick method). A line
+  // draws only its own stripe: a project's stock, or common stock ('').
+  const poolKey = (itemId: string, projectId: string | null) =>
+    `${itemId}:${projectId ?? ""}`;
+  const poolByItem = new Map<
+    string,
+    Array<{ trackedEntityId: string; readableId: string | null; qty: number }>
+  >();
+  for (const row of availableResult.data ?? []) {
+    const key = poolKey(row.itemId, row.projectId);
+    const list = poolByItem.get(key) ?? [];
+    list.push({
+      trackedEntityId: row.trackedEntityId,
+      readableId: row.readableId,
+      qty: Number(row.availableQuantity ?? 0)
+    });
+    poolByItem.set(key, list);
+  }
+
+  for (const line of linesResult.data ?? []) {
+    const trackingType = (line.item as { itemTrackingType?: string } | null)
+      ?.itemTrackingType;
+    if (trackingType !== "Serial" && trackingType !== "Batch") continue;
+
+    let remaining =
+      Number(line.quantityToPick ?? 0) - Number(line.quantityPicked ?? 0);
+    if (remaining <= 0) continue;
+
+    const pool = poolByItem.get(poolKey(line.itemId, line.projectId));
+    if (!pool?.length) continue;
+
+    const picks: PickingListRecommendation[] = [];
+    while (remaining > 0 && pool.length > 0) {
+      const lot = pool[0];
+      picks.push({
+        trackedEntityId: lot.trackedEntityId,
+        readableId: lot.readableId
+      });
+      const take = Math.min(lot.qty, remaining);
+      remaining -= take;
+      lot.qty -= take;
+      if (lot.qty <= 0) pool.shift();
+    }
+    recommendations[line.id] = picks;
+  }
+
+  return recommendations;
+}
+
+/**
+ * On-the-fly batch/lot suggestion for issuing a single tracked material when no
+ * picking list has allocated it — the same allocation the picking list would make,
+ * computed per material. Sources the ordered, allocation-netted, warehouse-only
+ * pool from `get_available_tracked_entities` honoring the item's `pickMethod`
+ * sort, then greedily fills `quantity` across lots. Returns [] for non-tracked
+ * items, zero/negative quantity, or when nothing is available.
+ */
+export async function getSuggestedAllocationForMaterial(
+  client: SupabaseClient<Database>,
+  args: {
+    itemId: string;
+    companyId: string;
+    locationId: string;
+    quantity: number;
+    // The job's stock stripes, in draw order (getJobOperationIssueScope).
+    // Common stock only when omitted.
+    projectIds?: (string | null)[];
+  }
+): Promise<SuggestedAllocationLot[]> {
+  if (args.quantity <= 0) return [];
+
+  const sortMethod = await getPickOrder(client, {
+    itemId: args.itemId,
+    locationId: args.locationId,
+    companyId: args.companyId
+  });
+
+  const { data, error } = await getAvailableTrackedEntities(client, {
+    itemId: args.itemId,
+    companyId: args.companyId,
+    locationId: args.locationId,
+    excludeLineside: true,
+    excludeNonNettable: true,
+    excludeAllocated: true,
+    sortMethod,
+    projectIds: args.projectIds
+  });
+  if (error || !data) return [];
+
+  // Never suggest an expired lot. FEFO puts the earliest expiry FIRST, so with
+  // expired stock on hand the greedy fill would suggest exactly the lots the
+  // issue modal refuses to offer (expiredEntityPolicy 'Block' drops them from
+  // the options), netting the seed to nothing. An expired lot is never the
+  // "correct batch to use" — skip them regardless of policy.
+  const today = datetime
+    .today(await getLocationTimeZone(client, args.locationId, args.companyId))
+    .toString();
+  const unexpired = data.filter(
+    (row) => !row.expirationDate || row.expirationDate >= today
+  );
+
+  // Sort in the app: the RPC's internal ORDER BY is not guaranteed through
+  // PostgREST (SQL-function inlining), so ordering is authoritative here.
+  const ordered = sortLotsByPickMethod(
+    unexpired.map((row) => ({
+      trackedEntityId: row.trackedEntityId,
+      readableId: row.readableId,
+      availableQuantity: Number(row.availableQuantity ?? 0),
+      expirationDate: row.expirationDate,
+      createdAt: row.createdAt,
+      storageUnitId: row.storageUnitId,
+      storageUnitName: row.storageUnitName
+    })),
+    sortMethod
+  );
+
+  return greedyFillAllocation(ordered, args.quantity);
+}
+
+export type JobMaterialPickedItem = {
+  itemId: string;
+  itemReadableId: string;
+  quantityPicked: number;
+  quantityToPick: number;
+};
+
+export type JobMaterialPickedQuantity = {
+  quantityPicked: number;
+  quantityToPick: number;
+  pickedByItem: JobMaterialPickedItem[];
+};
+
+/**
+ * How much of each job material has been picked, summed across every live picking-list
+ * line that references it. A job material can legitimately span several picking lists,
+ * so we sum per `jobMaterialId`. We only count lines whose parent list is actually being
+ * worked ("In Progress"/"Completed"/"Partial"): cancelling or drafting a list does NOT
+ * cascade a status down to its lines, so a Cancelled/Draft list would otherwise inflate
+ * the to-pick total with stale lines. Quantities are net of returns (picked − returned —
+ * what is still staged at lineside). Picking is optional — materials with no picking
+ * activity simply have no entry in the returned map. Never throws (returns {}).
+ */
+export async function getPickedQuantitiesByJobMaterial(
+  client: SupabaseClient<Database>,
+  jobMaterialIds: string[]
+): Promise<Record<string, JobMaterialPickedQuantity>> {
+  const picked: Record<string, JobMaterialPickedQuantity> = {};
+  if (jobMaterialIds.length === 0) return picked;
+
+  const { data, error } = await client
+    .from("pickingListLine")
+    .select(
+      "jobMaterialId, itemId, quantityToPick, quantityPicked, quantityReturned, pickingList!inner(status), item(readableIdWithRevision)"
+    )
+    .in("jobMaterialId", jobMaterialIds)
+    .neq("status", "Cancelled")
+    .in("pickingList.status", ["In Progress", "Completed", "Partial"]);
+
+  if (error || !data) return picked;
+
+  for (const line of data) {
+    if (!line.jobMaterialId) continue;
+    const entry = (picked[line.jobMaterialId] ??= {
+      quantityPicked: 0,
+      quantityToPick: 0,
+      pickedByItem: []
+    });
+    // Net of returns: quantityPicked is gross (returns book quantityReturned
+    // instead of decrementing it), and consumers of this map reason about what
+    // is still staged at lineside.
+    const quantityPicked = Math.max(
+      0,
+      Number(line.quantityPicked ?? 0) - Number(line.quantityReturned ?? 0)
+    );
+    const quantityToPick = Number(line.quantityToPick ?? 0);
+    entry.quantityPicked += quantityPicked;
+    entry.quantityToPick += quantityToPick;
+
+    if (!line.itemId) continue;
+    let byItem = entry.pickedByItem.find((p) => p.itemId === line.itemId);
+    if (!byItem) {
+      byItem = {
+        itemId: line.itemId,
+        itemReadableId: line.item?.readableIdWithRevision ?? line.itemId,
+        quantityPicked: 0,
+        quantityToPick: 0
+      };
+      entry.pickedByItem.push(byItem);
+    }
+    byItem.quantityPicked += quantityPicked;
+    byItem.quantityToPick += quantityToPick;
+  }
+
+  return picked;
+}
+
+/**
+ * The exact lots a picking list already picked for a job material — read from
+ * `pickingListLineTrackedEntity`, summed by `trackedEntityId` across every live
+ * picking line (a material can span several lines/lists). Same live-list filter
+ * as `getPickedQuantitiesByJobMaterial`: only "In Progress"/"Completed" lists, and
+ * never a Cancelled line. Shaped as `SuggestedAllocationLot[]` so the Issue modal
+ * can seed it through the same path the no-picking-list suggestion uses. On a
+ * partial-batch pick the SHELF entity keeps its id and the allocation records the
+ * departing CHILD staged at the lineside bin (Available, tagged
+ * "Split From Entity ID" = shelf parent) — so these ids are the lineside lots the
+ * operator actually consumes, and `splitFromEntityId` lets the Issue modal map a
+ * scanned shelf label to its allocated child. Never throws (returns []).
+ */
+export async function getPickedTrackedEntitiesForMaterial(
+  client: SupabaseClient<Database>,
+  args: { jobMaterialId: string; companyId: string }
+): Promise<SuggestedAllocationLot[]> {
+  const { data, error } = await client
+    .from("pickingListLine")
+    .select(
+      "companyId, pickingList!inner(status), pickingListLineTrackedEntity(trackedEntityId, quantityPicked, trackedEntity(readableId, expirationDate, attributes))"
+    )
+    .eq("jobMaterialId", args.jobMaterialId)
+    .eq("companyId", args.companyId)
+    .neq("status", "Cancelled")
+    .in("pickingList.status", ["In Progress", "Completed", "Partial"]);
+
+  if (error || !data) return [];
+
+  const byEntity = new Map<string, SuggestedAllocationLot>();
+  for (const line of data) {
+    for (const picked of line.pickingListLineTrackedEntity ?? []) {
+      const quantity = Number(picked.quantityPicked ?? 0);
+      if (!picked.trackedEntityId || quantity <= 0) continue;
+      const existing = byEntity.get(picked.trackedEntityId);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        const entity = picked.trackedEntity as {
+          readableId: string | null;
+          expirationDate: string | null;
+          attributes: Record<string, unknown> | null;
+        } | null;
+        const splitFrom = entity?.attributes?.["Split From Entity ID"];
+        byEntity.set(picked.trackedEntityId, {
+          trackedEntityId: picked.trackedEntityId,
+          readableId: entity?.readableId ?? null,
+          quantity,
+          expirationDate: entity?.expirationDate ?? null,
+          storageUnitId: null,
+          storageUnitName: null,
+          splitFromEntityId: typeof splitFrom === "string" ? splitFrom : null
+        });
+      }
+    }
+  }
+
+  return [...byEntity.values()];
+}
+
+// Thin wrapper over the post-inventory-adjustment operation — the same
+// unified write path the ERP uses. It books the item ledger, cost layers, and
+// the GL journal (Provisional before the accounting cutover, Posted after) in
+// one transaction, and owns the insufficient-quantity guard.
+export async function insertManualInventoryAdjustment(
+  client: SupabaseClient<Database>,
+  inventoryAdjustment: z.infer<typeof inventoryAdjustmentValidator> & {
+    companyId: string;
+    createdBy: string;
+  }
+) {
+  const { companyId, createdBy, entryType, ...adjustment } =
+    inventoryAdjustment;
+
+  const result = await erpPosting(
+    "post-inventory-adjustment",
+    { client, companyId, userId: createdBy },
+    {
+      ...adjustment,
+      adjustmentType: entryType
+    }
+  );
+
+  if (result.error) {
+    return {
+      data: null,
+      error: {
+        message:
+          result.error.message || "Failed to create manual inventory adjustment"
+      }
+    };
+  }
+
+  return { data: result.data?.itemLedger ?? null, error: null };
+}
+
+/**
+ * The line feed for one location: a lane per work center (`buildLaneBoard`)
+ * with its raw shelf, kit rack and station card (open material requests,
+ * lineside shortages and outstanding transfer lines), the board's summary, and
+ * the names the lanes show. Every source is paged with a stable order, so a
+ * location past the row cap is still read in full.
+ */
+export async function getLineFeed(
+  client: SupabaseClient<Database>,
+  args: { companyId: string; locationId: string; sort?: "line" | "worst" }
+) {
+  const { companyId, locationId, sort } = args;
+
+  const [requests, shortages, transfers, stations, stationBins, lanes] =
+    await Promise.all([
+      fetchAllRecords(() =>
+        client
+          .from("materialRequest")
+          .select(
+            "*, item(readableIdWithRevision), workCenter(name), jobOperation(job(jobId))"
+          )
+          .eq("status", "Open")
+          .eq("locationId", locationId)
+          .eq("companyId", companyId)
+          .order("id")
+      ),
+      fetchAllRecords(() =>
+        client
+          .rpc("get_line_feed_shortages", {
+            p_location_id: locationId,
+            p_company_id: companyId
+          })
+          .order("workCenterId")
+          .order("storageUnitId")
+          .order("itemId")
+      ),
+      fetchAllRecords(() =>
+        client
+          .from("stockTransferLine")
+          .select(
+            "id, itemId, outstandingQuantity, createdAt, toStorageUnitId, stockTransfer!inner(id, stockTransferId, status, locationId), toStorageUnit:storageUnit!stockTransferLine_toStorageUnitId_fkey!inner(name, workCenterId)"
+          )
+          .eq("companyId", companyId)
+          .eq("stockTransfer.locationId", locationId)
+          .in("stockTransfer.status", ["Released", "In Progress"])
+          .gt("outstandingQuantity", 0)
+          .not("toStorageUnit.workCenterId", "is", null)
+          .order("id")
+      ),
+      // Every station at the location, and the ones with lineside storage.
+      fetchAllRecords(() =>
+        client
+          .from("workCenter")
+          .select("id, name")
+          .eq("locationId", locationId)
+          .eq("companyId", companyId)
+          .eq("active", true)
+          .order("id")
+      ),
+      fetchAllRecords(() =>
+        client
+          .from("storageUnit")
+          .select("id, workCenterId")
+          .eq("locationId", locationId)
+          .eq("companyId", companyId)
+          .eq("active", true)
+          .not("workCenterId", "is", null)
+          .order("id")
+      ),
+      fetchAllRecords(() =>
+        client
+          .rpc("get_line_feed_lanes", {
+            p_location_id: locationId,
+            p_company_id: companyId
+          })
+          .order("workCenterId")
+          .order("tier")
+          .order("state")
+          .order("itemId")
+          .order("parentKitItemId")
+          .order("storageUnitId")
+          .order("jobId")
+          .order("trackedEntityId")
+      )
+    ]);
+
+  const error =
+    requests.error ??
+    shortages.error ??
+    transfers.error ??
+    stations.error ??
+    stationBins.error ??
+    lanes.error;
+  if (error) return { data: null, error };
+
+  const requestRows = requests.data ?? [];
+  const shortageRows = shortages.data ?? [];
+  const transferRows = transfers.data ?? [];
+  const laneRows = lanes.data ?? [];
+
+  // One read each for the names the shortages and transfers do not carry.
+  const storageUnitIds = [
+    ...new Set(
+      [
+        ...shortageRows.map((shortage) => shortage.storageUnitId),
+        ...laneRows.map((row) => row.storageUnitId)
+      ].filter((id): id is string => Boolean(id))
+    )
+  ];
+  const workCenterIds = [
+    ...new Set(
+      [
+        ...shortageRows.map((shortage) => shortage.workCenterId),
+        ...transferRows.map((transfer) => transfer.toStorageUnit?.workCenterId)
+      ].filter((id): id is string => Boolean(id))
+    )
+  ];
+
+  const itemIds = [
+    ...new Set(
+      [
+        ...shortageRows.map((shortage) => shortage.itemId),
+        ...transferRows.map((transfer) => transfer.itemId),
+        ...laneRows.map((row) => row.itemId)
+      ].filter((id): id is string => Boolean(id))
+    )
+  ];
+
+  const [storageUnits, workCenters, items] = await Promise.all([
+    fetchAllByIds(storageUnitIds, (batch) =>
+      client
+        .from("storageUnit")
+        .select("id, name")
+        .in("id", batch)
+        .eq("companyId", companyId)
+        .order("id")
+    ),
+    fetchAllByIds(workCenterIds, (batch) =>
+      client
+        .from("workCenter")
+        .select("id, name")
+        .in("id", batch)
+        .eq("companyId", companyId)
+        .order("id")
+    ),
+    fetchAllByIds(itemIds, (batch) =>
+      client
+        .from("item")
+        .select("id, name, readableIdWithRevision, thumbnailPath")
+        .in("id", batch)
+        .eq("companyId", companyId)
+        .order("id")
+    )
+  ]);
+
+  const nameError = storageUnits.error ?? workCenters.error ?? items.error;
+  if (nameError) return { data: null, error: nameError };
+
+  const workCenterNames: Record<string, string> = {};
+  for (const workCenter of workCenters.data ?? []) {
+    workCenterNames[workCenter.id] = workCenter.name;
+  }
+  for (const request of requestRows) {
+    if (request.workCenterId && request.workCenter?.name) {
+      workCenterNames[request.workCenterId] = request.workCenter.name;
+    }
+  }
+
+  const storageUnitNames: Record<string, string> = {};
+  for (const storageUnit of storageUnits.data ?? []) {
+    storageUnitNames[storageUnit.id] = storageUnit.name;
+  }
+  for (const transfer of transferRows) {
+    if (transfer.toStorageUnitId && transfer.toStorageUnit?.name) {
+      storageUnitNames[transfer.toStorageUnitId] = transfer.toStorageUnit.name;
+    }
+  }
+
+  // The readable ids a card shows: each line's part, the job a request came
+  // from, and the stock transfer a transfer line belongs to.
+  const itemReadableIds: Record<string, string> = {};
+  const itemThumbnailPaths: Record<string, string> = {};
+  const itemNames: Record<string, string> = {};
+  for (const item of items.data ?? []) {
+    itemNames[item.id] = item.name;
+    if (item.readableIdWithRevision) {
+      itemReadableIds[item.id] = item.readableIdWithRevision;
+    }
+    if (item.thumbnailPath) itemThumbnailPaths[item.id] = item.thumbnailPath;
+  }
+  for (const request of requestRows) {
+    if (request.itemId && request.item?.readableIdWithRevision) {
+      itemReadableIds[request.itemId] = request.item.readableIdWithRevision;
+    }
+  }
+  const jobReadableIds: Record<string, string> = {};
+  for (const request of requestRows) {
+    const jobId = request.jobOperation?.job?.jobId;
+    if (jobId) jobReadableIds[request.id] = jobId;
+  }
+  const stockTransferReadableIds: Record<string, string> = {};
+  for (const transfer of transferRows) {
+    stockTransferReadableIds[transfer.stockTransfer.id] =
+      transfer.stockTransfer.stockTransferId;
+  }
+
+  const board = buildLaneBoard({
+    stations: buildStationBoard({
+      workCenters: stations.data ?? [],
+      stationWorkCenterIds: (stationBins.data ?? [])
+        .map((bin) => bin.workCenterId)
+        .filter((id): id is string => Boolean(id)),
+      workCenterNames,
+      rows: buildLineFeedRows({
+        requests: requestRows,
+        shortages: shortageRows,
+        transfers: transferRows
+      })
+    }),
+    laneRows,
+    sort
+  });
+
+  return {
+    data: {
+      lanes: board,
+      flow: buildFlow(board, laneRows),
+      summary: summarizeLanes(board),
+      itemReadableIds,
+      itemNames,
+      itemThumbnailPaths,
+      storageUnitNames,
+      jobReadableIds,
+      stockTransferReadableIds
+    },
+    error: null
+  };
+}

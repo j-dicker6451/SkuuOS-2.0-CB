@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { RecordOutlet, VStack } from "@carbon/react";
+import { redirect } from "@carbon/utils";
+import { msg } from "@lingui/core/macro";
+import { Trans } from "@lingui/react/macro";
+import { useState } from "react";
+import type { LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import {
+  getChartOfAccounts,
+  getFiscalYearSettings
+} from "~/modules/accounting/accounting.service";
+import type { Chart } from "~/modules/accounting/types";
+import { ChartOfAccountsTree } from "~/modules/accounting/ui/ChartOfAccounts";
+import ChartOfAccountsTableFilters from "~/modules/accounting/ui/ChartOfAccounts/ChartOfAccountsTableFilters";
+import { months } from "~/modules/shared/shared.models";
+import type { Handle } from "~/utils/handle";
+import { path } from "~/utils/path";
+import { revalidateOnSearchChange } from "~/utils/revalidate";
+
+export const handle: Handle = {
+  breadcrumb: msg`Chart of Accounts`,
+  to: path.to.chartOfAccounts
+};
+
+export const shouldRevalidate = revalidateOnSearchChange;
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { client, companyId, companyGroupId } = await requirePermissions(
+    request,
+    {
+      view: "accounting",
+      role: "employee",
+      bypassRls: true
+    }
+  );
+
+  const url = new URL(request.url);
+  const searchParams = new URLSearchParams(url.search);
+
+  const startDate = searchParams.get("startDate") || null;
+  const endDate = searchParams.get("endDate") || null;
+
+  const [chartOfAccounts, fiscalYearSettings] = await Promise.all([
+    getChartOfAccounts(client, companyGroupId, {
+      incomeBalance: null,
+      startDate,
+      endDate
+    }),
+    getFiscalYearSettings(client, companyId)
+  ]);
+
+  if (chartOfAccounts.error) {
+    throw redirect(
+      path.to.accounting,
+      await flash(
+        request,
+        error(chartOfAccounts.error, "Failed to get chart of accounts")
+      )
+    );
+  }
+
+  return {
+    chartOfAccounts: (chartOfAccounts.data ?? []) as Chart[],
+    fiscalStartMonth:
+      months.indexOf(fiscalYearSettings.data?.startMonth ?? "January") + 1
+  };
+}
+
+export default function ChartOfAccountsRoute() {
+  const { chartOfAccounts, fiscalStartMonth } = useLoaderData<typeof loader>();
+  const [search, setSearch] = useState("");
+
+  return (
+    <VStack spacing={0} className="h-full">
+      <h1 className="sr-only">
+        <Trans>Chart of Accounts</Trans>
+      </h1>
+      <ChartOfAccountsTableFilters
+        fiscalStartMonth={fiscalStartMonth}
+        search={search}
+        onSearchChange={setSearch}
+      />
+      <ChartOfAccountsTree data={chartOfAccounts} search={search} />
+      <RecordOutlet />
+    </VStack>
+  );
+}

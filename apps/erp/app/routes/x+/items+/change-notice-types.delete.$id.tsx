@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error, notFound, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { useRouteDialog } from "@carbon/react";
+import { getDatabaseErrorMessage, redirect } from "@carbon/utils";
+import { useLingui } from "@lingui/react/macro";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useParams } from "react-router";
+import { ConfirmDelete } from "~/components/Modals";
+import {
+  deleteChangeNoticeType,
+  getChangeNoticeType
+} from "~/modules/items/items.service";
+import { getParams, path } from "~/utils/path";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    view: "parts",
+    role: "employee"
+  });
+  const { id } = params;
+  if (!id) throw notFound("id not found");
+
+  const changeNoticeType = await getChangeNoticeType(client, id, companyId);
+  if (changeNoticeType.error) {
+    throw redirect(
+      `${path.to.changeNoticeTypes}?${getParams(request)}`,
+      await flash(
+        request,
+        error(changeNoticeType.error, "Failed to get change notice category")
+      )
+    );
+  }
+
+  return { changeNoticeType: changeNoticeType.data };
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {
+    delete: "parts"
+  });
+
+  const { id } = params;
+  if (!id) {
+    throw redirect(
+      `${path.to.changeNoticeTypes}?${getParams(request)}`,
+      await flash(
+        request,
+        error(null, "Failed to get a change notice category id")
+      )
+    );
+  }
+
+  const { error: deleteError } = await deleteChangeNoticeType(
+    client,
+    id,
+    companyId
+  );
+  if (deleteError) {
+    const errorMessage = getDatabaseErrorMessage(
+      deleteError,
+      "Failed to delete change notice category",
+      { referenced: "Change notice category is used elsewhere, cannot delete" }
+    );
+
+    throw redirect(
+      `${path.to.changeNoticeTypes}?${getParams(request)}`,
+      await flash(request, error(deleteError, errorMessage))
+    );
+  }
+
+  throw redirect(
+    `${path.to.changeNoticeTypes}?${getParams(request)}`,
+    await flash(request, success("Successfully deleted change notice category"))
+  );
+}
+
+export default function DeleteChangeNoticeTypeRoute() {
+  const { id } = useParams();
+  const { changeNoticeType } = useLoaderData<typeof loader>();
+  const dialog = useRouteDialog(path.to.changeNoticeTypes);
+  const { t } = useLingui();
+
+  if (!changeNoticeType) return null;
+  if (!id) throw notFound("id not found");
+
+  return (
+    <ConfirmDelete
+      action={path.to.deleteChangeNoticeType(id)}
+      name={changeNoticeType.name}
+      text={t`Are you sure you want to delete the change notice category: ${changeNoticeType.name}? This cannot be undone.`}
+      isOpen={dialog.open}
+      onCancel={dialog.close}
+    />
+  );
+}

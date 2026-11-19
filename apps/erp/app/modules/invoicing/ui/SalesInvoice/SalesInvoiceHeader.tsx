@@ -1,0 +1,618 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { useCarbon } from "@carbon/auth";
+import { useRuleViolations } from "@carbon/ee/rules";
+import { usePrinting } from "@carbon/printing/ui";
+import { useAction } from "@carbon/query";
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuIcon,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  HStack,
+  MENU_ITEM_SHORTCUTS,
+  Status,
+  toast,
+  useDisclosure
+} from "@carbon/react";
+import { formatDate, getItemReadableId } from "@carbon/utils";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+import {
+  LuCheckCheck,
+  LuChevronDown,
+  LuDollarSign,
+  LuEye,
+  LuFile,
+  LuFileText,
+  LuSend,
+  LuTicketX,
+  LuTrash,
+  LuTruck
+} from "react-icons/lu";
+import { RiProgress8Line } from "react-icons/ri";
+import type { FetcherWithComponents } from "react-router";
+import { Link, useParams } from "react-router";
+import { PrintButton } from "~/components";
+import { useAuditLog } from "~/components/AuditLog";
+import {
+  EditDocumentMenuItem,
+  useDocumentEditModal
+} from "~/components/DocumentEditModal";
+import {
+  type DocumentForceDeleteData,
+  DocumentForceDeleteMenuItem,
+  DocumentForceDeleteModal
+} from "~/components/ForceDelete/DocumentForceDelete";
+import { usePanels } from "~/components/Layout/Panels";
+import { RecordAction, RecordHeader } from "~/components/Layout/RecordHeader";
+import ConfirmDelete from "~/components/Modals/ConfirmDelete";
+import { usePermissions, useRouteData, useUser } from "~/hooks";
+import { ShipmentStatus } from "~/modules/inventory/ui/Shipments";
+import { isInvoicePayable } from "~/modules/invoicing/invoicing.models";
+import type { SalesInvoice, SalesInvoiceLine } from "~/modules/invoicing/types";
+import { getPayInvoiceHref } from "~/modules/invoicing/ui/Payment/PaymentForm";
+import type { SalesInvoicePostFactsResponse } from "~/routes/api+/sales-invoice.$invoiceId.post-facts";
+import type { action as sendAction } from "~/routes/x+/sales-invoice+/$invoiceId.send";
+import { useItems } from "~/stores";
+import { path } from "~/utils/path";
+import SalesInvoicePostModal, {
+  type SalesInvoicePostResult
+} from "./SalesInvoicePostModal";
+import SalesInvoiceStatus from "./SalesInvoiceStatus";
+import SalesInvoiceVoidModal from "./SalesInvoiceVoidModal";
+
+const SalesInvoiceHeader = () => {
+  const { t } = useLingui();
+  const permissions = usePermissions();
+  const { invoiceId } = useParams();
+  const documentEdit = useDocumentEditModal("salesInvoice", invoiceId);
+  const { company } = useUser();
+  const postingModal = useDisclosure();
+  const voidModal = useDisclosure();
+  const deleteModal = useDisclosure();
+  const forceDeleteModal = useDisclosure();
+  const { trigger: auditLogTrigger, drawer: auditLogDrawer } = useAuditLog({
+    entityType: "salesInvoice",
+    // @ts-expect-error TS2322 - TODO: fix type
+    entityId: invoiceId,
+    companyId: company.id,
+    variant: "dropdown"
+  });
+
+  // Post submissions run through the violation hook's fetcher so a blocked
+  // post opens the shared violation modal, with acknowledge-and-resubmit for
+  // warns. The post modal closes itself on success.
+  const postRules = useRuleViolations({
+    action: path.to.salesInvoicePost(invoiceId ?? "")
+  });
+  const postFetcher =
+    postRules.fetcher as FetcherWithComponents<SalesInvoicePostResult>;
+  // The order facts the post checks compare against, read when Post is
+  // clicked so they include invoices posted since the page loaded. A plain
+  // fetch, not a fetcher: React Router reloads a fetcher's data after every
+  // action on the page, and these are read only when the modal opens.
+  const [postFacts, setPostFacts] = useState<SalesInvoicePostFactsResponse>({
+    facts: null,
+    failed: false
+  });
+  const [openingPost, setOpeningPost] = useState(false);
+  const readPostFacts = async (
+    id: string
+  ): Promise<SalesInvoicePostFactsResponse> => {
+    try {
+      const response = await fetch(path.to.api.salesInvoicePostFacts(id));
+      if (!response.ok) return { facts: null, failed: true };
+      return (await response.json()) as SalesInvoicePostFactsResponse;
+    } catch {
+      // The checks that need the order say they did not run.
+      return { facts: null, failed: true };
+    }
+  };
+
+  const { carbon } = useCarbon();
+  const [linesNotAssociatedWithSO, setLinesNotAssociatedWithSO] = useState<
+    {
+      itemId: string | null;
+      itemReadableId: string | null;
+      description: string;
+      quantity: number;
+    }[]
+  >([]);
+
+  if (!invoiceId) throw new Error("invoiceId not found");
+
+  const [items] = useItems();
+  const routeData = useRouteData<
+    {
+      salesInvoice: SalesInvoice;
+      salesInvoiceLines: SalesInvoiceLine[];
+      defaultCc: string[];
+      orgHasCredits: boolean;
+      stripeInvoiceUrl: string | null;
+    } & DocumentForceDeleteData
+  >(path.to.salesInvoice(invoiceId));
+
+  if (!routeData?.salesInvoice) throw new Error("salesInvoice not found");
+  const { salesInvoice } = routeData;
+  const { toggleExplorer, toggleProperties } = usePanels();
+  const hasPdfPrinter = usePrinting().printerRoutes.some(
+    (route) => route.format === "pdf"
+  );
+  const isPosted = salesInvoice.postingDate !== null;
+  const isVoided = salesInvoice.status === "Voided";
+
+  // Invoice automation outcome: a held draft waits for review; a posted
+  // invoice was either sent (emailed or via Stripe) or failed to send (and
+  // can be re-sent).
+  const sendFetcher = useAction<typeof sendAction>({
+    onSuccess: () => toast.success(t`Sending invoice`)
+  });
+  const isPostedNotVoided = isPosted && !isVoided;
+  const holdReason =
+    salesInvoice.status === "Draft" ? salesInvoice.automationHoldReason : null;
+  const sentTo = salesInvoice.sentTo ?? "";
+  const sentDate = formatDate(salesInvoice.sentAt);
+  const showEmailed = isPostedNotVoided && !!salesInvoice.sentAt;
+  // A Stripe send stamps `sentTo: "Stripe"` — Stripe emailed it, not Carbon.
+  const sentViaStripe = sentTo === "Stripe";
+  const showNotSent =
+    isPostedNotVoided && !!salesInvoice.sendError && !salesInvoice.sentAt;
+
+  const [relatedDocs, setRelatedDocs] = useState<{
+    salesOrders: { id: string; readableId: string }[];
+    shipments: { id: string; readableId: string; status: string }[];
+  }>({ salesOrders: [], shipments: [] });
+
+  // Load related documents on mount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: suppressed due to migration
+  useEffect(() => {
+    async function getRelatedDocuments() {
+      if (!carbon || !salesInvoice.opportunityId) return;
+
+      const [salesOrdersResult, shipmentsResult] = await Promise.all([
+        carbon
+          .from("salesOrder")
+          .select("id, salesOrderId")
+          .eq("opportunityId", salesInvoice.opportunityId),
+        carbon
+          .from("shipment")
+          .select("id, shipmentId, status")
+          .eq("opportunityId", salesInvoice.opportunityId)
+      ]);
+
+      if (salesOrdersResult.error)
+        throw new Error(salesOrdersResult.error.message);
+      if (shipmentsResult.error) throw new Error(shipmentsResult.error.message);
+
+      setRelatedDocs({
+        salesOrders:
+          salesOrdersResult.data?.map((po) => ({
+            id: po.id,
+            readableId: po.salesOrderId
+          })) ?? [],
+        shipments:
+          shipmentsResult.data?.map((r) => ({
+            id: r.id,
+            readableId: r.shipmentId,
+            status: r.status
+          })) ?? []
+      });
+    }
+
+    getRelatedDocuments();
+  }, [carbon, salesInvoice.opportunityId, salesInvoice.status]);
+
+  // The salesInvoices view does not carry the contract, so it is read off the
+  // invoice row itself, with the contract's readable id embedded.
+  const [contract, setContract] = useState<{
+    id: string;
+    readableId: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!carbon) return;
+    let cancelled = false;
+    carbon
+      .from("salesInvoice")
+      .select("customerContractId, customerContract(customerContractId)")
+      .eq("id", invoiceId)
+      .eq("companyId", company.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setContract(
+          data?.customerContractId
+            ? {
+                id: data.customerContractId,
+                readableId:
+                  data.customerContract?.customerContractId ??
+                  data.customerContractId
+              }
+            : null
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [carbon, invoiceId, company.id]);
+  const contractReadableId = contract?.readableId;
+
+  const showPostModal = async () => {
+    // The lines posting will ship: items not on a sales order. A Service is
+    // never shipped — post-sales-invoice skips it — so it is not listed.
+    if (!carbon) throw new Error("carbon not found");
+    if (openingPost) return;
+    setOpeningPost(true);
+    const [{ data, error }, facts] = await Promise.all([
+      carbon
+        .from("salesInvoiceLine")
+        .select("itemId, description, quantity")
+        .eq("invoiceId", invoiceId)
+        .in("invoiceLineType", [
+          "Part",
+          "Material",
+          "Tool",
+          "Consumable",
+          "Fixture"
+        ])
+        .is("salesOrderLineId", null),
+      readPostFacts(invoiceId)
+    ]).finally(() => setOpeningPost(false));
+
+    if (error) throw new Error(error.message);
+    if (!data) return;
+    setPostFacts(facts);
+
+    // so that we can ask the user if they want to receive those lines
+    flushSync(() =>
+      setLinesNotAssociatedWithSO(
+        data?.map((d) => ({
+          ...d,
+          itemReadableId: getItemReadableId(items, d.itemId) ?? null,
+          description: d.description ?? "",
+          quantity: d.quantity
+        })) ?? []
+      )
+    );
+    postingModal.onOpen();
+  };
+
+  // Status is derived from invoiceSettlement rows, except base-status 'Paid',
+  // which is the legacy/Xero "settled" signal. Payments settle an invoice;
+  // there is no manual Mark as Paid.
+  // "Receive Payment" launches the payment form pre-filled for this
+  // invoice — NetSuite's Accept Payment pattern. Hidden once the
+  // invoice is fully settled, voided, or pre-posting.
+  const canReceivePayment =
+    isInvoicePayable(salesInvoice.status, salesInvoice.balance) &&
+    permissions.can("create", "invoicing");
+  const receivePaymentHref = getPayInvoiceHref({
+    side: "ar",
+    partyId: salesInvoice.customerId,
+    invoiceId,
+    balance: salesInvoice.balance
+  });
+  const isDraft = routeData?.salesInvoice?.status === "Draft";
+  const menuItems = (
+    <>
+      {auditLogTrigger}
+      {isPosted && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={isVoided || !permissions.can("update", "invoicing")}
+            destructive
+            onClick={voidModal.onOpen}
+          >
+            <DropdownMenuIcon icon={<LuTicketX />} />
+            <Trans>Void</Trans>
+          </DropdownMenuItem>
+        </>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        shortcut={MENU_ITEM_SHORTCUTS.delete}
+        disabled={
+          salesInvoice.status !== "Draft" ||
+          !permissions.can("delete", "invoicing") ||
+          !permissions.is("employee")
+        }
+        destructive
+        onClick={deleteModal.onOpen}
+      >
+        <DropdownMenuIcon icon={<LuTrash />} />
+        <Trans>Delete Sales Invoice</Trans>
+      </DropdownMenuItem>
+      <DocumentForceDeleteMenuItem
+        forceDelete={routeData}
+        canDelete={permissions.can("delete", "invoicing")}
+        onClick={forceDeleteModal.onOpen}
+      />
+    </>
+  );
+  const statusBadges = (
+    <>
+      <SalesInvoiceStatus status={salesInvoice.status} />
+      {holdReason && (
+        <Status color="orange" tooltip={holdReason}>
+          <Trans>Needs Review</Trans>
+        </Status>
+      )}
+      {showEmailed &&
+        (sentViaStripe ? (
+          <Status color="green" tooltip={t`On ${sentDate}`}>
+            <Trans>Sent via Stripe</Trans>
+          </Status>
+        ) : (
+          <Status color="green" tooltip={t`To ${sentTo} on ${sentDate}`}>
+            <Trans>Emailed</Trans>
+          </Status>
+        ))}
+      {showNotSent && (
+        <Status color="red" tooltip={salesInvoice.sendError}>
+          <Trans>Not sent</Trans>
+        </Status>
+      )}
+      {routeData?.stripeInvoiceUrl && isPosted && (
+        <a
+          href={routeData.stripeInvoiceUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="no-underline"
+        >
+          <Status color="purple">
+            <Trans>Stripe</Trans>
+          </Status>
+        </a>
+      )}
+    </>
+  );
+  return (
+    <>
+      <RecordHeader
+        title={routeData?.salesInvoice?.invoiceId}
+        titleTo={path.to.salesInvoiceDetails(invoiceId)}
+        copyValue={routeData?.salesInvoice?.invoiceId ?? ""}
+        menu={menuItems}
+        status={statusBadges}
+        onToggleExplorer={toggleExplorer}
+        onToggleProperties={toggleProperties}
+        actions={
+          <>
+            {contract && (
+              <RecordAction slot="overflow">
+                <Button variant="secondary" leftIcon={<LuFileText />} asChild>
+                  <Link to={path.to.contract(contract.id)}>
+                    <Trans>Contract {contractReadableId}</Trans>
+                  </Link>
+                </Button>
+              </RecordAction>
+            )}
+
+            {relatedDocs.salesOrders.length === 1 && (
+              <RecordAction slot="overflow">
+                <Button
+                  variant="secondary"
+                  leftIcon={<RiProgress8Line />}
+                  asChild
+                >
+                  <Link
+                    to={path.to.salesOrderDetails(
+                      relatedDocs.salesOrders[0].id
+                    )}
+                  >
+                    <Trans>Sales Order</Trans>
+                  </Link>
+                </Button>
+              </RecordAction>
+            )}
+
+            {relatedDocs.salesOrders.length > 1 && (
+              <RecordAction slot="overflow">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="secondary" leftIcon={<RiProgress8Line />}>
+                      <Trans>Sales Orders</Trans>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {relatedDocs.salesOrders.map((po) => (
+                      <DropdownMenuItem key={po.id} asChild>
+                        <Link to={path.to.salesOrderDetails(po.id)}>
+                          {po.readableId}
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </RecordAction>
+            )}
+
+            {relatedDocs.shipments.length > 0 && (
+              <RecordAction slot="overflow">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      leftIcon={<LuTruck />}
+                      rightIcon={
+                        relatedDocs.shipments.length > 1 ? (
+                          <LuChevronDown />
+                        ) : undefined
+                      }
+                    >
+                      {relatedDocs.shipments.length === 1 ? (
+                        <Trans>Shipment</Trans>
+                      ) : (
+                        <Trans>Shipments</Trans>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {relatedDocs.shipments.map((shipment) => (
+                      <DropdownMenuItem key={shipment.id} asChild>
+                        <Link to={path.to.shipment(shipment.id)}>
+                          <DropdownMenuIcon icon={<LuTruck />} />
+                          <HStack spacing={8}>
+                            <span>{shipment.readableId}</span>
+                            <ShipmentStatus
+                              status={shipment.status as "Posted"}
+                            />
+                          </HStack>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </RecordAction>
+            )}
+            {showNotSent && (
+              <RecordAction slot="overflow">
+                <Button
+                  variant="secondary"
+                  leftIcon={<LuSend />}
+                  isLoading={sendFetcher.state !== "idle"}
+                  isDisabled={
+                    sendFetcher.state !== "idle" ||
+                    !permissions.can("update", "invoicing")
+                  }
+                  onClick={() =>
+                    sendFetcher.submit(
+                      {},
+                      {
+                        method: "post",
+                        action: path.to.salesInvoiceSend(invoiceId)
+                      }
+                    )
+                  }
+                >
+                  <Trans>Send</Trans>
+                </Button>
+              </RecordAction>
+            )}
+            {hasPdfPrinter && (
+              <RecordAction slot="overflow">
+                <PrintButton
+                  sourceDocument="SalesInvoice"
+                  sourceDocumentId={invoiceId}
+                  locationId={salesInvoice.locationId ?? undefined}
+                  context="documents"
+                  format="pdf"
+                />
+              </RecordAction>
+            )}
+            <RecordAction slot="overflow">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    leftIcon={<LuEye />}
+                    variant="secondary"
+                    rightIcon={<LuChevronDown />}
+                  >
+                    <Trans>Preview</Trans>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem asChild>
+                    <a
+                      target="_blank"
+                      href={path.to.file.salesInvoice(invoiceId)}
+                      rel="noreferrer"
+                    >
+                      <DropdownMenuIcon icon={<LuFile />} />
+                      <Trans>PDF</Trans>
+                    </a>
+                  </DropdownMenuItem>
+                  {documentEdit.canEdit && (
+                    <EditDocumentMenuItem onSelect={documentEdit.openEditor} />
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </RecordAction>
+            <RecordAction slot={isDraft ? "primary" : "secondary"}>
+              <Button
+                leftIcon={<LuCheckCheck />}
+                variant={
+                  routeData?.salesInvoice?.status === "Draft"
+                    ? "primary"
+                    : "secondary"
+                }
+                onClick={showPostModal}
+                isLoading={openingPost || postFetcher.state !== "idle"}
+                isDisabled={
+                  openingPost ||
+                  postFetcher.state !== "idle" ||
+                  isPosted ||
+                  routeData?.salesInvoiceLines?.length === 0 ||
+                  !permissions.can("update", "invoicing")
+                }
+              >
+                <Trans>Post</Trans>
+              </Button>
+            </RecordAction>
+            {canReceivePayment && (
+              <RecordAction slot={isDraft ? "secondary" : "primary"}>
+                <Button variant="primary" leftIcon={<LuDollarSign />} asChild>
+                  <Link to={receivePaymentHref}>
+                    <Trans>Payment</Trans>
+                  </Link>
+                </Button>
+              </RecordAction>
+            )}
+          </>
+        }
+      />
+
+      <SalesInvoicePostModal
+        invoiceId={invoiceId}
+        customerId={salesInvoice.invoiceCustomerId}
+        customerContactId={salesInvoice.invoiceCustomerContactId}
+        dateDue={salesInvoice.dateDue}
+        isOpen={postingModal.isOpen}
+        onClose={postingModal.onClose}
+        linesToShip={linesNotAssociatedWithSO}
+        postFacts={postFacts.facts}
+        postFactsFailed={postFacts.failed}
+        fetcher={postFetcher}
+        defaultCc={routeData?.defaultCc ?? []}
+      />
+      <postRules.ViolationModal />
+      <SalesInvoiceVoidModal
+        open={voidModal.isOpen}
+        onClose={voidModal.onClose}
+      />
+      <ConfirmDelete
+        isOpen={deleteModal.isOpen}
+        action={path.to.deleteSalesInvoice(invoiceId)}
+        name={salesInvoice.invoiceId ?? "sales invoice"}
+        text={t`Are you sure you want to delete ${salesInvoice.invoiceId}? This cannot be undone.`}
+        onCancel={() => {
+          deleteModal.onClose();
+        }}
+        onSubmit={() => {
+          deleteModal.onClose();
+        }}
+      />
+      {routeData?.isAdmin && (
+        <DocumentForceDeleteModal
+          documentType="salesInvoice"
+          documentId={invoiceId}
+          readableId={salesInvoice.invoiceId ?? invoiceId}
+          status={salesInvoice.status ?? "Draft"}
+          open={forceDeleteModal.isOpen}
+          onClose={forceDeleteModal.onClose}
+        />
+      )}
+      {auditLogDrawer}
+      {documentEdit.modal}
+    </>
+  );
+};
+
+export default SalesInvoiceHeader;

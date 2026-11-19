@@ -1,0 +1,1822 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon } from "@carbon/api/carbon.server";
+import { assertIsPost, error, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { getCarbonServiceRole } from "@carbon/auth/client.server";
+import { flash } from "@carbon/auth/session.server";
+import type { Database } from "@carbon/database";
+import {
+  integrations as availableIntegrations,
+  Email,
+  emailSettingsForm,
+  Gmail,
+  getIntegrationConfigById,
+  type IntegrationID,
+  picksCredentialFreeEmail,
+  picksServerMail,
+  resolveIntegrationTopology
+} from "@carbon/ee";
+import {
+  buildDimensionValueMappingEntityId,
+  getAccountingIntegration,
+  getAccountMappings,
+  getAccountsBlockingSync,
+  getDimensionValueMappings,
+  getFullChartMappableAccounts,
+  getProviderIntegration,
+  getSyncOperations,
+  getUnmappedPostingAccounts,
+  getUnmappedSlottedDimensionValues,
+  isAccountingSyncEnabled,
+  JOURNAL_ENTRY_SOURCE_TYPES,
+  loadAccountDefaultAccountIds,
+  matchAccountsByCode,
+  matchDimensionValuesByName,
+  POSTING_POLICY,
+  ProviderID,
+  type QboProvider,
+  // Aliased: the PostingSyncSettings component is imported below.
+  type PostingSyncSettings as ResolvedPostingSyncSettings,
+  type RilletProvider,
+  resolveDimensionValueLabels,
+  resolvePostingSyncSettings,
+  type SyncOperation,
+  type SyncOperationStatus,
+  SyncOperationStatusSchema,
+  selectRequiredMappingAccountIds,
+  selectUnmappedRequiredAccounts,
+  type XeroProvider
+} from "@carbon/ee/accounting";
+import {
+  ensureOnshapeReleaseWebhook,
+  getIntegrationServerHooks,
+  onshapeConnectionHasWriteScope
+} from "@carbon/ee/hooks.server";
+import { readConnections } from "@carbon/ee/integrations/connections";
+import {
+  getPath,
+  patchIntegrationState,
+  SECRET_KEYS,
+  WEBHOOK_SIGNING_SECRET_KEY
+} from "@carbon/ee/integrations/secrets";
+import {
+  getConflictingOnshapeConnection,
+  isOnshapeCustomerAppIntegrationId,
+  isOnshapeIntegrationId,
+  ONSHAPE_GOVERNMENT_INTEGRATION_ID
+} from "@carbon/ee/onshape";
+import {
+  beginOnshapeAuthorization,
+  isOnshapeOAuthIntegrationId
+} from "@carbon/ee/onshape.server";
+import { isIntegrationWhitelisted } from "@carbon/ee/plan";
+import { requireFeature } from "@carbon/ee/plan.server";
+import { LEDGER_FAMILY_KEYS, type LedgerFamilyKey } from "@carbon/ee/sync";
+import { STRIPE_SECRET_KEY } from "@carbon/env";
+import { validationError, validator } from "@carbon/form";
+import { allowlistEntry, requiredScopesFor } from "@carbon/jobs/integrations";
+import { SERVER_MAIL_CONFIGURED } from "@carbon/lib/email.server";
+import { getLogger } from "@carbon/logger";
+import { Badge, useRouteDialog } from "@carbon/react";
+import {
+  getConnectAccountStatus,
+  isConnectAccountStillLinked
+} from "@carbon/stripe/connect.server";
+import { redirect, redirectExternal } from "@carbon/utils";
+import { Trans } from "@lingui/react/macro";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import {
+  data,
+  Link,
+  useLoaderData,
+  useParams,
+  useSearchParams
+} from "react-router";
+import { useSettings } from "~/hooks";
+// Deep service import (not the ~/modules/accounting barrel) to keep this
+// route's type graph light — see the TS2589 note in
+// ~/modules/settings/ui/Integrations/index.ts.
+import {
+  getAccountsList,
+  getActiveDimensionsWithValues
+} from "~/modules/accounting/accounting.service";
+import { hasAccountingCutover } from "~/modules/accounting/accounting.utils";
+import {
+  accountMappingAiSuggestValidator,
+  accountMappingBulkUpsertValidator,
+  dimensionSlotsUpdateValidator,
+  dimensionValueMappingBulkUpsertValidator,
+  dimensionValueMappingUpsertValidator,
+  postingSyncSettingsValidator,
+  syncEnabledValidator,
+  syncOperationTransitionValidator,
+  workCenterDeviceUpsertValidator
+} from "~/modules/settings/settings.models";
+import {
+  getIntegration,
+  getOeeDevicesTabData,
+  getProviderDimensionTargets,
+  invalidateIntegrationHealthCache,
+  isIntegrationInstallWithheld,
+  upsertCompanyIntegration,
+  withSyncOperationReferences
+} from "~/modules/settings/settings.service";
+import { IntegrationForm, SyncActivity } from "~/modules/settings/ui";
+import { AccountingSyncControl } from "~/modules/settings/ui/Integrations/AccountingSyncControl";
+import { AccountMapping } from "~/modules/settings/ui/Integrations/AccountMapping";
+import { ConnectionsTab } from "~/modules/settings/ui/Integrations/ConnectionsTab";
+import { DimensionMapping } from "~/modules/settings/ui/Integrations/DimensionMapping";
+import type { IntegrationFormTab } from "~/modules/settings/ui/Integrations/IntegrationForm";
+import { useMountActionStates } from "~/modules/settings/ui/Integrations/MountPublishStatus";
+import { OeeDevices } from "~/modules/settings/ui/Integrations/OeeDevices.ee";
+import { PostingSyncSettings } from "~/modules/settings/ui/Integrations/PostingSyncSettings";
+import {
+  SYNC_ACTIVITY_SORTS,
+  type SyncReconciliationReport
+} from "~/modules/settings/ui/Integrations/SyncActivity";
+import { getDatabaseClient } from "~/services/database.server";
+import { toPage } from "~/utils/cursor";
+import { PAGE_SIZE } from "~/utils/pagination";
+import { path } from "~/utils/path";
+
+const logger = getLogger("erp", "integrations-id");
+
+/**
+ * Rillet authenticates with an API key entered on the standard install
+ * form. The engine reads credentials exclusively from
+ * `metadata.credentials` (top-level metadata keys are stripped by
+ * ProviderIntegrationMetadataSchema), so fold the form fields into the
+ * canonical apiKey credentials variant. The loader mirrors this with
+ * `unfoldRilletCredentials`, so the drawer prefills from stored
+ * credentials — meaning a re-save round-trips the real values instead of
+ * wiping environment/subsidiaryId/webhookToken back to their defaults.
+ * What's submitted is what's stored: clearing the webhook token turns
+ * inbound payments off.
+ */
+function foldRilletCredentials(
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  const { apiKey, environment, subsidiaryId, webhookToken, ...rest } = metadata;
+  if (typeof apiKey !== "string" || apiKey.length === 0) return metadata;
+
+  const providerMetadata = {
+    ...(typeof subsidiaryId === "string" && subsidiaryId.length > 0
+      ? { subsidiaryId }
+      : {}),
+    ...(typeof webhookToken === "string" && webhookToken.length > 0
+      ? { webhookToken }
+      : {})
+  };
+
+  return {
+    ...rest,
+    credentials: {
+      type: "apiKey",
+      apiKey,
+      environment: environment === "sandbox" ? "sandbox" : "production",
+      ...(Object.keys(providerMetadata).length > 0 ? { providerMetadata } : {})
+    }
+  };
+}
+
+/**
+ * Inverse of `foldRilletCredentials`: unfold the stored
+ * `metadata.credentials` back into the flat apiKey/environment/
+ * subsidiaryId/webhookToken fields the settings form binds to. Without
+ * this the drawer opens with every Connection/Webhooks field blank, and
+ * re-saving (which requires the API key) rebuilds credentials from those
+ * blank defaults — silently wiping the environment, subsidiary, and
+ * webhook token. The loader reads raw metadata (getIntegration does not
+ * strip `credentials`), so the values are available here.
+ */
+function unfoldRilletCredentials(
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  const credentials = metadata.credentials as
+    | Record<string, unknown>
+    | undefined;
+  if (!credentials || credentials.type !== "apiKey") return metadata;
+
+  const providerMetadata =
+    (credentials.providerMetadata as Record<string, unknown> | undefined) ?? {};
+
+  return {
+    ...metadata,
+    apiKey: typeof credentials.apiKey === "string" ? credentials.apiKey : "",
+    environment:
+      credentials.environment === "sandbox" ? "sandbox" : "production",
+    subsidiaryId:
+      typeof providerMetadata.subsidiaryId === "string"
+        ? providerMetadata.subsidiaryId
+        : "",
+    webhookToken:
+      typeof providerMetadata.webhookToken === "string"
+        ? providerMetadata.webhookToken
+        : ""
+  };
+}
+
+/**
+ * Ramp authenticates with an OAuth client-credentials pair
+ * (clientId/clientSecret) entered flat on the standard install form. The
+ * engine reads credentials exclusively from `metadata.credentials`, so fold
+ * the flat form fields into the canonical client_credentials variant. The
+ * account-mapping and sync-toggle fields stay flat at the metadata root. Like
+ * Rillet, an empty clientSecret means "keep the existing vaulted value": the
+ * folded credentials carry an empty secret and splitSecrets' anti-overwrite
+ * (D4a) preserves what's in the vault; a non-empty value replaces it.
+ */
+function foldRampCredentials(
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  const { clientId, clientSecret, ...rest } = metadata;
+  if (typeof clientId !== "string" || clientId.length === 0) return metadata;
+
+  return {
+    ...rest,
+    credentials: {
+      type: "client_credentials",
+      clientId,
+      clientSecret: typeof clientSecret === "string" ? clientSecret : ""
+    }
+  };
+}
+
+/**
+ * Inverse of `foldRampCredentials`: unfold the stored
+ * `metadata.credentials` back into the flat clientId/clientSecret fields the
+ * settings form binds to, so the drawer prefills instead of showing blanks
+ * (which a re-save would then persist over the real stored connection).
+ * The clientSecret is vaulted and stripped from the plaintext metadata, so it
+ * reads back empty — the masked field left blank means "keep the vaulted value".
+ */
+function unfoldRampCredentials(
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  const credentials = metadata.credentials as
+    | Record<string, unknown>
+    | undefined;
+  if (!credentials || credentials.type !== "client_credentials")
+    return metadata;
+
+  return {
+    ...metadata,
+    clientId:
+      typeof credentials.clientId === "string" ? credentials.clientId : "",
+    clientSecret:
+      typeof credentials.clientSecret === "string"
+        ? credentials.clientSecret
+        : ""
+  };
+}
+
+/**
+ * Account-mapping data for the integration drawer's Account Mapping tab.
+ * The @carbon/ee account-mapping services are Kysely-based (DISTINCT +
+ * unbounded reads that supabase-js can't express), so they get the app's
+ * Kysely client. Kysely bypasses RLS — safe here because the route has
+ * already passed requirePermissions and every query is companyId-scoped.
+ */
+async function getAccountMappingTabData(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  integrationId: string,
+  chart: Array<{ id: string; code: string; name: string }>
+) {
+  const db = getDatabaseClient();
+
+  const [
+    mappings,
+    unmapped,
+    proposals,
+    accountDefaultIds,
+    allAccounts,
+    blocking
+  ] = await Promise.all([
+    getAccountMappings(db, { companyId, integration: integrationId }),
+    getUnmappedPostingAccounts(db, { companyId, integration: integrationId }),
+    chart.length > 0
+      ? matchAccountsByCode(db, {
+          companyId,
+          integration: integrationId,
+          providerAccounts: chart
+        })
+      : Promise.resolve({ data: [], error: null }),
+    loadAccountDefaultAccountIds(db, companyId),
+    getFullChartMappableAccounts(db, { companyId }),
+    getAccountsBlockingSync(client, { companyId, integration: integrationId })
+  ]);
+
+  // Don't block the settings drawer on a mapping load failure — render
+  // what loaded and log the cause.
+  for (const result of [mappings, unmapped, proposals, allAccounts, blocking]) {
+    if (result.error) {
+      logger.error("Failed to load account mapping data", {
+        error: result.error
+      });
+    }
+  }
+
+  // The tab spans the FULL chart of accounts (getAccountMappings is unscoped and
+  // the syncers already see every mapping). The "required" set — badged, and
+  // what must be mapped before sync can be turned on — is the accountDefault
+  // posting accounts PLUS every Expense account.
+  const fullChart = allAccounts.data ?? [];
+  const requiredAccountIds = selectRequiredMappingAccountIds(
+    accountDefaultIds,
+    fullChart
+  );
+  const unmappedRequiredCount = selectUnmappedRequiredAccounts({
+    accountDefaultIds,
+    chart: fullChart,
+    mappedAccountIds: new Set(
+      (mappings.data ?? [])
+        .filter((mapping) => mapping.externalId)
+        .map((mapping) => mapping.accountId)
+    )
+  }).length;
+
+  return {
+    mappings: mappings.data ?? [],
+    unmapped: unmapped.data ?? [],
+    chart,
+    proposals: proposals.data ?? [],
+    requiredAccountIds,
+    unmappedRequiredCount,
+    allAccounts: fullChart,
+    blocking: blocking.data ?? []
+  };
+}
+
+/**
+ * Dimension-sync data for the integration drawer's Dimensions tab: the
+ * provider targets (+ values), the company's dimensions with value counts
+ * (high-cardinality warning), the stored slot config, the per-slot value
+ * mappings with resolved Carbon labels, the unmapped slotted values, and
+ * exact name-match proposals. Returns null when the provider doesn't
+ * implement journalDimensionTargets (no tab). The dimension-mapping
+ * services are Kysely-based (RLS bypassed) — same auth stance as
+ * getAccountMappingTabData.
+ */
+async function getDimensionSyncTabData(
+  client: SupabaseClient<Database>,
+  args: {
+    companyId: string;
+    companyGroupId: string;
+    integrationId: string;
+    settings: ResolvedPostingSyncSettings;
+  }
+) {
+  const { companyId, companyGroupId, integrationId, settings } = args;
+
+  const providerTargets = await getProviderDimensionTargets(
+    client,
+    companyId,
+    integrationId
+  );
+  if (!providerTargets.supported) return null;
+
+  const db = getDatabaseClient();
+  const slots = settings.dimensionSlots;
+
+  const [dimensionsResult, mappingsResult, unmappedResult] = await Promise.all([
+    getActiveDimensionsWithValues(client, companyGroupId, companyId),
+    getDimensionValueMappings(db, { companyId, integration: integrationId }),
+    getUnmappedSlottedDimensionValues(db, {
+      companyId,
+      integration: integrationId,
+      slots
+    })
+  ]);
+
+  // Don't block the settings drawer on a load failure — render what
+  // loaded and log the cause.
+  for (const result of [dimensionsResult, mappingsResult, unmappedResult]) {
+    if (result.error) {
+      logger.error("Failed to load dimension sync data", {
+        error: result.error
+      });
+    }
+  }
+
+  const dimensions = (dimensionsResult.error ? [] : dimensionsResult.data).map(
+    (dimension) => ({
+      id: dimension.dimensionId,
+      name: dimension.dimensionName,
+      entityType: String(dimension.entityType),
+      valueCount: dimension.values.length
+    })
+  );
+
+  const mappingRows = mappingsResult.data ?? [];
+
+  // Readable Carbon labels for the mapped rows (engine-resolved per the
+  // dimension's entityType). A resolution failure degrades to raw ids.
+  let mappedLabels = new Map<string, string>();
+  try {
+    mappedLabels = await resolveDimensionValueLabels(db, {
+      values: mappingRows.map(({ dimensionId, valueId }) => ({
+        dimensionId,
+        valueId
+      }))
+    });
+  } catch (err) {
+    logger.error("Failed to resolve dimension value labels", { error: err });
+  }
+
+  const mappings = mappingRows.map((mapping) => ({
+    id: mapping.id,
+    dimensionId: mapping.dimensionId,
+    valueId: mapping.valueId,
+    label:
+      mappedLabels.get(
+        buildDimensionValueMappingEntityId(mapping.dimensionId, mapping.valueId)
+      ) ?? null,
+    externalId: mapping.externalId,
+    externalName: mapping.externalName
+  }));
+
+  const unmapped = unmappedResult.data ?? [];
+
+  // Exact name-match proposals, per slot: each slot pairs one dimension's
+  // unmapped values with its provider target's option list. Provider
+  // options already used by a mapping on the SAME dimension are excluded
+  // (an option may legitimately back several dimensions).
+  const targetsById = new Map(
+    providerTargets.targets.map((target) => [target.id, target])
+  );
+  const mappedValueKeys = mappingRows
+    .filter((mapping) => mapping.externalId)
+    .map((mapping) =>
+      buildDimensionValueMappingEntityId(mapping.dimensionId, mapping.valueId)
+    );
+  const proposals = slots.flatMap((slot) => {
+    const target = targetsById.get(slot.target);
+    if (!target) return [];
+    const values = unmapped.filter(
+      (value) => value.dimensionId === slot.dimensionId
+    );
+    if (values.length === 0) return [];
+    const mappedExternalIds = mappingRows.flatMap((mapping) =>
+      mapping.dimensionId === slot.dimensionId && mapping.externalId
+        ? [mapping.externalId]
+        : []
+    );
+    return matchDimensionValuesByName({
+      values,
+      providerOptions: target.values,
+      mappedValueKeys,
+      mappedExternalIds
+    });
+  });
+
+  return {
+    targets: providerTargets.targets,
+    targetsError: providerTargets.targetsError,
+    maxSlots: providerTargets.maxSlots,
+    // Rillet's Field-value upsert flow defaults auto-create ON; QBO/Xero
+    // stay opt-in (see resolveDimensionSlotAutoCreate in @carbon/ee).
+    autoCreateDefault: integrationId === ProviderID.RILLET,
+    dimensions,
+    slots,
+    onUnmappedDimensionValue: settings.onUnmappedDimensionValue,
+    mappings,
+    unmapped,
+    proposals
+  };
+}
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId, companyGroupId } = await requirePermissions(
+    request,
+    {
+      update: "settings"
+    }
+  );
+
+  const { id: integrationId } = params;
+  if (!integrationId) throw new Error("Integration ID not found");
+
+  const integration = availableIntegrations.find((i) => i.id === integrationId);
+  if (!integration) throw new Error("Integration not found");
+
+  // Server-fetched options for "options"-type settings fields. Ramp populates
+  // its Account-group selects from the chart of accounts. These are needed on
+  // the INSTALL form (before any companyIntegration row exists), so they must be
+  // computed BEFORE the not-installed early return below — otherwise the account
+  // pickers render "No options available" for a brand-new install.
+  const dynamicOptions: Record<
+    string,
+    Array<{ value: string; label: string; description?: string }>
+  > = {};
+
+  // Ramp's account-mapping fields choose from the company's leaf accounts,
+  // partitioned by account class. Options over CHOICE_CARD_MAX_OPTIONS render
+  // as a Select automatically.
+  if (integrationId === "ramp") {
+    const accountsResult = await getAccountsList(client, companyGroupId, {
+      isGroup: false
+    });
+    const accounts = accountsResult.data ?? [];
+    const optionsForClass = (
+      accountClass: Database["public"]["Enums"]["glAccountClass"]
+    ) =>
+      accounts
+        .filter((account) => account.class === accountClass)
+        .map((account) => ({
+          value: account.id,
+          label: `${account.number} ${account.name}`
+        }));
+    const assetOptions = optionsForClass("Asset");
+    dynamicOptions.cardLiabilityAccountId = optionsForClass("Liability");
+    dynamicOptions.statementBankAccountId = assetOptions;
+    dynamicOptions.cashbackIncomeAccountId = optionsForClass("Revenue");
+    dynamicOptions.reimbursementBankAccountId = assetOptions;
+  }
+
+  // A failed read still opens the page, with no Gmail accounts to pick.
+  const gmailAccounts =
+    integrationId === Email.id
+      ? await readConnections(client, companyId, Gmail.id).catch((error) => {
+          logger.error("Failed to read the company's Gmail accounts", {
+            companyId,
+            error
+          });
+          return [];
+        })
+      : [];
+
+  // Server mail is offered only where the server has mail settings.
+  const emailForm = emailSettingsForm(
+    integrationId,
+    SERVER_MAIL_CONFIGURED,
+    gmailAccounts
+  );
+  if (emailForm?.providerOptions) {
+    dynamicOptions.provider = emailForm.providerOptions;
+  }
+  if (emailForm) {
+    dynamicOptions.gmailConnectionId = emailForm.gmailConnectionOptions;
+  }
+
+  const integrationData = await getIntegration(
+    client,
+    integrationId,
+    companyId
+  );
+
+  if (integrationData.error || !integrationData.data) {
+    return {
+      installed: false,
+      // A fresh Email install starts on server mail where the server has it.
+      metadata: emailForm?.initialMetadata ?? {},
+      dynamicOptions,
+      syncActivity: null,
+      accountMapping: null,
+      accountingSync: null,
+      postingSync: null,
+      dimensionSync: null,
+      connections: null,
+      devices: null
+    };
+  }
+
+  // The DECLARED role, not the display category and not an id literal.
+  const providerRole = (
+    integration as { providerRole?: "accounting" | "spend" | "oee" }
+  ).providerRole;
+
+  const isAccountingInstalled =
+    providerRole === "accounting" && integrationData.data.active;
+
+  // The OEE Devices tab reads the provider (cached for 60 seconds). Started
+  // here and awaited at the end, so it runs alongside the reads below.
+  const devicesPromise =
+    providerRole === "oee" && integrationData.data.active
+      ? getOeeDevicesTabData(client, companyId, integrationId)
+      : Promise.resolve(null);
+
+  // Any provider-role integration writes accountingSyncOperation rows — a spend
+  // provider records its own inbound/outbound dispositions there — so it gets
+  // the same Sync Activity inbox. The accounting-only tie-out/reconciliation
+  // surfaces stay gated on isAccountingInstalled below.
+  // OEE providers record their sync state on each device, not here.
+  const producesSyncOperations =
+    providerRole !== undefined &&
+    providerRole !== "oee" &&
+    integrationData.data.active;
+
+  // Sync-operation inbox (RLS SELECT covers employees, so the user-scoped
+  // client is enough). The status param is prefixed (syncStatus) to avoid
+  // clashing with other search params. Later pages come from
+  // `api+/integrations.$id.sync-activity` as the tab scrolls.
+  let syncActivity: {
+    /**
+     * Each with its `reference`: the document number a human reads
+     * (`PO000001`) plus the Carbon row id to link to. Null for a pulled
+     * record that never landed a Carbon row: the table falls back to the
+     * provider's remote id.
+     */
+    operations: (SyncOperation & {
+      reference: { label: string; recordId: string } | null;
+    })[];
+    count: number;
+    status: SyncOperationStatus | null;
+    nextCursor: string | null;
+    lastReconciliation: SyncReconciliationReport | null;
+    /** Failed + Warning operations — the tab-label badge. */
+    failingCount: number;
+    /**
+     * Tie-out summary: latest computedAt + how many (period × account)
+     * cells carry a nonzero internal or external delta. Null when no
+     * tie-out rows exist (or the viewer lacks accounting_view — the
+     * table's RLS SELECT — in which case the rows read back empty).
+     */
+    tieOut: {
+      computedAt: string | null;
+      deltaCellCount: number;
+      cellCount: number;
+    } | null;
+  } | null = null;
+
+  if (producesSyncOperations) {
+    const url = new URL(request.url);
+    const statusFilter = SyncOperationStatusSchema.safeParse(
+      url.searchParams.get("syncStatus")
+    );
+
+    const [operations, failingOps, tieOutRows] = await Promise.all([
+      getSyncOperations(client, {
+        companyId,
+        integration: integrationId,
+        status: statusFilter.success ? statusFilter.data : undefined,
+        // One extra row tells whether a next page exists.
+        limit: PAGE_SIZE + 1
+      }),
+      // Failed + Warning count for the tab badge — only the exact count is
+      // used, so fetch a single row.
+      getSyncOperations(client, {
+        companyId,
+        integration: integrationId,
+        status: ["Failed", "Warning"],
+        limit: 1
+      }),
+      // Tie-out cells for this integration — accounting-only (Ramp has no
+      // reconciliation tie-out). The table is not in the generated DB types
+      // yet — cast, same pattern as @carbon/ee/accounting core/operations.ts.
+      isAccountingInstalled
+        ? (client.from("accountingSyncTieOut" as any) as any)
+            .select("internalDelta, externalDelta, computedAt")
+            .eq("companyId", companyId)
+            .eq("integration", integrationId)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+
+    if (operations.error) {
+      // Don't block the settings drawer on an inbox failure — render the
+      // tab empty and log the cause.
+      logger.error("Failed to load sync operations", {
+        error: operations.error
+      });
+    }
+
+    let tieOut: {
+      computedAt: string | null;
+      deltaCellCount: number;
+      cellCount: number;
+    } | null = null;
+    const tieOutCells = (tieOutRows.error ? [] : (tieOutRows.data ?? [])) as {
+      internalDelta: number | null;
+      externalDelta: number | null;
+      computedAt: string | null;
+    }[];
+    if (tieOutCells.length > 0) {
+      tieOut = {
+        computedAt: tieOutCells.reduce<string | null>(
+          (latest, row) =>
+            row.computedAt && (latest == null || row.computedAt > latest)
+              ? row.computedAt
+              : latest,
+          null
+        ),
+        deltaCellCount: tieOutCells.filter(
+          (row) =>
+            Math.abs(Number(row.internalDelta ?? 0)) > 0.001 ||
+            Math.abs(Number(row.externalDelta ?? 0)) > 0.001
+        ).length,
+        cellCount: tieOutCells.length
+      };
+    }
+
+    // Latest weekly reconciliation report, written by the
+    // accounting-reconciliation cron to
+    // metadata.settings.postingSync.lastReconciliation. Shape-guarded so
+    // stored garbage renders as "no report" instead of crashing the tab.
+    const storedReconciliation = (
+      (integrationData.data.metadata as Record<string, any> | null)?.settings
+        ?.postingSync as Record<string, any> | undefined
+    )?.lastReconciliation;
+    const lastReconciliation: SyncReconciliationReport | null =
+      storedReconciliation &&
+      typeof storedReconciliation.runAt === "string" &&
+      Array.isArray(storedReconciliation.drift)
+        ? (storedReconciliation as SyncReconciliationReport)
+        : null;
+
+    const firstPage = toPage(operations.data, {
+      limit: PAGE_SIZE,
+      sorts: SYNC_ACTIVITY_SORTS
+    });
+
+    syncActivity = {
+      operations: await withSyncOperationReferences(
+        client,
+        companyId,
+        firstPage.rows
+      ),
+      count: operations.count ?? 0,
+      status: statusFilter.success ? statusFilter.data : null,
+      nextCursor: firstPage.nextCursor,
+      lastReconciliation,
+      failingCount: failingOps.error ? 0 : (failingOps.count ?? 0),
+      tieOut
+    };
+  }
+
+  const metadata = (integrationData.data.metadata ?? {}) as Record<
+    string,
+    unknown
+  >;
+  let flattenedMetadata: Record<string, unknown> = metadata;
+  // Rillet keeps its API credentials under metadata.credentials; unfold
+  // them into the flat form fields so the drawer prefills instead of
+  // showing blanks (which a re-save would then persist over the real
+  // stored connection).
+  if (integrationId === "rillet") {
+    flattenedMetadata = unfoldRilletCredentials(flattenedMetadata);
+  }
+  // Ramp keeps its client-credentials pair under metadata.credentials; unfold
+  // them into the flat form fields so the drawer prefills.
+  if (integrationId === "ramp") {
+    flattenedMetadata = unfoldRampCredentials(flattenedMetadata);
+  }
+
+  // (Ramp's account-mapping `dynamicOptions` are computed above, before the
+  // not-installed early return, so the install form has them too.)
+
+  // Provider chart of accounts for the Account Mapping tab. Xero manual
+  // journals reference accounts by code, so only coded accounts are
+  // mappable.
+  let chartAccounts: Array<{ id: string; code: string; name: string }> = [];
+
+  if (integrationId === "xero" && integrationData.data.active) {
+    try {
+      const xeroIntegration = await getAccountingIntegration(
+        client,
+        companyId,
+        ProviderID.XERO
+      );
+
+      const provider = getProviderIntegration(
+        client,
+        companyId,
+        xeroIntegration.id,
+        xeroIntegration.metadata
+      ) as XeroProvider;
+
+      const accounts = await provider.listChartOfAccounts();
+
+      chartAccounts = accounts.flatMap((account) =>
+        account.Code
+          ? [{ id: account.AccountID, code: account.Code, name: account.Name }]
+          : []
+      );
+    } catch (error) {
+      logger.error("Failed to fetch Xero accounts for settings", {
+        error: error
+      });
+      // Continue without dynamic options - form will show empty selects
+    }
+  } else if (integrationId === "stripe-connect") {
+    // Whether the platform even has a Stripe secret key configured — cheap,
+    // synchronous, known without ever calling Stripe. Display-only: never
+    // part of the submitted form/schema, so merging it into metadata here
+    // doesn't risk it being written back to the DB on save.
+    flattenedMetadata.platformConfigured = !!STRIPE_SECRET_KEY;
+
+    // Refresh Stripe Connect's status from Stripe so the drawer shows live
+    // onboarding progress rather than a possibly-stale stored snapshot.
+    if (flattenedMetadata.stripeAccountId) {
+      const stripeAccountId = flattenedMetadata.stripeAccountId as string;
+      try {
+        if (await isConnectAccountStillLinked(stripeAccountId)) {
+          const freshStatus = await getConnectAccountStatus(stripeAccountId);
+          if (freshStatus) {
+            Object.assign(flattenedMetadata, freshStatus);
+          }
+        } else {
+          logger.warning(
+            "Stripe Connect account is no longer linked; hiding stale connection state",
+            { companyId, stripeAccountId }
+          );
+          delete flattenedMetadata.stripeAccountId;
+          delete flattenedMetadata.chargesEnabled;
+          delete flattenedMetadata.payoutsEnabled;
+          delete flattenedMetadata.detailsSubmitted;
+          delete flattenedMetadata.requirementErrors;
+          delete flattenedMetadata.email;
+          delete flattenedMetadata.displayName;
+          delete flattenedMetadata.onboardingStarted;
+        }
+      } catch (err) {
+        logger.error("Failed to fetch Stripe Connect status for settings", {
+          error: err
+        });
+      }
+    }
+
+    const accountDefaults = await client
+      .from("accountDefault")
+      .select(
+        `bankCashAccount, receivablesAccount, customerPaymentDiscountAccount, customerWriteOffAccount, realizedExchangeGainAccount, realizedExchangeLossAccount, serviceChargeAccount, roundingAccount`
+      )
+      .eq("companyId", companyId)
+      .single();
+
+    if (accountDefaults.data) {
+      const accountIds = [
+        accountDefaults.data.bankCashAccount,
+        accountDefaults.data.receivablesAccount,
+        accountDefaults.data.customerPaymentDiscountAccount,
+        accountDefaults.data.customerWriteOffAccount,
+        accountDefaults.data.realizedExchangeGainAccount,
+        accountDefaults.data.realizedExchangeLossAccount,
+        accountDefaults.data.serviceChargeAccount,
+        accountDefaults.data.roundingAccount
+      ].filter(Boolean);
+
+      if (accountIds.length > 0) {
+        const { data: accounts } = await client
+          .from("account")
+          .select("id, number, name")
+          .in("id", accountIds);
+
+        const byId = new Map((accounts ?? []).map((a) => [a.id, a]));
+
+        const fmt = (id: string | null) => {
+          if (!id) return null;
+          const a = byId.get(id);
+          return a ? (a.number ? `${a.number} — ${a.name}` : a.name) : null;
+        };
+
+        flattenedMetadata.accountingAccounts = {
+          bankCash: fmt(accountDefaults.data.bankCashAccount),
+          receivables: fmt(accountDefaults.data.receivablesAccount),
+          customerPaymentDiscount: fmt(
+            accountDefaults.data.customerPaymentDiscountAccount
+          ),
+          customerWriteOff: fmt(accountDefaults.data.customerWriteOffAccount),
+          fxGain: fmt(accountDefaults.data.realizedExchangeGainAccount),
+          fxLoss: fmt(accountDefaults.data.realizedExchangeLossAccount),
+          serviceCharge: fmt(accountDefaults.data.serviceChargeAccount),
+          rounding: fmt(accountDefaults.data.roundingAccount)
+        };
+      }
+    }
+  }
+
+  if (integrationId === "quickbooks" && integrationData.data.active) {
+    try {
+      const qboIntegration = await getAccountingIntegration(
+        client,
+        companyId,
+        ProviderID.QUICKBOOKS
+      );
+
+      const provider = getProviderIntegration(
+        client,
+        companyId,
+        qboIntegration.id,
+        qboIntegration.metadata
+      ) as QboProvider;
+
+      // Already normalized to { id, code, name } with code = AcctNum ?? Id.
+      // QBO journal lines reference accounts by Id, so every account is
+      // mappable — no coded-accounts filter like Xero. (The quickbooks
+      // config defines no account-code settings fields, so dynamicOptions
+      // stays empty.)
+      chartAccounts = await provider.listChartOfAccounts();
+    } catch (error) {
+      logger.error("Failed to fetch QuickBooks Online accounts for settings", {
+        error
+      });
+      // Continue without chart accounts — the Account Mapping tab renders
+      // with Carbon accounts only
+    }
+  }
+
+  if (integrationId === "rillet" && integrationData.data.active) {
+    try {
+      const rilletIntegration = await getAccountingIntegration(
+        client,
+        companyId,
+        ProviderID.RILLET
+      );
+
+      const provider = getProviderIntegration(
+        client,
+        companyId,
+        rilletIntegration.id,
+        rilletIntegration.metadata
+      ) as RilletProvider;
+
+      // Already normalized to { id, code, name }. Rillet journal items
+      // reference accounts by CODE, so only coded, ACTIVE accounts are
+      // returned by listChartOfAccounts.
+      chartAccounts = await provider.listChartOfAccounts();
+    } catch (error) {
+      logger.error("Failed to fetch Rillet accounts for settings", { error });
+      // Continue without chart accounts — the Account Mapping tab renders
+      // with Carbon accounts only
+    }
+  }
+
+  const accountMapping = isAccountingInstalled
+    ? await getAccountMappingTabData(
+        client,
+        companyId,
+        integrationId,
+        chartAccounts
+      )
+    : null;
+
+  const resolvedPostingSettings = isAccountingInstalled
+    ? resolvePostingSyncSettings(metadata)
+    : null;
+
+  /**
+   * GL families another installed integration posts, so the Posting tab can stop
+   * offering a control that has no effect.
+   *
+   * Read from the topology rather than from this integration's own metadata: the
+   * delegation is declared by the SPEND install's mode (Ramp in push-only owns
+   * `ap`) while the select being locked belongs to the ACCOUNTING integration, so
+   * the two are never the same row. `applyLedgerDelegation` already overrides the
+   * stored value at the decision — without this the tab offers a setting the
+   * engine ignores.
+   *
+   * Keyed by family over `LEDGER_FAMILY_KEYS`, never a hard-coded "ap": a spend
+   * platform that delegates AR or a memo family needs no change here.
+   */
+  let delegatedFamilies: Partial<Record<LedgerFamilyKey, string>> = {};
+  if (isAccountingInstalled) {
+    const integrationRows = await client
+      .from("companyIntegration")
+      // `metadata` carries the install mode, which is what decides a spend
+      // provider's capabilities — without it push-only resolves as provider.
+      .select("id, active, metadata")
+      .eq("companyId", companyId);
+    const topology = resolveIntegrationTopology(integrationRows.data ?? []);
+    delegatedFamilies = Object.fromEntries(
+      LEDGER_FAMILY_KEYS.flatMap((family) => {
+        const owner = topology.ledgerOwnership[family];
+        if (owner.kind !== "external") return [];
+        // Name the owner the way the customer knows it, falling back to the id
+        // so an unregistered integration still explains the lock.
+        const name =
+          getIntegrationConfigById(owner.integrationId as IntegrationID)
+            ?.name ?? owner.integrationId;
+        return [[family, name] as const];
+      })
+    );
+  }
+  const mappedAccountCount =
+    accountMapping?.mappings.filter((mapping) => mapping.externalId).length ??
+    0;
+  const postingSync = resolvedPostingSettings
+    ? {
+        delegatedFamilies,
+        settings: {
+          families: resolvedPostingSettings.families,
+          sourceTypes: resolvedPostingSettings.sourceTypes,
+          periodLockPolicy: resolvedPostingSettings.periodLockPolicy,
+          lockDate: resolvedPostingSettings.lockDate
+        },
+        // Manual never syncs (POSTING_POLICY syncable: false) and is never
+        // rendered as a configurable row.
+        policy: JOURNAL_ENTRY_SOURCE_TYPES.filter(
+          (sourceType) => sourceType !== "Manual"
+        ).map((sourceType) => ({
+          sourceType,
+          representation: POSTING_POLICY[sourceType].representation,
+          family: POSTING_POLICY[sourceType].family ?? null
+        })),
+        mappingReadiness: accountMapping
+          ? {
+              mapped: mappedAccountCount,
+              required: mappedAccountCount + accountMapping.unmapped.length
+            }
+          : null
+      }
+    : null;
+
+  // Dimension-sync tab data — accounting integrations whose provider
+  // implements journalDimensionTargets (guarded inside the helper).
+  const dimensionSync = resolvedPostingSettings
+    ? await getDimensionSyncTabData(client, {
+        companyId,
+        companyGroupId,
+        integrationId,
+        settings: resolvedPostingSettings
+      })
+    : null;
+
+  // An allowlisted workflow piece has no settings — what it has is the accounts a
+  // workflow step can act as, so its card gets that list as a tab.
+  const piece = allowlistEntry(integrationId);
+  const [connectionRows, requiredScopes] = piece
+    ? await Promise.all([
+        readConnections(client, companyId, integrationId),
+        requiredScopesFor(integrationId)
+      ])
+    : [[], []];
+  const connections = piece
+    ? {
+        pieceName: integrationId,
+        defaultName: piece.label,
+        // Only what the tab renders. `metadata` can carry workspace facts that
+        // are not for the browser; `scopes` is the one key the tab compares.
+        rows: connectionRows.map(
+          ({
+            id,
+            pieceName,
+            name,
+            accountLabel,
+            status,
+            lastError,
+            metadata
+          }) => ({
+            id,
+            pieceName,
+            name,
+            accountLabel,
+            status,
+            lastError,
+            metadata: { scopes: metadata.scopes }
+          })
+        ),
+        // What a connection must hold for this piece's steps; an account that
+        // predates a scope shows "Reconnect needed".
+        requiredScopes: [...requiredScopes]
+      }
+    : null;
+
+  // The header's sync switch: off on a new connection, and only switchable on
+  // once every required account is mapped.
+  const accountingSync = accountMapping
+    ? {
+        enabled: isAccountingSyncEnabled(metadata),
+        unmappedRequiredCount: accountMapping.unmappedRequiredCount
+      }
+    : null;
+
+  const devices = await devicesPromise;
+
+  return {
+    installed: integrationData.data.active,
+    metadata: flattenedMetadata,
+    dynamicOptions,
+    syncActivity,
+    accountMapping,
+    accountingSync,
+    postingSync,
+    dimensionSync,
+    connections,
+    devices
+  };
+}
+
+// The drawer's tabs post one intent each; the settings form itself posts
+// none and installs or updates the integration.
+export async function action(args: ActionFunctionArgs) {
+  const intent = (await args.request.clone().formData()).get("intent");
+  const params = { params: ["id"] as const };
+
+  switch (intent) {
+    case "transition-sync-operation": {
+      const input = await validator(syncOperationTransitionValidator).request(
+        args,
+        params
+      );
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.transitionSyncOperations(input.data);
+    }
+    case "ai-suggest-account-mappings": {
+      const input = await validator(accountMappingAiSuggestValidator).request(
+        args,
+        params
+      );
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.suggestAccountMappings(input.data);
+    }
+    case "bulk-upsert-account-mappings": {
+      const input = await validator(accountMappingBulkUpsertValidator).request(
+        args,
+        params
+      );
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.saveAccountMappings({
+        integrationId: input.params.id,
+        mappings: input.data.mappings
+      });
+    }
+    case "update-dimension-slots": {
+      const input = await validator(dimensionSlotsUpdateValidator).request(
+        args,
+        params
+      );
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.updateDimensionSync({
+        ...input.data,
+        integrationId: input.params.id
+      });
+    }
+    case "upsert-dimension-value-mapping": {
+      const input = await validator(
+        dimensionValueMappingUpsertValidator
+      ).request(args, params);
+      if ("invalid" in input) return input.invalid;
+      const { intent: _, ...mapping } = input.data;
+      const api = await carbon(args.request);
+      return api.settings.saveDimensionValueMappings({
+        integrationId: input.params.id,
+        mappings: [mapping]
+      });
+    }
+    case "bulk-upsert-dimension-value-mappings": {
+      const input = await validator(
+        dimensionValueMappingBulkUpsertValidator
+      ).request(args, params);
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.saveDimensionValueMappings({
+        integrationId: input.params.id,
+        mappings: input.data.mappings
+      });
+    }
+    case "update-sync-enabled": {
+      const input = await validator(syncEnabledValidator).request(args, params);
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.setIntegrationSyncEnabled({
+        integrationId: input.params.id,
+        syncEnabled: input.data.syncEnabled
+      });
+    }
+    case "update-posting-settings": {
+      const input = await validator(postingSyncSettingsValidator).request(
+        args,
+        params
+      );
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.updatePostingSync({
+        ...input.data,
+        integrationId: input.params.id
+      });
+    }
+    case "upsert-work-center-device": {
+      const input = await validator(workCenterDeviceUpsertValidator).request(
+        args,
+        params
+      );
+      if ("invalid" in input) return input.invalid;
+      const api = await carbon(args.request);
+      return api.settings.saveOeeDeviceMapping({
+        integrationId: input.params.id,
+        externalDeviceId: input.data.externalDeviceId,
+        deviceName: input.data.deviceName,
+        workCenterId: input.data.workCenterId
+      });
+    }
+  }
+
+  return installIntegration(args);
+}
+
+/**
+ * Install the integration, or save the settings of an installed one.
+ * ponytail: still composed here (the Onshape authorization start needs the
+ * request's cookies, and the form navigates); a service function next.
+ */
+async function installIntegration({ request, params }: ActionFunctionArgs) {
+  assertIsPost(request);
+  const { client, companyId, userId, email } = await requirePermissions(
+    request,
+    {
+      update: "settings"
+    }
+  );
+
+  const { id: integrationId } = params;
+  if (!integrationId) throw new Error("Integration ID not found");
+
+  const formData = await request.formData();
+
+  if (!isIntegrationWhitelisted(integrationId)) {
+    await requireFeature({
+      request,
+      client,
+      companyId,
+      feature: "INTEGRATIONS",
+      redirectTo: path.to.integrations
+    });
+  }
+
+  const integration = availableIntegrations.find((i) => i.id === integrationId);
+
+  if (!integration) throw new Error("Integration not found");
+
+  if (
+    await isIntegrationInstallWithheld(client, {
+      companyId,
+      integrationId,
+      email,
+      userId
+    })
+  ) {
+    // The connect route's refusal: the integrations page resolves the code to
+    // translated copy (`integration-errors.ts`).
+    throw redirect(
+      `${path.to.integrations}?integration=${integrationId}&error=coming-soon`
+    );
+  }
+
+  const validation = await validator(
+    // integration.schema is a union across all integrations (incl. a
+    // discriminated union for Email). Cast to a generic ZodType so the
+    // validator signature accepts it.
+    integration.schema as unknown as Parameters<typeof validator>[0]
+  ).validate(formData);
+
+  if (validation.error) {
+    return validationError(validation.error);
+  }
+
+  // @ts-expect-error TS2339 - TODO: fix type
+  const { active: _active, ...d } = validation.data;
+
+  // Fetch existing metadata so we merge form settings without
+  // overwriting credentials and syncConfig
+  const existing = await getIntegration(client, integrationId, companyId);
+
+  // A switched-off integration (`active: false` on its config) shows a
+  // disabled Install button; this refuses the same install posted directly. A
+  // company that already has it installed can still save and uninstall.
+  if (!integration.active && existing.data?.active !== true) {
+    throw redirect(
+      path.to.integrations,
+      await flash(
+        request,
+        error(null, `${integration.name} isn't available on this platform`)
+      )
+    );
+  }
+
+  const existingMetadata =
+    (existing.data?.metadata as Record<string, unknown>) ?? {};
+
+  let metadata: Record<string, unknown> = { ...existingMetadata, ...d };
+  if (integrationId === "rillet") {
+    metadata = foldRilletCredentials(metadata);
+  }
+  if (integrationId === "ramp") {
+    metadata = foldRampCredentials(metadata);
+  }
+
+  // Onshape Government (the sync and the panel) is configured BEFORE it is
+  // authorized: the admin enters their private OAuth app here, and the save
+  // then sends them through that app's consent screen (below). Re-authorize
+  // whenever there is no token yet or the app it was issued by changed — a
+  // token is only good for the client and tenant that issued it.
+  const onshapeCustomerApp = isOnshapeCustomerAppIntegrationId(integrationId)
+    ? integrationId
+    : null;
+  const onshapeAppChanged =
+    onshapeCustomerApp !== null &&
+    (["baseUrl", "clientId"] as const).some(
+      (key) => metadata[key] !== existingMetadata[key]
+    );
+  const onshapeNeedsAuthorization =
+    onshapeCustomerApp !== null &&
+    (!existingMetadata.credentials ||
+      onshapeAppChanged ||
+      (typeof metadata.clientSecret === "string" &&
+        metadata.clientSecret.trim().length > 0));
+
+  // A company holds one Onshape sync connection and one panel connection at a
+  // time; two would leave every background job (or the panel) guessing which
+  // tenant to talk to.
+  if (isOnshapeOAuthIntegrationId(integrationId) && !existing.data?.active) {
+    const conflict = await getConflictingOnshapeConnection(
+      client,
+      companyId,
+      integrationId
+    );
+    if (conflict) {
+      return data(
+        {},
+        await flash(
+          request,
+          error(
+            null,
+            "Another Onshape integration is already connected. Uninstall it before connecting this one."
+          )
+        )
+      );
+    }
+  }
+
+  // Onshape asset sync needs the OAuth2Write scope (export jobs + webhook). A
+  // connection authorized read-only can't run it, and a refresh can't widen the
+  // scope — only a reconnect can. If a read-only user is turning the feature ON,
+  // don't persist an on-but-non-functional toggle: force it back off here and
+  // tell them to reconnect first (below). Leaving it off imposes nothing. A
+  // connection about to be (re)authorized is judged by the callback instead,
+  // against the scope it is actually granted.
+  const onshapeActivatingWithoutWrite =
+    isOnshapeIntegrationId(integrationId) &&
+    !onshapeNeedsAuthorization &&
+    (metadata as Record<string, unknown>).assetSyncEnabled === true &&
+    !onshapeConnectionHasWriteScope(existingMetadata);
+  if (onshapeActivatingWithoutWrite) {
+    (metadata as Record<string, unknown>).assetSyncEnabled = false;
+  }
+
+  const wasInstalled = existing.data?.active === true;
+
+  // An accounting integration installed from this form (Rillet) starts with
+  // sync off, so accounts can be mapped before anything reaches the provider.
+  // OAuth providers make the same decision in their callbacks.
+  if (
+    !wasInstalled &&
+    (integration as { providerRole?: "accounting" | "spend" | "oee" })
+      .providerRole === "accounting"
+  ) {
+    metadata.settings = {
+      ...((metadata.settings as Record<string, unknown> | undefined) ?? {}),
+      syncEnabled: false
+    };
+  }
+
+  // Install-time secret presence. The config schemas now let an empty secret
+  // field mean "keep the existing vaulted value" (it loads masked, never sent to
+  // the browser). A FRESH install with no secret at all would leave the
+  // integration active but non-functional, so require one here. Scoped to
+  // form-entered secrets — OAuth providers get their credentials via the
+  // callback, so they are never blocked here.
+  if (picksServerMail(integrationId, metadata) && !SERVER_MAIL_CONFIGURED) {
+    return data(
+      {},
+      await flash(
+        request,
+        error(
+          null,
+          "This server has no mail settings. Ask your administrator to set them up, or pick Resend, Custom SMTP or Gmail."
+        )
+      )
+    );
+  }
+  const FORM_SECRET_INTEGRATIONS = new Set([
+    "linear",
+    "mount",
+    "paperless-parts",
+    "email",
+    "ramp",
+    "rillet",
+    "sense"
+  ]);
+  if (
+    // Email's Server mail and Gmail have no credential to enter.
+    (FORM_SECRET_INTEGRATIONS.has(integrationId) &&
+      !picksCredentialFreeEmail(integrationId, metadata)) ||
+    onshapeCustomerApp !== null
+  ) {
+    const alreadyVaulted = existing.data?.secretRef != null;
+    // The optional webhook signing secret is not a credential: it must not
+    // satisfy the "a credential is required" check on its own.
+    const providedSecret = (SECRET_KEYS[integrationId] ?? [])
+      .filter((p) => p !== WEBHOOK_SIGNING_SECRET_KEY)
+      .some((p) => {
+        const v = getPath(metadata, p);
+        return typeof v === "string" && v.trim().length > 0;
+      });
+    if (!alreadyVaulted && !providedSecret) {
+      return data(
+        {},
+        await flash(
+          request,
+          error(
+            null,
+            `A credential is required to connect ${integration.name}.`
+          )
+        )
+      );
+    }
+  }
+
+  // A connected private app whose tenant or client changed: its tokens were
+  // issued by the OLD app for the OLD host. Clear them now rather than when
+  // consent completes — an abandoned or failed consent would otherwise leave
+  // them live, sent to the new host by every job. The upsert below only drops
+  // plaintext fields; vaulted secrets merge, so they are removed explicitly.
+  if (onshapeAppChanged && existingMetadata.credentials) {
+    // Unsubscribe the old tenant's release webhook while its token still works.
+    if (existingMetadata.assetSyncEnabled === true) {
+      const unsubscribed = await ensureOnshapeReleaseWebhook(companyId, false);
+      if (!unsubscribed.ok) {
+        logger.error("Could not remove the previous Onshape release webhook", {
+          companyId,
+          error: unsubscribed.error
+        });
+      }
+    }
+    try {
+      await patchIntegrationState(
+        getCarbonServiceRole(),
+        companyId,
+        integrationId,
+        {
+          removeMetadata: ["credentials", "scope", "onshapeCompanyId"],
+          removeSecrets: ["credentials.accessToken", "credentials.refreshToken"]
+        }
+      );
+    } catch (clearError) {
+      return data(
+        {},
+        await flash(
+          request,
+          error(
+            clearError,
+            `Couldn't disconnect the previous ${integration.name} app. Try saving again.`
+          )
+        )
+      );
+    }
+    delete metadata.credentials;
+    delete metadata.scope;
+    delete metadata.onshapeCompanyId;
+  }
+
+  const update = await upsertCompanyIntegration(client, {
+    id: integrationId,
+    active: true,
+    // @ts-expect-error TS2322 - TODO: fix type
+    metadata,
+    companyId,
+    updatedBy: userId
+  });
+  if (update.error) {
+    throw redirect(
+      path.to.integrations,
+      await flash(request, error(update.error, "Failed to install integration"))
+    );
+  }
+
+  // Fire `onInstall` on the transition from uninstalled → installed.
+  // Prefer the server-hooks registry (used by integrations whose install
+  // logic needs server-only modules, e.g. Xero), fall back to any inline
+  // hook defined via `defineIntegration({ onInstall })`. Run it best-effort:
+  // the row is already persisted, so a hook failure shouldn't roll that
+  // back — just surface it as a flashed error and let the user retry.
+  if (!wasInstalled) {
+    const serverHooks = getIntegrationServerHooks(integrationId);
+    const onInstall = (serverHooks?.onInstall ?? integration.onInstall) as
+      | ((companyId: string) => void | Promise<void>)
+      | undefined;
+    if (onInstall) {
+      try {
+        await onInstall(companyId);
+      } catch (hookError) {
+        throw redirect(
+          path.to.integrations,
+          await flash(
+            request,
+            error(
+              hookError,
+              `Installed ${integration.name}, but setup hook failed`,
+              { integrationId }
+            )
+          )
+        );
+      }
+    }
+  } else {
+    // Settings save on an already-installed integration: run `onUpdate` so
+    // derived server state (e.g. accounting event subscriptions) converges
+    // without a reinstall. Best-effort — the save is already persisted, so
+    // a hook failure doesn't roll that back — just surface it as a flashed
+    // error, since a save can be the repair the user was told to make.
+    const onUpdate = getIntegrationServerHooks(integrationId)?.onUpdate;
+    if (onUpdate) {
+      try {
+        await onUpdate(companyId);
+      } catch (hookError) {
+        logger.error("onUpdate hook failed for integration", {
+          integrationId,
+          error: hookError
+        });
+        await invalidateIntegrationHealthCache(integrationId, companyId);
+        throw redirect(
+          path.to.integrations,
+          await flash(
+            request,
+            error(
+              hookError,
+              `Saved ${integration.name} settings, but setup hook failed`
+            )
+          )
+        );
+      }
+    }
+  }
+
+  // Onshape: keep the release-webhook subscription in lockstep with the
+  // asset-sync toggle. Registering here (not just on connect) also covers
+  // already-connected installs when they enable the feature — but connections
+  // authorized before the OAuth2Write scope was requested hold Read-only tokens
+  // and need a reconnect, so surface a registration failure instead of flashing
+  // success while the sync silently never fires. The settings themselves are
+  // already saved either way.
+  if (onshapeCustomerApp && onshapeNeedsAuthorization) {
+    const started = await beginOnshapeAuthorization(request, {
+      integrationId: onshapeCustomerApp,
+      userId,
+      companyId
+    });
+    await invalidateIntegrationHealthCache(integrationId, companyId);
+    if (!started.ok) {
+      logger.error("Could not start the Onshape private app authorization", {
+        companyId,
+        integrationId,
+        reason: started.reason
+      });
+      throw redirect(
+        path.to.integrations,
+        await flash(
+          request,
+          error(
+            started.reason,
+            `Saved ${integration.name} settings, but couldn't start the connection. Check the Onshape URL, client ID and client secret.`
+          )
+        )
+      );
+    }
+    // Off to the tenant's consent screen; its callback finishes the install
+    // (and registers the release webhook if asset sync is on).
+    throw redirectExternal(started.url, {
+      headers: { "Set-Cookie": started.cookie }
+    });
+  }
+
+  if (isOnshapeIntegrationId(integrationId)) {
+    // The public app reconnects from the integrations list; a Government
+    // private app reconnects by saving its client secret again.
+    const reconnect =
+      integrationId === ONSHAPE_GOVERNMENT_INTEGRATION_ID
+        ? "Grant the private app write access in Onshape, then enter its client secret again and save to reconnect"
+        : "Reconnect Onshape to grant write access";
+
+    // Read-only connection trying to turn asset sync on: we already forced the
+    // toggle back off above, so just tell them exactly what to do. Explicit and
+    // scope-accurate — not inferred from a downstream webhook failure.
+    if (onshapeActivatingWithoutWrite) {
+      await invalidateIntegrationHealthCache(integrationId, companyId);
+      throw redirect(
+        path.to.integrations,
+        await flash(
+          request,
+          error(
+            null,
+            `${integration.name} is connected with read-only access. ${reconnect}, then enable asset sync.`
+          )
+        )
+      );
+    }
+
+    const assetSyncEnabled =
+      (metadata as Record<string, unknown>).assetSyncEnabled === true;
+    const webhookResult = await ensureOnshapeReleaseWebhook(
+      companyId,
+      assetSyncEnabled
+    );
+    if (assetSyncEnabled && !webhookResult.ok) {
+      await invalidateIntegrationHealthCache(integrationId, companyId);
+      throw redirect(
+        path.to.integrations,
+        await flash(
+          request,
+          error(
+            webhookResult.error,
+            `Saved ${integration.name} settings, but couldn't register the release webhook. ${reconnect}, then save again.`
+          )
+        )
+      );
+    }
+  }
+
+  await invalidateIntegrationHealthCache(integrationId, companyId);
+
+  throw redirect(
+    path.to.integrations,
+    await flash(request, success(`Installed ${integration.name} integration`))
+  );
+}
+
+export default function IntegrationRoute() {
+  // Invoice and bill sync reads Posted journals, so a company that has not
+  // activated accounting (still Provisional) has nothing to send yet.
+  const accountingSetUp = hasAccountingCutover(useSettings());
+  const {
+    installed,
+    metadata,
+    dynamicOptions,
+    syncActivity,
+    accountMapping,
+    accountingSync,
+    postingSync,
+    dimensionSync,
+    connections,
+    devices
+  } = useLoaderData<typeof loader>();
+
+  const dialog = useRouteDialog(path.to.integrations);
+  const [searchParams] = useSearchParams();
+  const { id: integrationId } = useParams();
+
+  const collapseSettings = integrationId === "mount" && installed;
+  const mountActions = useMountActionStates(metadata);
+
+  // Accounting-category integrations get Account Mapping, Posting, Dimensions
+  // and Sync Activity tabs next to the Settings form (deep-linkable via
+  // ?tab=<value>).
+  const tabs: IntegrationFormTab[] = [];
+  if (connections) {
+    tabs.push({
+      value: "connections",
+      label: <Trans>Accounts</Trans>,
+      content: (tabBar) => (
+        <ConnectionsTab
+          tabs={tabBar}
+          pieceName={connections.pieceName}
+          defaultName={connections.defaultName}
+          connections={connections.rows}
+          requiredScopes={connections.requiredScopes}
+        />
+      )
+    });
+  }
+  if (devices) {
+    tabs.push({
+      value: "devices",
+      label: <Trans>Devices</Trans>,
+      content: (tabBar) => <OeeDevices tabs={tabBar} {...devices} />
+    });
+  }
+  if (accountMapping) {
+    tabs.push({
+      value: "account-mapping",
+      label: <Trans>Account Mapping</Trans>,
+      content: (tabBar) => (
+        <AccountMapping
+          tabs={tabBar}
+          mappings={accountMapping.mappings}
+          unmapped={accountMapping.unmapped}
+          chart={accountMapping.chart}
+          proposals={accountMapping.proposals}
+          requiredAccountIds={accountMapping.requiredAccountIds}
+          allAccounts={accountMapping.allAccounts}
+          blocking={accountMapping.blocking}
+          focusAccountIds={searchParams.getAll("focusAccount")}
+        />
+      )
+    });
+  }
+  if (postingSync) {
+    tabs.push({
+      value: "posting",
+      label: <Trans>Posting</Trans>,
+      content: (tabBar) => (
+        <PostingSyncSettings
+          tabs={tabBar}
+          settings={postingSync.settings}
+          policy={postingSync.policy}
+          mappingReadiness={postingSync.mappingReadiness}
+          delegatedFamilies={postingSync.delegatedFamilies}
+        />
+      )
+    });
+  }
+  if (dimensionSync) {
+    tabs.push({
+      value: "dimensions",
+      label: <Trans>Dimensions</Trans>,
+      content: (tabBar) => (
+        <DimensionMapping
+          tabs={tabBar}
+          targets={dimensionSync.targets}
+          targetsError={dimensionSync.targetsError}
+          maxSlots={dimensionSync.maxSlots}
+          autoCreateDefault={dimensionSync.autoCreateDefault}
+          dimensions={dimensionSync.dimensions}
+          slots={dimensionSync.slots}
+          onUnmappedDimensionValue={dimensionSync.onUnmappedDimensionValue}
+          mappings={dimensionSync.mappings}
+          unmapped={dimensionSync.unmapped}
+          proposals={dimensionSync.proposals}
+        />
+      )
+    });
+  }
+  if (syncActivity && integrationId) {
+    tabs.push({
+      value: "sync-activity",
+      label:
+        syncActivity.failingCount > 0 ? (
+          <span className="flex items-center gap-1.5">
+            <Trans>Sync Activity</Trans>
+            <Badge variant="orange">{syncActivity.failingCount}</Badge>
+          </span>
+        ) : (
+          <Trans>Sync Activity</Trans>
+        ),
+      content: (tabBar) => (
+        <SyncActivity
+          tabs={tabBar}
+          integrationId={integrationId}
+          operations={syncActivity.operations}
+          count={syncActivity.count}
+          status={syncActivity.status}
+          nextCursor={syncActivity.nextCursor}
+          lastReconciliation={syncActivity.lastReconciliation}
+          tieOut={syncActivity.tieOut}
+        />
+      )
+    });
+  }
+
+  const tabParam = searchParams.get("tab");
+  const defaultTab = tabs.some((tab) => tab.value === tabParam)
+    ? (tabParam ?? undefined)
+    : undefined;
+
+  return (
+    <IntegrationForm
+      installed={installed}
+      metadata={metadata}
+      collapseSettings={collapseSettings}
+      settingsLabel={
+        collapseSettings ? <Trans>Integration credentials</Trans> : undefined
+      }
+      dynamicOptions={dynamicOptions}
+      tabs={tabs.length > 0 ? tabs : undefined}
+      defaultTab={defaultTab}
+      headerExtra={
+        accountingSync ? (
+          <div className="flex items-center gap-3">
+            {!accountingSetUp && (
+              <Link
+                to={path.to.accountingActivation}
+                className="text-sm text-muted-foreground hover:underline"
+              >
+                <Trans>
+                  Invoices and bills sync after you activate accounting
+                </Trans>
+              </Link>
+            )}
+            <AccountingSyncControl
+              enabled={accountingSync.enabled}
+              unmappedRequiredCount={accountingSync.unmappedRequiredCount}
+            />
+          </div>
+        ) : undefined
+      }
+      {...(integrationId === "mount" && installed
+        ? {
+            actionStates: mountActions.actionStates,
+            onActionStarted: mountActions.onActionStarted
+          }
+        : {})}
+      open={dialog.open}
+      onClose={dialog.close}
+    />
+  );
+}

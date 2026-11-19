@@ -1,0 +1,560 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+// Notification event taxonomy. Kept as a standalone package because the
+// enums are referenced from app routes, scheduled jobs, and the inngest
+// notify function. Callers dispatch a `carbon/notify` event via
+// @carbon/lib's `trigger()` and the notify function handles fan-out
+// (in-app / email / slack).
+
+export enum NotificationEvent {
+  ApprovalApproved = "approval-approved",
+  ApprovalRejected = "approval-rejected",
+  ApprovalRequested = "approval-requested",
+  // Change-notice stage broadcasts. Change notice approvals use the Approval*
+  // events above with documentType "changeOrder".
+  // Values are persisted in `notification.event`, so they keep the legacy
+  // "change-order" spelling.
+  ChangeNoticeStarted = "change-order-started",
+  ChangeNoticeImplementation = "change-order-implementation",
+  ChangeNoticeDone = "change-order-done",
+  DigitalQuoteResponse = "digital-quote-response",
+  GaugeCalibrationExpired = "gauge-calibration-expired",
+  // Accounting sync needs attention (failed sync operations); like Workflow,
+  // the text is carried on the payload — documentId is the provider id, not a
+  // readable document.
+  IntegrationSync = "integrationSync",
+  JobAssignment = "job-assignment",
+  JobCompleted = "job-completed",
+  JobOperationAssignment = "job-operation-assignment",
+  JobOperationMessage = "job-operation-message",
+  // Digest (documentIds-shaped): jobs a regen flipped to projected-late, one
+  // digest per assignee. In-app only by default.
+  JobsProjectedLate = "jobs-projected-late",
+  // A lease's notice date or end date is within the company's reminder days.
+  // Sent once per date by the recurring-billing job; the text comes from the
+  // payload's `body`, the lease is read for the details.
+  LeaseCriticalDate = "lease-critical-date",
+  MaintenanceDispatchAssignment = "maintenance-dispatch-assignment",
+  MaintenanceDispatchCreated = "maintenance-dispatch-created",
+  NonConformanceAssignment = "issue-assignment",
+  PickingListAssignment = "picking-list-assignment",
+  ProcedureAssignment = "procedure-assignment",
+  PurchaseInvoiceAssignment = "purchase-invoice-assignment",
+  PurchaseOrderAssignment = "purchase-order-assignment",
+  PurchasingRfqAssignment = "purchasing-rfq-assignment",
+  QuoteAssignment = "quote-assignment",
+  QuoteExpired = "quote-expired",
+  // Daily digest from the recurring-billing job, shared by every recurring
+  // invoice source. Payload-carried like IntegrationSync: the counts arrive as
+  // `body` ("2 posted, 1 emailed, 1 need review") and nothing is read.
+  RecurringInvoicing = "recurring-invoicing",
+  // Payload-carried like RecurringInvoicing: the figures arrive as `title` and
+  // `body`; `documentId` is the contract.
+  ContractFundingThreshold = "contract-funding-threshold",
+  // Payload-carried like RecurringInvoicing: the daily missing-time check
+  // sends the text as `body`; `documentId` is the missed date.
+  TimesheetMissing = "timesheet-missing",
+  // Payload-carried like TimesheetMissing: the budget check of a timesheet
+  // sends "Budget exceeded on <project>" as `title` and the overruns as
+  // `body`; `documentId` is the project.
+  ProjectBudgetExceeded = "project-budget-exceeded",
+  RiskAssignment = "risk-assignment",
+  SalesOrderAssignment = "sales-order-assignment",
+  SalesRfqAssignment = "sales-rfq-assignment",
+  SalesRfqReady = "sales-rfq-ready",
+  SalesRuleViolation = "sales-rule-violation",
+  StockTransferAssignment = "stock-transfer-assignment",
+  SuggestionResponse = "suggestion-response",
+  // A background table export finished, failed, or was refused. Payload-carried
+  // like IntegrationSync: the text arrives as `title` / `body`. documentId is the
+  // export id (the file is `{companyId}/exports/{userId}/{exportId}.csv` in
+  // temp-staging, served to that user only by the ERP's export route), or
+  // `failed:{exportId}` when there is no file.
+  TableExport = "table-export",
+  // A background bulk action finished, failed, or was refused. Payload-carried
+  // like TableExport: the outcome and the counts arrive as `title` / `body`.
+  // documentId is the run id, or `failed:{runId}`; neither is a record.
+  TableBulkAction = "table-bulk-action",
+  // Weekly digest reminder for outstanding trainings (documentIds-shaped).
+  TrainingReminder = "training-reminder",
+  SupplierQuoteAssignment = "supplier-quote-assignment",
+  SupplierQuoteResponse = "supplier-quote-response",
+  TrainingAssignment = "training-assignment",
+  ResourceTrainingAssignment = "resource-training-assignment",
+  // Text authored by a customer's workflow; carries no source document to read.
+  Workflow = "workflow",
+  Digest = "digest"
+}
+
+// Coarse topic buckets. Each event maps to exactly one topic via
+// getNotificationTopic. The string values are persisted in the
+// `notification.topic` column, so renaming any of these is a migration.
+export enum NotificationTopic {
+  Approval = "approval",
+  // The changelog newsletter: opt-in and email-only.
+  Changelog = "changelog",
+  General = "general",
+  Inventory = "inventory",
+  Items = "items",
+  Job = "job",
+  Maintenance = "maintenance",
+  Purchasing = "purchasing",
+  Quality = "quality",
+  Quote = "quote",
+  Sales = "sales",
+  Suggestion = "suggestion",
+  Training = "training"
+}
+
+// Display order for the notification-settings page (/x/account/notifications);
+// labels live in that route so Lingui extracts them.
+export const USER_FACING_NOTIFICATION_TOPICS = [
+  NotificationTopic.Approval,
+  NotificationTopic.Job,
+  NotificationTopic.Sales,
+  NotificationTopic.Quote,
+  NotificationTopic.Purchasing,
+  NotificationTopic.Inventory,
+  NotificationTopic.Quality,
+  NotificationTopic.Maintenance,
+  NotificationTopic.Training,
+  NotificationTopic.Suggestion,
+  NotificationTopic.General,
+  NotificationTopic.Changelog
+] as const satisfies readonly NotificationTopic[];
+
+// In-app is always delivered, so it is not a preference channel. Neither is
+// browser push: it mirrors in-app, every notification to every browser with
+// notifications enabled.
+export type NotificationPreferenceChannel = "email" | "slack";
+
+export function getNotificationTopicChannels(
+  topic: NotificationTopic
+): readonly NotificationPreferenceChannel[] {
+  switch (topic) {
+    case NotificationTopic.Changelog:
+      return ["email"];
+    default:
+      return ["email", "slack"];
+  }
+}
+
+// What no preference row means. The newsletter is opt-in: its dispatcher only
+// mails users with an enabled row.
+export function isNotificationTopicEnabledByDefault(
+  topic: NotificationTopic
+): boolean {
+  switch (topic) {
+    case NotificationTopic.Changelog:
+      return false;
+    default:
+      return true;
+  }
+}
+
+// Who a topic's preference belongs to. A company topic is set per company. An
+// account topic belongs to the person (the newsletter is the same email from
+// every company), so one switch covers every company they belong to.
+export type NotificationTopicScope = "company" | "account";
+
+export function getNotificationTopicScope(
+  topic: NotificationTopic
+): NotificationTopicScope {
+  switch (topic) {
+    case NotificationTopic.Changelog:
+      return "account";
+    default:
+      return "company";
+  }
+}
+
+// The companyId a topic's preference row is stored under, read and written:
+// null for an account topic, the current company otherwise. A per-company row
+// of an account topic (left by a backup older than the change) is never read.
+export function notificationPreferenceCompanyId(
+  topic: NotificationTopic,
+  companyId: string
+): string | null {
+  return getNotificationTopicScope(topic) === "account" ? null : companyId;
+}
+
+const NOTIFICATION_TOPICS: ReadonlySet<string> = new Set(
+  Object.values(NotificationTopic)
+);
+
+// Narrows a stored `topic` (a TEXT column) to the enum.
+export function isNotificationTopic(value: string): value is NotificationTopic {
+  return NOTIFICATION_TOPICS.has(value);
+}
+
+// What a Recurring invoicing notification lists, which decides where its link
+// lands: the sales invoices the run posted or held, or the lease purchase
+// invoices it drafted. The two are never mixed in one notification.
+export type RecurringInvoicingDocumentType = "salesInvoice" | "purchaseInvoice";
+
+// A labeled fact attached to a notification (e.g. Customer / Acme Corp),
+// rendered in the email, Slack text, and notification.payload.details.
+export type NotificationDetail = {
+  label: string;
+  value: string;
+};
+
+// Max successful email deliveries of the same recurring notification per
+// (user, event, document+period); past it the reminder is acknowledged rather
+// than re-sent forever. Only provider-accepted sends count.
+export const MAX_NOTIFICATION_DELIVERIES = 5;
+
+// Cron reminders that re-fire for the same document. Only these attach
+// delivery tracking and are subject to MAX_NOTIFICATION_DELIVERIES.
+export function isRecurringNotificationEvent(
+  event: NotificationEvent
+): boolean {
+  switch (event) {
+    case NotificationEvent.TrainingReminder:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Fan-out targets understood by the notify Inngest function. inApp is
+// always included regardless of what the caller passes — the topbar reflects
+// every notification. email and slack are opt-in extras. Browser push is not
+// a destination: it follows in-app, so every notification pushes too.
+export enum NotificationDestination {
+  InApp = "inApp",
+  Email = "email",
+  Slack = "slack"
+}
+
+export function getNotificationTopic(
+  event: NotificationEvent
+): NotificationTopic {
+  switch (event) {
+    case NotificationEvent.JobAssignment:
+    case NotificationEvent.JobOperationAssignment:
+    case NotificationEvent.JobOperationMessage:
+    case NotificationEvent.JobCompleted:
+    case NotificationEvent.JobsProjectedLate:
+      return NotificationTopic.Job;
+    case NotificationEvent.PurchaseInvoiceAssignment:
+    case NotificationEvent.PurchaseOrderAssignment:
+    case NotificationEvent.PurchasingRfqAssignment:
+    case NotificationEvent.LeaseCriticalDate:
+      return NotificationTopic.Purchasing;
+    case NotificationEvent.QuoteAssignment:
+    case NotificationEvent.QuoteExpired:
+    case NotificationEvent.DigitalQuoteResponse:
+    case NotificationEvent.SupplierQuoteAssignment:
+    case NotificationEvent.SupplierQuoteResponse:
+      return NotificationTopic.Quote;
+    case NotificationEvent.SalesRuleViolation:
+    case NotificationEvent.SalesOrderAssignment:
+    case NotificationEvent.SalesRfqAssignment:
+    case NotificationEvent.SalesRfqReady:
+    case NotificationEvent.RecurringInvoicing:
+    case NotificationEvent.ContractFundingThreshold:
+      return NotificationTopic.Sales;
+    case NotificationEvent.MaintenanceDispatchAssignment:
+    case NotificationEvent.MaintenanceDispatchCreated:
+    case NotificationEvent.GaugeCalibrationExpired:
+      return NotificationTopic.Maintenance;
+    case NotificationEvent.NonConformanceAssignment:
+    case NotificationEvent.RiskAssignment:
+      return NotificationTopic.Quality;
+    case NotificationEvent.ProcedureAssignment:
+    case NotificationEvent.TrainingAssignment:
+    case NotificationEvent.TrainingReminder:
+    case NotificationEvent.ResourceTrainingAssignment:
+      return NotificationTopic.Training;
+    case NotificationEvent.PickingListAssignment:
+    case NotificationEvent.StockTransferAssignment:
+      return NotificationTopic.Inventory;
+    case NotificationEvent.SuggestionResponse:
+      return NotificationTopic.Suggestion;
+    case NotificationEvent.ApprovalApproved:
+    case NotificationEvent.ApprovalRejected:
+    case NotificationEvent.ApprovalRequested:
+      return NotificationTopic.Approval;
+    case NotificationEvent.ChangeNoticeStarted:
+    case NotificationEvent.ChangeNoticeImplementation:
+    case NotificationEvent.ChangeNoticeDone:
+      return NotificationTopic.Items;
+    // No topic of its own: topicLabels in the account settings route is an
+    // exhaustive Record<NotificationTopic, string>.
+    case NotificationEvent.Workflow:
+    case NotificationEvent.IntegrationSync:
+    case NotificationEvent.TimesheetMissing:
+    case NotificationEvent.ProjectBudgetExceeded:
+    case NotificationEvent.TableExport:
+    case NotificationEvent.TableBulkAction:
+      return NotificationTopic.General;
+    default:
+      return NotificationTopic.General;
+  }
+}
+
+// Generic category label rendered as the in-email heading (sits under the
+// "New notification" eyebrow). The inbox subject is the per-event description
+// so users can scan their inbox; this gives the email body a stable category
+// title regardless of the record specifics in the description.
+export function getNotificationEmailHeading(event: NotificationEvent): string {
+  switch (event) {
+    case NotificationEvent.JobAssignment:
+      return "Job assigned to you";
+    case NotificationEvent.JobCompleted:
+      return "Job completed";
+    case NotificationEvent.JobsProjectedLate:
+      return "Jobs projected late";
+    case NotificationEvent.JobOperationAssignment:
+      return "Job operation assigned to you";
+    case NotificationEvent.JobOperationMessage:
+      return "New job operation message";
+    case NotificationEvent.PurchaseInvoiceAssignment:
+      return "Purchase invoice assigned to you";
+    case NotificationEvent.PurchaseOrderAssignment:
+      return "Purchase order assigned to you";
+    case NotificationEvent.PurchasingRfqAssignment:
+      return "Purchasing RFQ assigned to you";
+    case NotificationEvent.QuoteAssignment:
+      return "Quote assigned to you";
+    case NotificationEvent.QuoteExpired:
+      return "Quote expired";
+    case NotificationEvent.DigitalQuoteResponse:
+      return "Digital quote response";
+    case NotificationEvent.SupplierQuoteAssignment:
+      return "Supplier quote assigned to you";
+    case NotificationEvent.SupplierQuoteResponse:
+      return "Supplier quote response";
+    case NotificationEvent.SalesOrderAssignment:
+      return "Sales order assigned to you";
+    case NotificationEvent.SalesRfqAssignment:
+      return "RFQ assigned to you";
+    case NotificationEvent.SalesRfqReady:
+      return "RFQ ready for quote";
+    case NotificationEvent.MaintenanceDispatchAssignment:
+      return "Maintenance dispatch assigned to you";
+    case NotificationEvent.MaintenanceDispatchCreated:
+      return "New maintenance dispatch";
+    case NotificationEvent.GaugeCalibrationExpired:
+      return "Gauge calibration expired";
+    case NotificationEvent.SalesRuleViolation:
+      return "Sales rule violation";
+    case NotificationEvent.NonConformanceAssignment:
+      return "Issue assigned to you";
+    case NotificationEvent.RiskAssignment:
+      return "Risk assigned to you";
+    case NotificationEvent.ProcedureAssignment:
+      return "Procedure assigned to you";
+    case NotificationEvent.TrainingAssignment:
+      return "Training assigned to you";
+    case NotificationEvent.TrainingReminder:
+      return "Training reminder";
+    case NotificationEvent.ResourceTrainingAssignment:
+      return "New training available";
+    case NotificationEvent.PickingListAssignment:
+      return "Picking list assigned to you";
+    case NotificationEvent.StockTransferAssignment:
+      return "Stock transfer assigned to you";
+    case NotificationEvent.SuggestionResponse:
+      return "New suggestion submitted";
+    case NotificationEvent.ApprovalRequested:
+      return "Approval requested";
+    case NotificationEvent.ApprovalApproved:
+      return "Your request was approved";
+    case NotificationEvent.ApprovalRejected:
+      return "Your request was rejected";
+    case NotificationEvent.ChangeNoticeStarted:
+      return "Change notice started";
+    case NotificationEvent.ChangeNoticeImplementation:
+      return "Change notice in implementation";
+    case NotificationEvent.ChangeNoticeDone:
+      return "Change notice complete";
+    case NotificationEvent.Workflow:
+      return "Workflow";
+    case NotificationEvent.IntegrationSync:
+      return "Accounting sync needs attention";
+    case NotificationEvent.TableExport:
+      return "Your export";
+    case NotificationEvent.TableBulkAction:
+      return "Your bulk action";
+    case NotificationEvent.RecurringInvoicing:
+      return "Recurring invoicing summary";
+    case NotificationEvent.ContractFundingThreshold:
+      return "Contract funding notice";
+    case NotificationEvent.TimesheetMissing:
+      return "Missing time";
+    case NotificationEvent.ProjectBudgetExceeded:
+      return "Budget exceeded";
+    case NotificationEvent.LeaseCriticalDate:
+      return "Lease date coming up";
+    default:
+      return "You have a new notification";
+  }
+}
+
+// Action label shown on the email's CTA button. Falls back to "View" when no
+// link is available. Tone matches the heading — short, imperative.
+export function getNotificationEmailCtaLabel(event: NotificationEvent): string {
+  switch (event) {
+    case NotificationEvent.ApprovalRequested:
+      return "Review approval";
+    case NotificationEvent.ApprovalApproved:
+    case NotificationEvent.ApprovalRejected:
+      return "View decision";
+    case NotificationEvent.ChangeNoticeStarted:
+    case NotificationEvent.ChangeNoticeImplementation:
+    case NotificationEvent.ChangeNoticeDone:
+      return "View change notice";
+    case NotificationEvent.JobCompleted:
+    case NotificationEvent.JobsProjectedLate:
+      return "View job";
+    case NotificationEvent.SuggestionResponse:
+      return "View suggestion";
+    case NotificationEvent.GaugeCalibrationExpired:
+      return "View gauge";
+    case NotificationEvent.SalesRuleViolation:
+      return "View document";
+    case NotificationEvent.QuoteExpired:
+      return "View quote";
+    case NotificationEvent.TrainingReminder:
+      return "View training";
+    case NotificationEvent.DigitalQuoteResponse:
+    case NotificationEvent.SupplierQuoteResponse:
+      return "View response";
+    case NotificationEvent.Workflow:
+      return "View details";
+    case NotificationEvent.IntegrationSync:
+      return "View sync activity";
+    case NotificationEvent.TableExport:
+      return "Download export";
+    case NotificationEvent.TableBulkAction:
+      return "View details";
+    case NotificationEvent.RecurringInvoicing:
+      return "Review invoices";
+    case NotificationEvent.ContractFundingThreshold:
+      return "View contract";
+    case NotificationEvent.TimesheetMissing:
+      return "Open timesheet";
+    case NotificationEvent.ProjectBudgetExceeded:
+      return "View costs";
+    case NotificationEvent.LeaseCriticalDate:
+      return "Open lease";
+    default:
+      return "View details";
+  }
+}
+
+export function getNotificationTopicPhrase(
+  topic: NotificationTopic,
+  count: number
+): string {
+  const plural = count === 1 ? "notification" : "notifications";
+  switch (topic) {
+    case NotificationTopic.Job:
+      return `${count} job ${plural}`;
+    case NotificationTopic.Purchasing:
+      return `${count} purchasing ${plural}`;
+    case NotificationTopic.Quote:
+      return `${count} quote ${plural}`;
+    case NotificationTopic.Sales:
+      return `${count} sales ${plural}`;
+    case NotificationTopic.Maintenance:
+      return `${count} maintenance ${plural}`;
+    case NotificationTopic.Quality:
+      return `${count} quality ${plural}`;
+    case NotificationTopic.Training:
+      return `${count} training ${plural}`;
+    case NotificationTopic.Inventory:
+      return `${count} inventory ${plural}`;
+    case NotificationTopic.Items:
+      return `${count} item ${plural}`;
+    case NotificationTopic.Suggestion:
+      return `${count} suggestion ${plural}`;
+    case NotificationTopic.Approval:
+      return `${count} approval ${plural}`;
+    case NotificationTopic.General:
+    default:
+      return `${count} unread ${plural}`;
+  }
+}
+
+export type InlineLinkSegment =
+  | { text: string }
+  | { text: string; href: string };
+
+/**
+ * Deliberately strict: `[label](url)` where the url is an absolute https URL on the
+ * supplied origin. A relative path, another host, or a `javascript:` url is left as
+ * literal text.
+ *
+ * This is a security boundary, not a formatting nicety. A workflow's message body is
+ * customer-authored, so an unrestricted matcher would let its author choose where a
+ * notification the recipient trusts actually points.
+ */
+const INLINE_LINK = /\[([^\]\n]+)\]\((https:\/\/[^\s()]+)\)/g;
+
+export function renderInlineLinks(
+  text: string,
+  origin: string
+): InlineLinkSegment[] {
+  if (text === "") return [];
+
+  let allowed: URL;
+  try {
+    allowed = new URL(origin);
+  } catch {
+    return [{ text }];
+  }
+
+  const segments: InlineLinkSegment[] = [];
+  let index = 0;
+
+  for (const match of text.matchAll(INLINE_LINK)) {
+    const [whole, label, href] = match;
+    if (label === undefined || href === undefined) continue;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(href);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:" || parsed.origin !== allowed.origin) {
+      continue;
+    }
+
+    const start = match.index ?? 0;
+    if (start > index) segments.push({ text: text.slice(index, start) });
+    segments.push({ text: label, href: parsed.toString() });
+    index = start + whole.length;
+  }
+
+  if (index < text.length) segments.push({ text: text.slice(index) });
+  return segments;
+}
+
+/** Slack mrkdwn requires `&`, `<` and `>` escaped in text; inside a `<url|label>` a literal
+ * `|` would also terminate the label, so it is swapped for a lookalike. */
+export function escapeSlackText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\|/g, "¦");
+}
+
+/** The Slack rendition of the same `[label](url)` the in-app and email renderers handle —
+ * Slack spells a link `<url|label>`, so the markdown would otherwise be shown verbatim.
+ * Goes through `renderInlineLinks`, so it inherits that matcher's origin restriction. */
+export function renderSlackMrkdwn(text: string, origin: string): string {
+  return renderInlineLinks(text, origin)
+    .map((segment) =>
+      "href" in segment
+        ? `<${segment.href}|${escapeSlackText(segment.text)}>`
+        : escapeSlackText(segment.text)
+    )
+    .join("");
+}

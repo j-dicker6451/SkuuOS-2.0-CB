@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { MENU_ITEM_SHORTCUTS, MenuIcon, MenuItem } from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import type { ColumnDef } from "@tanstack/react-table";
+import { memo, useCallback, useMemo } from "react";
+import { BsPeopleFill } from "react-icons/bs";
+import { LuPencil, LuShapes, LuTrash } from "react-icons/lu";
+import { Link, useNavigate } from "react-router";
+import { New, Table } from "~/components";
+import { Enumerable } from "~/components/Enumerable";
+import type { InfiniteOptions } from "~/components/Table";
+import { usePermissions, useUrlParams } from "~/hooks";
+import { useCustomColumns } from "~/hooks/useCustomColumns";
+import type { SupplierType } from "~/modules/purchasing/types";
+import { path } from "~/utils/path";
+
+type SupplierTypesTableProps = {
+  data: SupplierType[];
+  count: number;
+  infinite: InfiniteOptions;
+};
+
+const SupplierTypesTable = memo((props: SupplierTypesTableProps) => {
+  const { data, count, infinite } = props;
+  const [params] = useUrlParams();
+  const { t } = useLingui();
+  const navigate = useNavigate();
+  const permissions = usePermissions();
+  const customColumns = useCustomColumns<SupplierType>("supplierType");
+
+  const columns = useMemo<ColumnDef<SupplierType>[]>(() => {
+    const defaultColumns: ColumnDef<SupplierType>[] = [
+      {
+        accessorKey: "name",
+        header: t`Supplier Type`,
+        cell: ({ row }) => (
+          <Link
+            to={row.original.id as string}
+            className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Enumerable value={row.original.name} className="cursor-pointer" />
+          </Link>
+        ),
+        meta: {
+          mobile: "P1",
+          icon: <LuShapes />
+        }
+      }
+    ];
+    return [...defaultColumns, ...customColumns];
+  }, [customColumns, t]);
+
+  const renderContextMenu = useCallback(
+    (row: SupplierType) => {
+      return (
+        <>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.view}
+            onClick={() => {
+              navigate(`${path.to.suppliers}?filter=type:eq:${row.name}`);
+            }}
+          >
+            <MenuIcon icon={<BsPeopleFill />} />
+            <Trans>View Suppliers</Trans>
+          </MenuItem>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.edit}
+            disabled={row.protected || !permissions.can("update", "purchasing")}
+            onClick={() => {
+              navigate(`${path.to.supplierType(row.id)}?${params.toString()}`);
+            }}
+          >
+            <MenuIcon icon={<LuPencil />} />
+            <Trans>Edit Supplier Type</Trans>
+          </MenuItem>
+          <MenuItem
+            shortcut={MENU_ITEM_SHORTCUTS.delete}
+            destructive
+            disabled={row.protected || !permissions.can("delete", "purchasing")}
+            onClick={() => {
+              navigate(
+                `${path.to.deleteSupplierType(row.id)}?${params.toString()}`
+              );
+            }}
+          >
+            <MenuIcon icon={<LuTrash />} />
+            <Trans>Delete Supplier Type</Trans>
+          </MenuItem>
+        </>
+      );
+    },
+    [navigate, params, permissions]
+  );
+
+  return (
+    <Table<SupplierType>
+      data={data}
+      columns={columns}
+      count={count}
+      infinite={infinite}
+      primaryAction={
+        permissions.can("create", "purchasing") && (
+          <New
+            label={t`Supplier Type`}
+            to={`${path.to.newSupplierType}?${params.toString()}`}
+          />
+        )
+      }
+      renderContextMenu={renderContextMenu}
+      title={t`Supplier Types`}
+    />
+  );
+});
+
+SupplierTypesTable.displayName = "SupplierTypesTable";
+export default SupplierTypesTable;

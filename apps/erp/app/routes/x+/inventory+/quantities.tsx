@@ -1,0 +1,223 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { error } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { flash } from "@carbon/auth/session.server";
+import { getLogger } from "@carbon/logger";
+import {
+  RecordOutlet,
+  ResizablePanel,
+  ResizablePanelGroup,
+  VStack
+} from "@carbon/react";
+import { pluckUnique, redirect } from "@carbon/utils";
+import type { LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import {
+  expandStorageUnitIdsWithDescendants,
+  getInventoryItems,
+  getStorageTypesList,
+  getStorageUnitsList,
+  INVENTORY_ITEMS_PAGING
+} from "~/modules/inventory/inventory.service";
+import type { InventoryItem } from "~/modules/inventory/types";
+import InventoryTable from "~/modules/inventory/ui/Inventory/InventoryTable";
+import {
+  getMaterialFormsList,
+  getMaterialSubstancesList
+} from "~/modules/items/items.service";
+import { getStockOwnerProjects } from "~/modules/projects/projects.service";
+import { getLocationsList } from "~/modules/resources/resources.service";
+import { getTagsList } from "~/modules/shared/shared.service";
+import { getUserDefaults } from "~/modules/users/users.service";
+import { toPage } from "~/utils/cursor";
+import type { Handle } from "~/utils/handle";
+import { listErrorPage } from "~/utils/list-registry/load.server";
+import { path } from "~/utils/path";
+import { getGenericQueryFilters } from "~/utils/query";
+
+const logger = getLogger("erp", "inventory-quantities");
+
+export const handle: Handle = {
+  realtime: ["itemStockQuantities"]
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { client, companyId, userId } = await requirePermissions(request, {
+    view: "inventory",
+    bypassRls: true
+  });
+
+  const url = new URL(request.url);
+  const searchParams = new URLSearchParams(url.search);
+  const search = searchParams.get("search");
+
+  const { limit, cursor, sorts, filters } =
+    getGenericQueryFilters(searchParams);
+  // A later page (`?after=`) is read for its rows only: skip the option lists.
+  const isFirstPage = !cursor;
+
+  const storageUnitFilter = filters?.find(
+    (f) => f.column === "storageUnitIds" && f.value
+  );
+  if (storageUnitFilter?.value) {
+    const ids = storageUnitFilter.value.split(",");
+    const expanded = await expandStorageUnitIdsWithDescendants(client, ids);
+    storageUnitFilter.value = expanded.join(",");
+  }
+
+  // The stock owner filter (Projects Phase 2a): absent for every stripe,
+  // `common` for common stock, or a project id.
+  const stockOwner = searchParams.get("project");
+  const projectId =
+    stockOwner === "common" ? "" : stockOwner ? stockOwner : null;
+
+  let locationId = searchParams.get("location");
+
+  if (!locationId) {
+    const userDefaults = await getUserDefaults(client, userId, companyId);
+    if (userDefaults.error) {
+      throw redirect(
+        path.to.authenticatedRoot,
+        await flash(
+          request,
+          error(userDefaults.error, "Failed to load default location")
+        )
+      );
+    }
+
+    locationId = userDefaults.data?.locationId ?? null;
+  }
+
+  if (!locationId) {
+    const locations = await getLocationsList(client, companyId);
+    if (locations.error || !locations.data?.length) {
+      // `path.to.inventory` *is* this route — redirecting here loops forever.
+      // On error bail to the app root; with zero locations (a company that
+      // can't show inventory at all) send them to create one.
+      throw redirect(
+        locations.error ? path.to.authenticatedRoot : path.to.locations,
+        await flash(
+          request,
+          error(
+            locations.error,
+            locations.error
+              ? "Failed to load any locations"
+              : "Create a location to manage inventory"
+          )
+        )
+      );
+    }
+    locationId = locations.data?.[0].id as string;
+  }
+
+  const [
+    inventoryItems,
+    forms,
+    substances,
+    tags,
+    storageTypes,
+    storageUnits,
+    stockOwners
+  ] = await Promise.all([
+    getInventoryItems(client, locationId, companyId, {
+      search,
+      limit,
+      cursor,
+      sorts,
+      filters,
+      projectId
+    }),
+    isFirstPage ? getMaterialFormsList(client, companyId) : null,
+    isFirstPage ? getMaterialSubstancesList(client, companyId) : null,
+    isFirstPage ? getTagsList(client, companyId) : null,
+    isFirstPage ? getStorageTypesList(client, companyId) : null,
+    isFirstPage ? getStorageUnitsList(client, companyId) : null,
+    isFirstPage ? getStockOwnerProjects(client, companyId) : null
+  ]);
+
+  if (inventoryItems.error) {
+    if (cursor) {
+      logger.error("Failed to load a later page of inventory items", {
+        companyId,
+        error: inventoryItems.error
+      });
+      return listErrorPage("inventoryItems");
+    }
+    throw redirect(
+      path.to.authenticatedRoot,
+      await flash(
+        request,
+        error(inventoryItems.error, "Failed to fetch inventory items")
+      )
+    );
+  }
+
+  const uniqueTags = pluckUnique(tags?.data, (t) => t.name);
+
+  const page = toPage(
+    inventoryItems.data ?? [],
+    { limit, sorts },
+    INVENTORY_ITEMS_PAGING
+  );
+
+  return {
+    count: inventoryItems.count ?? 0,
+    inventoryItems: page.rows as InventoryItem[],
+    nextCursor: page.nextCursor,
+    locationId,
+    forms: forms?.data ?? [],
+    substances: substances?.data ?? [],
+    tags: uniqueTags,
+    storageTypes: storageTypes?.data ?? [],
+    storageUnits: storageUnits?.data ?? [],
+    stockOwners: stockOwners?.data ?? [],
+    stockOwner
+  };
+}
+
+export default function QuantitiesRoute() {
+  const {
+    count,
+    inventoryItems,
+    nextCursor,
+    locationId,
+    forms,
+    substances,
+    tags,
+    storageTypes,
+    storageUnits,
+    stockOwners,
+    stockOwner
+  } = useLoaderData<typeof loader>();
+
+  return (
+    <VStack spacing={0} className="h-full ">
+      <ResizablePanelGroup direction="horizontal" stackOnCompact>
+        <ResizablePanel
+          defaultSize={50}
+          maxSize={70}
+          minSize={25}
+          className="bg-background"
+        >
+          <InventoryTable
+            data={inventoryItems}
+            count={count}
+            nextCursor={nextCursor}
+            locationId={locationId}
+            forms={forms}
+            substances={substances}
+            tags={tags}
+            storageTypes={storageTypes}
+            storageUnits={storageUnits}
+            stockOwners={stockOwners}
+            stockOwner={stockOwner}
+          />
+        </ResizablePanel>
+        <RecordOutlet />
+      </ResizablePanelGroup>
+    </VStack>
+  );
+}

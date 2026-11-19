@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { SyncedEntityType } from "@carbon/ee/issue-sync";
+import { JiraIssueMappingSchema } from "@carbon/ee/jira";
+import { Hidden, Submit, ValidatedForm } from "@carbon/form";
+import {
+  Badge,
+  Button,
+  cn,
+  Input,
+  ModalBody,
+  ModalFooter,
+  Spinner,
+  ToggleGroup,
+  ToggleGroupItem,
+  useDebounce,
+  VStack
+} from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { useEffect, useId, useState } from "react";
+import z from "zod";
+import { JiraIssueStatusBadge } from "~/components/Icons";
+import { useAsyncFetcher } from "~/hooks/useAsyncFetcher";
+import { path } from "~/utils/path";
+
+type Props = {
+  entityType: SyncedEntityType;
+  taskId: string;
+  linkedIssue: unknown;
+  onClose: () => void;
+};
+
+const linkIssueValidator = z.object({
+  actionId: z.string(),
+  entityType: z.string(),
+  issueId: z.string()
+});
+
+// Jira issue shape from search API
+interface JiraSearchIssue {
+  id: string;
+  key: string;
+  fields: {
+    summary: string;
+    status: {
+      name: string;
+      statusCategory: {
+        key: "new" | "indeterminate" | "done";
+      };
+    };
+    assignee: {
+      displayName: string;
+      emailAddress?: string;
+    } | null;
+  };
+}
+
+export const LinkIssue = (props: Props) => {
+  const { t } = useLingui();
+  const id = useId();
+  const [issueId, setIssueId] = useState<string | undefined>();
+
+  const { data: linked } = JiraIssueMappingSchema.safeParse(props.linkedIssue);
+
+  const { issues, fetcher } = useJiraIssues();
+
+  // An empty search lists the most recent issues, so the dialog opens with
+  // something to pick.
+  const search = (term: string) =>
+    fetcher.load(
+      path.to.api.jiraLinkExistingIssue +
+        `?actionId=${props.taskId}&entityType=${props.entityType}&search=${encodeURIComponent(term.trim())}`
+    );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load once, on open
+  useEffect(() => {
+    search("");
+  }, []);
+
+  const onSearch = useDebounce((e: React.ChangeEvent<HTMLInputElement>) => {
+    search(e.target.value);
+  }, 300);
+
+  const isSearching = fetcher.state === "loading";
+
+  return (
+    <ValidatedForm
+      className="flex min-h-0 flex-col"
+      id={id}
+      method="post"
+      action={path.to.api.jiraLinkExistingIssue}
+      validator={linkIssueValidator}
+      // @ts-expect-error TS2322 - TODO: fix type
+      fetcher={fetcher}
+      resetAfterSubmit
+      onAfterSubmit={() => props.onClose()}
+    >
+      <Hidden name="actionId" value={props.taskId} />
+      <Hidden name="entityType" value={props.entityType} />
+      <Hidden name="issueId" value={issueId} />
+      <ModalBody>
+        <VStack spacing={4}>
+          <div className="w-full flex items-center gap-x-2 relative">
+            <Input
+              aria-label={t`Search Jira issues`}
+              name="query"
+              type="search"
+              className="w-full"
+              autoComplete="off"
+              placeholder={t`Search by Jira issue title...`}
+              onChange={onSearch}
+            />
+            {isSearching && (
+              <Spinner className="w-5 h-5 absolute right-3.5 text-primary animate-spin" />
+            )}
+          </div>
+          <ToggleGroup
+            orientation="vertical"
+            onValueChange={setIssueId}
+            value={issueId}
+            type="single"
+            className="w-full flex-col gap-y-2"
+          >
+            {issues.map((issue) => (
+              <ToggleGroupItem
+                key={issue.id}
+                name="issueId"
+                value={issue.id}
+                disabled={issue.id === linked?.id}
+                variant={"outline"}
+                className={cn(
+                  "w-full rounded-lg p-3 text-left transition-colors hover:bg-transparent block h-auto data-[state=on]:bg-transparent hover:data-[state=on]:bg-transparent data-[state=on]:border-primary hover:data-[state=on]:border-primary"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 justify-between">
+                      <span className="mr-2 text-foreground flex items-center">
+                        {issue.fields.summary}
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={"outline"}
+                          className="font-normal font-mono text-muted-foreground flex items-center"
+                        >
+                          {issue.key}
+                        </Badge>
+                        <JiraIssueStatusBadge
+                          status={{
+                            name: issue.fields.status.name,
+                            category: issue.fields.status.statusCategory.key
+                          }}
+                          className="size-3.5"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-sm text-muted-foreground flex justify-between items-center">
+                      <span>
+                        {issue.fields.assignee?.displayName
+                          ? `Assigned to ${issue.fields.assignee.displayName}`
+                          : "Unassigned"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </ToggleGroupItem>
+            ))}
+
+            {issues.length === 0 && !isSearching && fetcher.data && (
+              <p className="text-sm text-muted-foreground">
+                No Jira issues found
+              </p>
+            )}
+          </ToggleGroup>
+        </VStack>
+      </ModalBody>
+      <ModalFooter>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            props.onClose();
+          }}
+        >
+          <Trans>Cancel</Trans>
+        </Button>
+        <Submit>
+          <Trans>Save</Trans>
+        </Submit>
+      </ModalFooter>
+    </ValidatedForm>
+  );
+};
+
+LinkIssue.displayName = "LinkIssue";
+
+const useJiraIssues = () => {
+  const fetcher = useAsyncFetcher<{
+    issues: JiraSearchIssue[];
+  }>();
+
+  return {
+    issues: fetcher.data?.issues || [],
+    fetcher
+  };
+};

@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { getDocumentType } from "@carbon/files";
+import { Badge, cn, HStack } from "@carbon/react";
+import { useLingui } from "@lingui/react/macro";
+import { LuDownload } from "react-icons/lu";
+import { DocumentPreview } from "~/components";
+import DocumentIcon from "~/components/DocumentIcon";
+import type { ItemType } from "~/modules/shared/types";
+import type { ItemFile } from "../../types";
+import { useItemDocuments } from "./ItemDocuments";
+
+type FileBadgeProps = {
+  file: ItemFile;
+  itemId: string;
+  itemType: ItemType;
+  className?: string;
+};
+
+export function FileBadge({
+  file,
+  itemId,
+  itemType,
+  className
+}: FileBadgeProps) {
+  const { t } = useLingui();
+  const { getPath, download } = useItemDocuments({ itemId, type: itemType });
+  const type = getDocumentType(file.name);
+  return (
+    <HStack className="group" spacing={1}>
+      {["PDF", "Image"].includes(type) ? (
+        <DocumentPreview
+          bucket="private"
+          pathToFile={getPath(file)}
+          // @ts-expect-error
+          type={type}
+        >
+          <Badge variant="secondary" className={cn("max-w-[240px]", className)}>
+            <DocumentIcon type={type} className="flex-shrink-0 w-3 h-3 mr-1" />
+            {file.name}
+          </Badge>
+        </DocumentPreview>
+      ) : (
+        <Badge variant="secondary" className={cn("max-w-[240px]", className)}>
+          <DocumentIcon type={type} className="flex-shrink-0 w-3 h-3 mr-1" />
+          {file.name}
+        </Badge>
+      )}
+
+      <button
+        type="button"
+        aria-label={t`Download`}
+        onClick={() => download(file)}
+        className="cursor-pointer rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 md:opacity-0 transition-opacity duration-150 w-4 h-4 text-foreground"
+      >
+        <LuDownload className="w-4 h-4" />
+      </button>
+    </HStack>
+  );
+}

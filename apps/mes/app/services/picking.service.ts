@@ -1,0 +1,440 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { Database } from "@carbon/database";
+import { fetchAllRecords } from "@carbon/database";
+import { getErrorMessage, requireAffected } from "@carbon/utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { type ErpPostingInput, erpPosting } from "~/services/erp";
+import { isPickingListLocked } from "~/services/models";
+import type { LiveStorageUnit } from "~/services/types";
+
+export async function getAssignedPickingLists(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  userId: string,
+  locationId: string | undefined
+) {
+  const statuses = ["Draft", "In Progress"] as const;
+
+  // A water spider works the lists assigned to them and the unassigned lists
+  // at their location, in the current company only (RLS admits every company
+  // the user belongs to). Both are paged with a stable order, so a location
+  // past the row cap still lists every open list before the sort below.
+  const [assigned, unassigned] = await Promise.all([
+    fetchAllRecords(() =>
+      client
+        .from("pickingLists")
+        .select("*")
+        .eq("companyId", companyId)
+        .eq("assignee", userId)
+        .in("status", [...statuses])
+        .order("id")
+    ),
+    locationId
+      ? fetchAllRecords(() =>
+          client
+            .from("pickingLists")
+            .select("*")
+            .eq("companyId", companyId)
+            .is("assignee", null)
+            .eq("locationId", locationId)
+            .in("status", [...statuses])
+            .order("id")
+        )
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  const error = assigned.error ?? unassigned.error;
+  if (error) return { data: null, error };
+
+  const byId = new Map<string, NonNullable<typeof assigned.data>[number]>();
+  for (const row of [...(assigned.data ?? []), ...(unassigned.data ?? [])]) {
+    if (row.id) byId.set(row.id, row);
+  }
+
+  const data = [...byId.values()].sort((a, b) => {
+    // ISO dates compare as strings; nulls go last.
+    if (a.dueDate !== b.dueDate) {
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate < b.dueDate ? -1 : 1;
+    }
+    return (a.pickingListId ?? "").localeCompare(b.pickingListId ?? "");
+  });
+
+  return { data, error: null };
+}
+
+export async function getPickingListForExecution(
+  client: SupabaseClient<Database>,
+  pickingListId: string,
+  companyId: string
+) {
+  const { data: pickingList, error: plError } = await client
+    .from("pickingList")
+    .select("*, location:location(name)")
+    .eq("id", pickingListId)
+    .eq("companyId", companyId)
+    .single();
+
+  if (plError || !pickingList) return { data: null, error: plError };
+
+  const { data: lines, error: lineError } = await client
+    .from("pickingListLine")
+    .select(
+      "*, item:item(name, readableId, unitOfMeasureCode), jobMaterial:jobMaterial(itemId, quantity, substitutionFactor, item(readableId, itemSupersession!itemSupersession_itemId_fkey(conversionFactor))), job:job(jobId), jobOperation:jobOperation(order, processId, workCenterId, process:process(name), workCenter:workCenter(name)), storageUnit:storageUnit!pickingListLine_storageUnitId_fkey(name), toStorageUnit:storageUnit!pickingListLine_toStorageUnitId_fkey(name)"
+    )
+    .eq("pickingListId", pickingListId)
+    .eq("companyId", companyId)
+    // The ERP picking list reads the same order: line numbers are positions.
+    .order("jobOperationId")
+    .order("storageUnitId")
+    .order("itemId")
+    .order("id");
+
+  if (lineError) return { data: null, error: lineError };
+
+  const lineIds = lines?.map((l) => l.id) ?? [];
+  const [trackedResult, binsResult] = await Promise.all([
+    lineIds.length > 0
+      ? client
+          .from("pickingListLineTrackedEntity")
+          .select("*, trackedEntity:trackedEntity(readableId, quantity)")
+          .in("pickingListLineId", lineIds)
+      : Promise.resolve({ data: [], error: null }),
+    client.rpc("get_picking_list_live_bins", {
+      p_company_id: companyId,
+      p_picking_list_id: pickingListId
+    })
+  ]);
+  if (trackedResult.error || binsResult.error) {
+    return {
+      data: null,
+      error: trackedResult.error ?? binsResult.error
+    };
+  }
+  const trackedEntities = trackedResult.data;
+
+  const liveBins = new Map<string, LiveStorageUnit[]>();
+  for (const row of binsResult.data ?? []) {
+    const bins = liveBins.get(row.pickingListLineId) ?? [];
+    bins.push({
+      id: row.storageUnitId,
+      name: row.storageUnitName,
+      quantity: row.quantity
+    });
+    liveBins.set(row.pickingListLineId, bins);
+  }
+
+  return {
+    data: {
+      ...pickingList,
+      lines: lines?.map((line) => ({
+        ...line,
+        liveStorageUnits: liveBins.get(line.id) ?? [],
+        trackedEntities:
+          trackedEntities?.filter((te) => te.pickingListLineId === line.id) ??
+          []
+      }))
+    },
+    error: null
+  };
+}
+
+export async function updatePickingListStatus(
+  client: SupabaseClient<Database>,
+  pickingListId: string,
+  status: Database["public"]["Enums"]["pickingListStatus"],
+  updatedBy: string,
+  companyId: string
+) {
+  return requireAffected(
+    client
+      .from("pickingList")
+      .update({
+        status,
+        updatedBy,
+        updatedAt: new Date().toISOString()
+      })
+      .eq("id", pickingListId)
+      .eq("companyId", companyId)
+      .select("id")
+  );
+}
+
+export type UnresolvedPickingListLine = {
+  itemName: string;
+  outstanding: number;
+};
+
+// Lines still owing material when Finish is pressed. "Unresolved" = a line the
+// operator neither fully picked, cancelled, nor explicitly marked Short — i.e.
+// silently left behind. `hasShort` reports whether any acknowledged shortfall
+// exists, which forces the final header status to Partial rather than Completed.
+export async function getUnresolvedPickingListLines(
+  client: SupabaseClient<Database>,
+  pickingListId: string,
+  companyId: string
+): Promise<{
+  unresolved: UnresolvedPickingListLine[];
+  hasShort: boolean;
+  error: unknown;
+}> {
+  const { data, error } = await client
+    .from("pickingListLine")
+    .select(
+      "status, quantityToPick, quantityPicked, item:item(name, readableId)"
+    )
+    .eq("pickingListId", pickingListId)
+    .eq("companyId", companyId);
+
+  if (error) return { unresolved: [], hasShort: false, error };
+
+  const lines = data ?? [];
+  const hasShort = lines.some((line) => line.status === "Short");
+
+  const unresolved = lines
+    .filter(
+      (line) =>
+        line.status !== "Cancelled" &&
+        line.status !== "Short" &&
+        Number(line.quantityPicked ?? 0) < Number(line.quantityToPick ?? 0)
+    )
+    .map((line) => {
+      const item = line.item as
+        | { name?: string | null; readableId?: string | null }
+        | { name?: string | null; readableId?: string | null }[]
+        | null;
+      const itemRecord = Array.isArray(item) ? item[0] : item;
+      return {
+        itemName: itemRecord?.name ?? itemRecord?.readableId ?? "Material",
+        outstanding:
+          Number(line.quantityToPick ?? 0) - Number(line.quantityPicked ?? 0)
+      };
+    });
+
+  return { unresolved, hasShort, error: null };
+}
+
+/**
+ * Set the picked quantity on a picking line (pick, short, or unpick).
+ *
+ * A pick TRANSFERS the material from its warehouse source shelf to the work
+ * center's lineside shelf via the `post-picking` posting (consumption
+ * happens later at production). `quantity <= 0` reverses a prior pick. "Short"
+ * just records the status with no inventory movement — the kitter couldn't
+ * fully pick it, and production handles the shortfall. The picking list header
+ * status is maintained by the `update_picking_list_status` trigger.
+ */
+export async function setPickingListLineQuantity(
+  client: SupabaseClient<Database>,
+  args: {
+    pickingListLineId: string;
+    quantity: number;
+    markShort?: boolean;
+    userId: string;
+    companyId: string;
+  }
+) {
+  const lineResult = await client
+    .from("pickingListLine")
+    .select(
+      "*, pickingList(locationId, companyId, status), item(itemTrackingType)"
+    )
+    .eq("id", args.pickingListLineId)
+    .eq("companyId", args.companyId)
+    .single();
+
+  if (lineResult.error || !lineResult.data) {
+    return { data: null, error: lineResult.error ?? "Line not found" };
+  }
+
+  const line = lineResult.data;
+  const pickingList = line.pickingList as {
+    locationId: string;
+    companyId: string;
+    status: string;
+  } | null;
+  const item = line.item as { itemTrackingType: string } | null;
+
+  if (!pickingList) {
+    return { data: null, error: "Missing related data" };
+  }
+
+  if (isPickingListLocked(pickingList.status)) {
+    return {
+      data: null,
+      error: "This picking list is closed. Reopen it from the ERP to continue."
+    };
+  }
+
+  if (
+    item?.itemTrackingType === "Serial" ||
+    item?.itemTrackingType === "Batch"
+  ) {
+    return {
+      data: null,
+      error: "Tracked items must be picked via the scan flow"
+    };
+  }
+
+  // The DELTA between the desired picked quantity and what's already picked is
+  // what moves: positive transfers in, negative reverses. Pick = full quantity,
+  // Unpick = 0, Short = whatever was actually picked (markShort).
+  const previousPicked = Number(line.quantityPicked ?? 0);
+  const target = Math.max(0, args.quantity);
+  const delta = target - previousPicked;
+
+  if (delta !== 0) {
+    // A null source is allowed: the kitter can pick material the system shows no
+    // stock for (counts are often wrong) — on-hand simply goes negative at the
+    // source until it's reconciled. Only the lineside destination is required.
+    if (delta > 0 && !line.toStorageUnitId) {
+      return {
+        data: null,
+        error: "No lineside destination is set for this line"
+      };
+    }
+
+    const ids = {
+      pickingListId: line.pickingListId,
+      pickingListLineId: line.id,
+      locationId: pickingList.locationId
+    };
+    const input: ErpPostingInput<"post-picking"> =
+      delta > 0
+        ? { ...ids, type: "inventory", quantity: delta }
+        : { ...ids, type: "unpickInventory", quantity: -delta };
+
+    const result = await erpPosting(
+      "post-picking",
+      { client, companyId: args.companyId, userId: args.userId },
+      input
+    );
+
+    if (result.error) {
+      return {
+        data: null,
+        error: getErrorMessage(result.error, "Failed to pick material")
+      };
+    }
+  }
+
+  // Short overrides the status the posting derived from quantities.
+  if (args.markShort) {
+    const update = await requireAffected(
+      client
+        .from("pickingListLine")
+        .update({
+          status: "Short",
+          quantityPicked: target,
+          updatedBy: args.userId,
+          updatedAt: new Date().toISOString()
+        })
+        .eq("id", args.pickingListLineId)
+        .select("id")
+    );
+    if (update.error) {
+      return { data: null, error: update.error };
+    }
+  }
+
+  return { data: { id: args.pickingListLineId }, error: null };
+}
+
+/**
+ * Pick (or unpick) a tracked (serial/batch) lot for a picking line. Mirrors the
+ * ERP service: moves the chosen lot warehouse→lineside via `post-picking`,
+ * records it on the line, points the job material at lineside. `unpick` reverses.
+ */
+export async function setPickingListLineTrackedEntity(
+  client: SupabaseClient<Database>,
+  args: {
+    pickingListLineId: string;
+    trackedEntityId: string;
+    fromStorageUnitId?: string | null;
+    quantity?: number;
+    unpick?: boolean;
+    userId: string;
+    companyId: string;
+  }
+) {
+  const lineResult = await client
+    .from("pickingListLine")
+    .select(
+      "*, pickingList(locationId, companyId, status), item(itemTrackingType)"
+    )
+    .eq("id", args.pickingListLineId)
+    .eq("companyId", args.companyId)
+    .maybeSingle();
+
+  if (lineResult.error || !lineResult.data) {
+    return { data: null, error: lineResult.error ?? "Line not found" };
+  }
+
+  const line = lineResult.data;
+  const pickingList = line.pickingList as {
+    locationId: string;
+    companyId: string;
+    status: string;
+  } | null;
+  const item = line.item as { itemTrackingType: string } | null;
+
+  if (!pickingList) {
+    return { data: null, error: "Missing related data" };
+  }
+  if (isPickingListLocked(pickingList.status)) {
+    return {
+      data: null,
+      error: "This picking list is closed. Reopen it from the ERP to continue."
+    };
+  }
+
+  const isSerial = item?.itemTrackingType === "Serial";
+  const isBatch = item?.itemTrackingType === "Batch";
+  if (!isSerial && !isBatch) {
+    return { data: null, error: "This line is not a tracked item" };
+  }
+  if (!args.unpick && !line.toStorageUnitId) {
+    return {
+      data: null,
+      error: "No lineside destination is set for this line"
+    };
+  }
+
+  const ids = {
+    pickingListId: line.pickingListId,
+    pickingListLineId: line.id,
+    trackedEntityId: args.trackedEntityId,
+    locationId: pickingList.locationId
+  };
+  const fromStorageUnitId = args.fromStorageUnitId ?? null;
+  // A batch pick may be fractional (0.5 kg): send the requested quantity as
+  // is and fall back to 1 only when none was given. Flooring at 1 turned
+  // every sub-1 remainder into an over-pick post-picking refused.
+  const quantity =
+    args.quantity !== undefined && args.quantity > 0 ? args.quantity : 1;
+  const input: ErpPostingInput<"post-picking"> = args.unpick
+    ? isSerial
+      ? { ...ids, type: "unpickSerial" }
+      : { ...ids, type: "unpickBatch" }
+    : isSerial
+      ? { ...ids, type: "serial", fromStorageUnitId }
+      : { ...ids, type: "batch", fromStorageUnitId, quantity };
+
+  const result = await erpPosting(
+    "post-picking",
+    { client, companyId: args.companyId, userId: args.userId },
+    input
+  );
+  if (result.error) {
+    return {
+      data: null,
+      error: getErrorMessage(result.error, "Failed to pick material")
+    };
+  }
+
+  return { data: { id: args.pickingListLineId }, error: null };
+}

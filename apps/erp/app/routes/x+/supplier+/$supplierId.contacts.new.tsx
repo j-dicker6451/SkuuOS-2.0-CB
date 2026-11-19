@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { assertIsPost, error, notFound, success } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { getCarbonServiceRole } from "@carbon/auth/client.server";
+import { flash } from "@carbon/auth/session.server";
+import { validationError, validator } from "@carbon/form";
+import { useRouteDialog } from "@carbon/react";
+import { redirect } from "@carbon/utils";
+import type { ActionFunctionArgs } from "react-router";
+import { data, useParams } from "react-router";
+import { useCompanySettings } from "~/hooks";
+import {
+  SUPPLIER_CONTACT_EMAIL_REQUIRED,
+  supplierContactValidator
+} from "~/modules/purchasing/purchasing.models";
+import { insertSupplierContact } from "~/modules/purchasing/purchasing.service";
+import SupplierContactForm from "~/modules/purchasing/ui/Supplier/SupplierContactForm";
+import { requireCompanyRecord } from "~/modules/shared/shared.service";
+import { getDatabaseClient } from "~/services/database.server";
+import { setCustomFields } from "~/utils/form";
+import { path } from "~/utils/path";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  assertIsPost(request);
+  const { companyId } = await requirePermissions(request, {
+    create: "purchasing"
+  });
+
+  const client = getCarbonServiceRole();
+
+  const { supplierId } = params;
+  if (!supplierId) throw notFound("supplierId not found");
+
+  const formData = await request.formData();
+  const modal = formData.get("type") === "modal";
+
+  const validation = await validator(supplierContactValidator).validate(
+    formData
+  );
+
+  if (validation.error) {
+    return validationError(validation.error);
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: suppressed due to migration
+  const { id, contactId, supplierLocationId, ...contact } = validation.data;
+
+  // The contact is written through the service role: the supplier in the URL
+  // (and the location on the form) must belong to this company.
+  await Promise.all([
+    requireCompanyRecord(client, "supplier", companyId, { id: supplierId }),
+    supplierLocationId
+      ? requireCompanyRecord(client, "supplierLocation", companyId, {
+          id: supplierLocationId,
+          supplierId
+        })
+      : null
+  ]);
+
+  const createSupplierContact = await insertSupplierContact(
+    getDatabaseClient(),
+    {
+      supplierId,
+      companyId,
+      contact,
+      supplierLocationId,
+      customFields: setCustomFields(formData)
+    }
+  );
+
+  if (
+    createSupplierContact.error?.message === SUPPLIER_CONTACT_EMAIL_REQUIRED
+  ) {
+    return validationError({
+      fieldErrors: { email: SUPPLIER_CONTACT_EMAIL_REQUIRED }
+    });
+  }
+
+  if (createSupplierContact.error) {
+    // The form reads `{ data, error }`; never send it the database's message.
+    return modal
+      ? {
+          data: null,
+          error: { message: "Failed to create supplier contact" }
+        }
+      : redirect(
+          path.to.supplierContacts(supplierId),
+          await flash(
+            request,
+            error(
+              createSupplierContact.error,
+              "Failed to create supplier contact"
+            )
+          )
+        );
+  }
+
+  return modal
+    ? data(createSupplierContact, { status: 201 })
+    : redirect(
+        path.to.supplierContacts(supplierId),
+        await flash(request, success("Supplier contact created"))
+      );
+}
+
+export default function SupplierContactsNewRoute() {
+  const { supplierId } = useParams();
+  if (!supplierId) throw new Error("supplierId not found");
+  const dialog = useRouteDialog(path.to.supplierContacts(supplierId));
+  const companySettings = useCompanySettings();
+
+  const initialValues = {
+    firstName: "",
+    lastName: "",
+    email: ""
+  };
+
+  return (
+    <SupplierContactForm
+      requireEmail={!!companySettings?.requireSupplierContactEmail}
+      supplierId={supplierId}
+      initialValues={initialValues}
+      open={dialog.open}
+      onClose={dialog.close}
+    />
+  );
+}

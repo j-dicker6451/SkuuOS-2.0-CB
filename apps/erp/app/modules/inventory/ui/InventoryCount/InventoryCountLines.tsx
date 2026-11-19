@@ -1,0 +1,917 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import {
+  Badge,
+  cn,
+  HStack,
+  Skeleton,
+  Switch,
+  toast,
+  VStack
+} from "@carbon/react";
+import { useLingui } from "@lingui/react/macro";
+import type { PostgrestSingleResponse } from "@supabase/supabase-js";
+import type { ColumnDef } from "@tanstack/react-table";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  LuBox,
+  LuCalculator,
+  LuChevronRight,
+  LuExpand,
+  LuFolderKanban,
+  LuGlassWater,
+  LuHash,
+  LuPackage,
+  LuPaintBucket,
+  LuPuzzle,
+  LuShapes,
+  LuStar,
+  LuTag,
+  LuWarehouse
+} from "react-icons/lu";
+import {
+  exportOnlyColumn,
+  Hyperlink,
+  ItemThumbnail,
+  MethodItemTypeIcon,
+  Table
+} from "~/components";
+import { EditableNumber } from "~/components/Editable";
+import { Enumerable } from "~/components/Enumerable";
+import { useStorageUnits } from "~/components/Form/StorageUnit";
+import { useFilters } from "~/components/Table/components/Filter/useFilters";
+import { useUrlParams } from "~/hooks";
+import { inventoryItemTypes } from "~/modules/inventory/inventory.models";
+import {
+  inventoryCountGroupId,
+  inventoryCountLineState
+} from "~/modules/inventory/inventory.utils";
+import type {
+  InventoryCountGroupSummary,
+  InventoryCountLine
+} from "~/modules/inventory/types";
+import type { ListItem } from "~/types";
+import { path } from "~/utils/path";
+
+// Quick-filter toggles write full `filter` URL params (column:operator:value)
+// so the loader's generic query filters apply them server-side — required
+// because pagination is server-side. `useFilters().addFilter` can't express
+// these operators (it hardcodes eq/contains), so the raw strings are toggled.
+const IN_STOCK_FILTER = "systemQuantity:gt:0";
+const VARIANCE_FILTER = "variance:neq:0";
+
+type CountLine = InventoryCountLine & { otherBinName?: string | null };
+
+const isTrackedLine = (line: CountLine) =>
+  line.itemTrackingType === "Serial" || line.itemTrackingType === "Batch";
+
+// One unit of a serial item: counted 0 or 1. Stock of a serial item booked
+// with no unit record is a quantity.
+const isSerialUnit = (line: CountLine) =>
+  line.itemTrackingType === "Serial" &&
+  Boolean(line.trackedEntityId || line.readableId);
+
+type InventoryCountLinesProps = {
+  inventoryCountId: string;
+  lines: CountLine[];
+  // The tracked groups (item and storage unit) on the page, for their headers.
+  groupSummaries: Record<string, InventoryCountGroupSummary>;
+  // The scan field, shown in the toolbar while the count is Draft.
+  scanField?: ReactNode;
+  count: number;
+  // The loader's cursor for the next page of lines (infinite scroll).
+  nextCursor: string | null;
+  // Blind counting withholds System Qty + Variance until Posted; the caller
+  // decides when — kept separate from the read-only (Draft) edit gate.
+  hideSystemQuantity: boolean;
+  isReadOnly: boolean;
+  locationId: string;
+  title?: string;
+  titleBadge?: ReactNode;
+  primaryAction?: ReactNode;
+  // Line ids the last post attempt rejected (snapshot drift or invalid serial
+  // quantity) — highlighted red until fixed.
+  invalidLineIds?: string[];
+  // Option lists for the column filters (same set the quantities screen uses).
+  forms: ListItem[];
+  substances: ListItem[];
+  tags: string[];
+  storageTypes: { id: string; name: string }[];
+  storageUnits: { id: string; name: string }[];
+};
+
+const InventoryCountLines = ({
+  inventoryCountId,
+  lines,
+  groupSummaries,
+  scanField,
+  count,
+  nextCursor,
+  hideSystemQuantity,
+  isReadOnly,
+  locationId,
+  title,
+  titleBadge,
+  primaryAction,
+  invalidLineIds,
+  forms,
+  substances,
+  tags,
+  storageTypes,
+  storageUnits
+}: InventoryCountLinesProps) => {
+  const { t } = useLingui();
+
+  const invalidLineIdSet = useMemo(
+    () => new Set(invalidLineIds ?? []),
+    [invalidLineIds]
+  );
+
+  // Build the inventory query filter: scope to this count's location and search
+  // the quantities page for the item's readable id.
+  const buildItemLink = useCallback(
+    (itemId: string | null, readableId?: string) => {
+      const next = new URLSearchParams();
+      next.set("search", readableId ?? "");
+      return `${path.to.inventoryItem(itemId ?? "")}?${next.toString()}`;
+    },
+    []
+  );
+
+  const hideSystem = hideSystemQuantity;
+
+  const storageUnitsList = useStorageUnits(locationId);
+  // The options resolve asynchronously; until they do, render a loading
+  // placeholder instead of flashing the raw storage-unit id.
+  const storageUnitsLoaded = !locationId || storageUnitsList.data !== undefined;
+  const storageUnitLabel = useCallback(
+    (id: string | null | undefined) =>
+      storageUnitsList.options?.find((s) => s.value === id)?.label ?? "—",
+    [storageUnitsList.options]
+  );
+
+  // The dependent material filters (finish/grade/dimension/type) narrow by the
+  // currently-selected substance/shape — read straight back out of the URL.
+  const activeFilters = useFilters();
+  const materialSubstanceId = activeFilters.getFilter(
+    "materialSubstanceId"
+  )?.[0];
+  const materialFormId = activeFilters.getFilter("materialFormId")?.[0];
+
+  const [params, setParams] = useUrlParams();
+  const filterParams = params.getAll("filter").filter(Boolean);
+  const toggleQuickFilter = (filter: string) => {
+    setParams({
+      filter: filterParams.includes(filter)
+        ? filterParams.filter((f) => f !== filter)
+        : filterParams.concat(filter)
+    });
+  };
+
+  // Both quick filters derive from the withheld System Qty, so blind counts
+  // (hideSystemQuantity) get no toggles at all.
+  const quickFilters = hideSystemQuantity ? null : (
+    <HStack spacing={2} className="pl-2">
+      <Switch
+        variant="small"
+        label={t`In stock only`}
+        checked={filterParams.includes(IN_STOCK_FILTER)}
+        onCheckedChange={() => toggleQuickFilter(IN_STOCK_FILTER)}
+      />
+      <Switch
+        variant="small"
+        label={t`Variance only`}
+        checked={filterParams.includes(VARIANCE_FILTER)}
+        onCheckedChange={() => toggleQuickFilter(VARIANCE_FILTER)}
+      />
+    </HStack>
+  );
+
+  // Inline edits persist one line at a time through the `lines.update` route
+  // action, which enforces the Draft-only guard server-side and stamps the count
+  // audit fields. The returned `{ error }` shape lets the editable cell revert
+  // its optimistic value on failure.
+  const onCellEdit = useCallback(
+    async (
+      _accessorKey: string,
+      value: unknown,
+      row: CountLine
+    ): Promise<PostgrestSingleResponse<unknown>> => {
+      const formData = new FormData();
+      formData.set("id", row.id!);
+      formData.set(
+        "countedQuantity",
+        value === "" || value == null ? "" : String(value)
+      );
+
+      const response = await fetch(path.to.inventoryCountLineUpdate, {
+        method: "post",
+        body: formData
+      });
+
+      const error = response.ok ? null : { message: "Failed to update count" };
+      if (error) toast.error(t`Failed to update count`);
+      return {
+        data: null,
+        error
+      } as unknown as PostgrestSingleResponse<unknown>;
+    },
+    [t]
+  );
+
+  const columns = useMemo<ColumnDef<CountLine>[]>(() => {
+    const cols: ColumnDef<CountLine>[] = [
+      {
+        id: "item",
+        header: t`Item`,
+        cell: ({ row }) => {
+          const item = row.original;
+          return (
+            <HStack className="py-1 min-w-[200px] truncate" spacing={2}>
+              <ItemThumbnail
+                size="md"
+                thumbnailPath={item.itemThumbnailPath}
+                // The view's `type` union is broader than ItemThumbnail's — it
+                // also allows "Fixture", which the thumbnail can't render — so
+                // drop it rather than assert the type away.
+                type={
+                  item.type == null || item.type === "Fixture"
+                    ? undefined
+                    : item.type
+                }
+              />
+              <Hyperlink
+                to={buildItemLink(
+                  item.itemId,
+                  item.itemReadableIdWithRevision ?? undefined
+                )}
+              >
+                <VStack spacing={0}>
+                  {item.itemReadableIdWithRevision ?? item.itemId}
+                  <div className="w-full truncate text-muted-foreground text-xs">
+                    {item.itemName}
+                  </div>
+                </VStack>
+              </Hyperlink>
+            </HStack>
+          );
+        },
+        meta: {
+          mobile: "P1",
+          icon: <LuPackage />,
+          // Display column (no accessorKey) — without an exportValue it is
+          // absent from the CSV entirely.
+          exportValue: (row) =>
+            row.itemReadableIdWithRevision ?? row.itemId ?? null
+        }
+      },
+      exportOnlyColumn<CountLine>({
+        id: "itemName",
+        header: t`Item Name`,
+        value: (row) => row.itemName ?? null
+      }),
+      {
+        accessorKey: "readableId",
+        header: t`Batch / Serial`,
+        cell: ({ row }) => {
+          const line = row.original;
+          const number = line.readableId ?? line.assignedReadableId;
+          if (!isTrackedLine(line)) return number ?? "—";
+          // A unit counted in 2 bins moved; one added while counting was
+          // found here.
+          const note = line.otherBinName
+            ? line.foundDuringCount
+              ? t`moved from ${line.otherBinName}`
+              : t`moved to ${line.otherBinName}`
+            : line.foundDuringCount
+              ? t`found here`
+              : null;
+          return (
+            <span>
+              {number ?? (
+                <span className="text-muted-foreground">
+                  {!line.trackedEntityId
+                    ? t`No unit record`
+                    : line.itemTrackingType === "Serial"
+                      ? t`No serial number`
+                      : t`No batch number`}
+                </span>
+              )}
+              {note && (
+                <span className="pl-2 text-xs text-muted-foreground">
+                  {note}
+                </span>
+              )}
+            </span>
+          );
+        },
+        meta: {
+          icon: <LuHash />,
+          exportValue: (line) => line.readableId ?? line.assignedReadableId
+        }
+      },
+      {
+        accessorKey: "type",
+        header: t`Item Type`,
+        cell: ({ row }) => {
+          const type = row.original.type;
+          return type ? (
+            <HStack spacing={2}>
+              <MethodItemTypeIcon type={type} />
+              <span>{type}</span>
+            </HStack>
+          ) : (
+            "—"
+          );
+        },
+        meta: {
+          filter: {
+            type: "static",
+            options: inventoryItemTypes.map((type) => ({
+              label: (
+                <HStack spacing={2}>
+                  <MethodItemTypeIcon type={type} />
+                  <span>{type}</span>
+                </HStack>
+              ),
+              value: type
+            }))
+          },
+          icon: <LuBox />
+        }
+      },
+      {
+        accessorKey: "storageUnitId",
+        header: t`Storage Unit`,
+        cell: ({ row }) => {
+          const id = row.original.storageUnitId;
+          if (!id) return "—";
+          if (!storageUnitsLoaded) return <Skeleton className="h-4 w-24" />;
+          return storageUnitLabel(id);
+        },
+        meta: {
+          filter: {
+            type: "static",
+            options: storageUnits.map((su) => ({
+              value: su.id,
+              label: <Enumerable value={su.name} />
+            }))
+          },
+          exportValue: (row) => storageUnitLabel(row.storageUnitId),
+          icon: <LuBox />
+        }
+      },
+      {
+        // Projects Phase 2a: a count gives one line per stock stripe, so a
+        // bin holding project stock lists the item once per owner.
+        accessorKey: "projectId",
+        header: t`Stock Owner`,
+        cell: ({ row }) =>
+          row.original.projectId ? (
+            <span className="whitespace-nowrap">
+              {row.original.projectIdentifier ??
+                row.original.projectName ??
+                t`Project stock`}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">{t`Unassigned stock`}</span>
+          ),
+        meta: {
+          exportValue: (row) =>
+            row.projectId
+              ? (row.projectIdentifier ?? row.projectName ?? row.projectId)
+              : t`Unassigned stock`,
+          icon: <LuFolderKanban />
+        }
+      },
+      {
+        accessorKey: "storageTypeIds",
+        header: t`Storage Type`,
+        cell: ({ row }) => {
+          const ids = row.original.storageTypeIds ?? [];
+          return (
+            <HStack spacing={0} className="gap-1">
+              {ids.map((id) => {
+                const st = storageTypes.find((s) => s.id === id);
+                return <Enumerable key={id} value={st?.name ?? null} />;
+              })}
+            </HStack>
+          );
+        },
+        meta: {
+          filter: {
+            type: "static",
+            options: storageTypes.map((st) => ({
+              value: st.id,
+              label: <Enumerable value={st.name} />
+            })),
+            isArray: true
+          },
+          pluralHeader: t`Storage Types`,
+          icon: <LuWarehouse />
+        }
+      },
+      {
+        accessorKey: "materialSubstanceId",
+        header: t`Substance`,
+        cell: ({ row }) => {
+          const substance = substances.find(
+            (s) => s.id === row.original.materialSubstanceId
+          );
+          return <Enumerable value={substance?.name ?? null} />;
+        },
+        meta: {
+          filter: {
+            type: "static",
+            options: substances.map((substance) => ({
+              label: <Enumerable value={substance.name ?? null} />,
+              value: substance.id
+            }))
+          },
+          icon: <LuGlassWater />
+        }
+      },
+      {
+        accessorKey: "materialFormId",
+        header: t`Shape`,
+        cell: ({ row }) => {
+          const form = forms.find((f) => f.id === row.original.materialFormId);
+          return <Enumerable value={form?.name ?? null} />;
+        },
+        meta: {
+          filter: {
+            type: "static",
+            options: forms.map((form) => ({
+              label: <Enumerable value={form.name} />,
+              value: form.id
+            }))
+          },
+          icon: <LuShapes />
+        }
+      },
+      {
+        accessorKey: "finish",
+        header: t`Finish`,
+        cell: (item) => item.getValue() ?? "—",
+        meta: {
+          icon: <LuPaintBucket />,
+          filter: {
+            type: "fetcher",
+            endpoint: path.to.api.materialFinishes(materialSubstanceId),
+            transform: (data: { id: string; name: string }[] | null) =>
+              data?.map(({ name }) => ({ value: name, label: name })) ?? []
+          }
+        }
+      },
+      {
+        accessorKey: "grade",
+        header: t`Grade`,
+        cell: (item) => item.getValue() ?? "—",
+        meta: {
+          icon: <LuStar />,
+          filter: {
+            type: "fetcher",
+            endpoint: path.to.api.materialGrades(materialSubstanceId),
+            transform: (data: { id: string; name: string }[] | null) =>
+              data?.map(({ name }) => ({ value: name, label: name })) ?? []
+          }
+        }
+      },
+      {
+        accessorKey: "dimension",
+        header: t`Dimension`,
+        cell: (item) => item.getValue() ?? "—",
+        meta: {
+          icon: <LuExpand />,
+          filter: {
+            type: "fetcher",
+            endpoint: path.to.api.materialDimensions(materialFormId),
+            transform: (data: { id: string; name: string }[] | null) =>
+              data?.map(({ name }) => ({ value: name, label: name })) ?? []
+          }
+        }
+      },
+      {
+        accessorKey: "materialType",
+        header: t`Material Type`,
+        cell: (item) => item.getValue() ?? "—",
+        meta: {
+          icon: <LuPuzzle />,
+          filter: {
+            type: "fetcher",
+            endpoint: path.to.api.materialTypes(
+              materialSubstanceId,
+              materialFormId
+            ),
+            // The `materialType` column holds the type's name, so the filter
+            // value must be the name to match.
+            transform: (data: { id: string; name: string }[] | null) =>
+              data?.map(({ name }) => ({ value: name, label: name })) ?? []
+          }
+        }
+      },
+      {
+        accessorKey: "tags",
+        header: t`Tags`,
+        cell: ({ row }) => (
+          <HStack spacing={0} className="gap-1">
+            {(row.original.tags ?? []).map((tag) => (
+              <Badge key={tag} variant="secondary">
+                {tag}
+              </Badge>
+            ))}
+          </HStack>
+        ),
+        meta: {
+          filter: {
+            type: "static",
+            options: tags?.map((tag) => ({
+              value: tag,
+              label: <Badge variant="secondary">{tag}</Badge>
+            })),
+            isArray: true
+          },
+          icon: <LuTag />
+        }
+      }
+    ];
+
+    if (!hideSystem) {
+      cols.push({
+        accessorKey: "systemQuantity",
+        header: t`System Qty`,
+        cell: (item) => (
+          <span className="tabular-nums">{Number(item.getValue() ?? 0)}</span>
+        ),
+        meta: { icon: <LuHash /> }
+      });
+    }
+
+    cols.push({
+      accessorKey: "countedQuantity",
+      header: t`Counted Qty`,
+      cell: (item) => {
+        const value = item.getValue<number | null>();
+        // Marked so the keyboard "Start counting" entry can locate the first
+        // editable cell and seed the table's selection (see below).
+        return (
+          <span data-counted-qty className="tabular-nums">
+            {value === null ? "—" : value}
+          </span>
+        );
+      },
+      meta: { mobile: "P2", icon: <LuCalculator /> }
+    });
+
+    if (!hideSystem) {
+      cols.push({
+        id: "variance",
+        header: t`Variance`,
+        cell: ({ row }) => {
+          const counted = row.original.countedQuantity;
+          if (counted === null || counted === undefined) return "—";
+          const variance =
+            Number(counted) - Number(row.original.systemQuantity);
+          if (variance === 0) return <span className="tabular-nums">0</span>;
+          return (
+            <Badge variant={variance < 0 ? "destructive" : "green"}>
+              {variance > 0 ? `+${variance}` : variance}
+            </Badge>
+          );
+        },
+        meta: { icon: <LuCalculator /> }
+      });
+    }
+
+    return cols;
+  }, [
+    buildItemLink,
+    forms,
+    hideSystem,
+    materialFormId,
+    materialSubstanceId,
+    storageTypes,
+    storageUnitLabel,
+    storageUnits,
+    storageUnitsLoaded,
+    substances,
+    tags,
+    t
+  ]);
+
+  // The material attributes are filter-only — hidden by default (the item column
+  // already identifies the row) but available in the column picker.
+  const defaultColumnVisibility = {
+    // The owner column shows once a line counts project stock.
+    projectId: lines.some((line) => line.projectId),
+    type: false,
+    storageTypeIds: false,
+    materialSubstanceId: false,
+    materialFormId: false,
+    finish: false,
+    grade: false,
+    dimension: false,
+    materialType: false,
+    tags: false
+  };
+
+  // The lines of one tracked item in one storage unit sit together (the
+  // loader sorts them so) under a one-line header that collapses them.
+  // Untracked items have one line per storage unit and no header. A sort the
+  // user picks splits the groups apart, so the lines show without headers.
+  const isUserSorted = params.getAll("sort").length > 0;
+  const groupRowsBy = useMemo(
+    () =>
+      isUserSorted
+        ? undefined
+        : {
+            key: (line: CountLine) =>
+              isTrackedLine(line)
+                ? `${line.itemId}:${line.storageUnitId ?? ""}`
+                : (line.id ?? ""),
+            header: (
+              groupLines: CountLine[],
+              group?: { collapsed: boolean; toggle: () => void }
+            ) => {
+              const first = groupLines[0];
+              if (!first || !isTrackedLine(first)) return null;
+              const summary =
+                groupSummaries[
+                  inventoryCountGroupId({
+                    inventoryCountId,
+                    itemId: first.itemId!,
+                    storageUnitId: first.storageUnitId ?? null
+                  })
+                ];
+              // The loader sends summaries with the first page only. A group first
+              // loaded on a later page is summed from its loaded lines.
+              const local = {
+                Found: 0,
+                Missing: 0,
+                Unexpected: 0,
+                "Not counted": 0
+              };
+              for (const line of groupLines) {
+                local[
+                  inventoryCountLineState({
+                    countedQuantity:
+                      line.countedQuantity === null
+                        ? null
+                        : Number(line.countedQuantity),
+                    foundDuringCount: Boolean(line.foundDuringCount)
+                  })
+                ] += 1;
+              }
+              const units = summary
+                ? Number(summary.lineCount)
+                : groupLines.length;
+              const missing = summary
+                ? Number(summary.missingCount ?? 0)
+                : local.Missing;
+              const foundHere = summary
+                ? Number(summary.unexpectedCount ?? 0)
+                : local.Unexpected;
+              const counted =
+                (summary ? Number(summary.foundCount ?? 0) : local.Found) +
+                foundHere +
+                missing;
+              const parts = [
+                units === 1 ? t`1 unit` : t`${units} units`,
+                t`${counted} counted`,
+                missing > 0 ? t`${missing} missing` : null,
+                foundHere > 0 ? t`${foundHere} found here` : null
+              ].filter(Boolean);
+              return (
+                <button
+                  type="button"
+                  onClick={group?.toggle}
+                  aria-expanded={!group?.collapsed}
+                  className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <LuChevronRight
+                    className={cn(
+                      "size-3.5 shrink-0 transition-transform",
+                      !group?.collapsed && "rotate-90"
+                    )}
+                  />
+                  <span className="font-medium text-foreground">
+                    {first.itemReadableIdWithRevision ?? first.itemId}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    {first.storageUnitId
+                      ? storageUnitLabel(first.storageUnitId)
+                      : t`No storage unit`}
+                  </span>
+                  <span>—</span>
+                  <span>{parts.join(" · ")}</span>
+                </button>
+              );
+            }
+          },
+    [groupSummaries, inventoryCountId, isUserSorted, storageUnitLabel, t]
+  );
+
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Last-resolved Counted Qty column index, cached as a fallback. It's resolved
+  // live from the DOM on each keypress (below) so showing / hiding / reordering
+  // columns can never point navigation at the wrong cell.
+  const countedColumnRef = useRef<string | null>(null);
+
+  // Focus the first not-yet-edited Counted Qty cell. The shared Table only
+  // seeds its cell selection on a mouse click, so we click the cell to bootstrap
+  // its selection + edit; from there the counting keyboard flow below takes over.
+  // Scoped to this grid via the `data-counted-qty` marker.
+  const enterGrid = useCallback(() => {
+    (
+      gridRef.current?.querySelector("[data-counted-qty]") ??
+      document.querySelector("[data-counted-qty]")
+    )
+      ?.closest<HTMLElement>("[data-column]")
+      ?.click();
+  }, []);
+
+  // Take every focusable inside the grid lines out of the tab order — the only
+  // ones are the item name's link + its hover "Open" button (from the shared
+  // Hyperlink), which would otherwise capture Tab. This leaves the selected
+  // Counted Qty cell as the single line-level tab stop, so Tab drives counting.
+  // Runs each render since the Table re-mounts row cells; the Counted Qty editor
+  // is an <input>, not an <a>/<button>, so it's untouched.
+  useEffect(() => {
+    for (const el of gridRef.current?.querySelectorAll<HTMLElement>(
+      "[data-row] a, [data-row] button"
+    ) ?? []) {
+      el.tabIndex = -1;
+    }
+  });
+
+  // Land the counter in the first cell on open (Draft counts only), so the page
+  // is immediately keyboard-driveable without hunting for an entry point.
+  const hasAutoFocusedRef = useRef(false);
+  useEffect(() => {
+    if (isReadOnly || hasAutoFocusedRef.current || lines.length === 0) return;
+    hasAutoFocusedRef.current = true;
+    enterGrid();
+  }, [isReadOnly, lines.length, enterGrid]);
+
+  // Spreadsheet-style entry: Enter/Tab commit the current count and move to the
+  // NEXT line's Counted Qty cell; Shift+Tab moves to the PREVIOUS line. A keypress
+  // from any other cell jumps into the Counted Qty column instead of letting the
+  // shared Table wander sideways. At a boundary, Enter keeps focus on the cell
+  // while Tab is allowed to leave the grid (only the Table's own wrap is
+  // suppressed). Read-only counts are left entirely to the browser. Runs in the
+  // capture phase — this wrapper is an ancestor of the Table's own capture
+  // listener — so stopping propagation overrides it.
+  const onGridKeyDownCapture = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (isReadOnly) return;
+      if (event.key !== "Enter" && event.key !== "Tab") return;
+      const cell = (event.target as HTMLElement).closest<HTMLElement>(
+        "[data-row][data-column]"
+      );
+      if (!cell || !gridRef.current?.contains(cell)) return;
+
+      // Resolve the Counted Qty column live: from the cell being edited (only the
+      // Counted Qty cell is editable) or, failing that, the `data-counted-qty`
+      // marker on any non-editing line. Falls back to the last-known index.
+      const active = document.activeElement as HTMLElement | null;
+      const editingColumn =
+        active?.tagName === "INPUT"
+          ? active
+              .closest<HTMLElement>("[data-column]")
+              ?.getAttribute("data-column")
+          : null;
+      const markerColumn = gridRef.current
+        ?.querySelector("[data-counted-qty]")
+        ?.closest<HTMLElement>("[data-column]")
+        ?.getAttribute("data-column");
+      const countedColumn =
+        editingColumn ?? markerColumn ?? countedColumnRef.current;
+      if (!countedColumn) return;
+      countedColumnRef.current = countedColumn;
+
+      const row = Number(cell.getAttribute("data-row"));
+
+      // From another column (e.g. a clicked Item cell), jump into this line's
+      // Counted Qty cell.
+      if (cell.getAttribute("data-column") !== countedColumn) {
+        event.preventDefault();
+        event.stopPropagation();
+        gridRef.current
+          ?.querySelector<HTMLElement>(
+            `[data-row="${row}"][data-column="${countedColumn}"]`
+          )
+          ?.click();
+        return;
+      }
+
+      // The next line shown: a collapsed group's lines are not rendered.
+      const step = event.key === "Tab" && event.shiftKey ? -1 : 1;
+      const shown = [
+        ...(gridRef.current?.querySelectorAll<HTMLElement>(
+          `[data-row][data-column="${countedColumn}"]`
+        ) ?? [])
+      ];
+      const rowOf = (el: HTMLElement) => Number(el.getAttribute("data-row"));
+      const adjacent =
+        step > 0
+          ? shown
+              .filter((el) => rowOf(el) > row)
+              .sort((a, b) => rowOf(a) - rowOf(b))[0]
+          : shown
+              .filter((el) => rowOf(el) < row)
+              .sort((a, b) => rowOf(b) - rowOf(a))[0];
+
+      // Let Tab exit the grid at the first/last line rather than trapping focus;
+      // only suppress the Table's own row-wrapping.
+      if (event.key === "Tab" && !adjacent) {
+        event.stopPropagation();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (active?.tagName === "INPUT") active.blur(); // commit before moving
+      if (adjacent) {
+        adjacent.click(); // open the next line's cell for entry
+      } else {
+        // Enter at a boundary: keep focus on the cell rather than dropping out.
+        cell.focus();
+      }
+    },
+    [isReadOnly]
+  );
+
+  const editableComponents = useMemo(
+    () => ({
+      countedQuantity: EditableNumber<CountLine>(
+        onCellEdit,
+        // Serial-tracked lines are a single unique unit — cap the counted
+        // quantity at 1 (per row, since tracking type varies by line).
+        (row) => ({
+          minValue: 0,
+          maxValue: isSerialUnit(row) ? 1 : undefined
+        }),
+        { clearable: true }
+      )
+    }),
+    [onCellEdit]
+  );
+
+  return (
+    <div
+      ref={gridRef}
+      onKeyDownCapture={onGridKeyDownCapture}
+      className="flex h-full min-h-0 w-full flex-col"
+    >
+      {/* Keyboard skip-link into the grid: revealed on focus, activates the
+          first Counted Qty cell so counters can enter and drive the grid
+          without a mouse. */}
+      {!isReadOnly && lines.length > 0 && (
+        <button
+          type="button"
+          onClick={enterGrid}
+          className="sr-only focus:not-sr-only focus:absolute focus:z-10 focus:m-2 focus:rounded-md focus:bg-primary focus:px-3 focus:py-1.5 focus:text-sm focus:text-primary-foreground focus:shadow"
+        >
+          {t`Start counting`}
+        </button>
+      )}
+      <Table<CountLine>
+        compact
+        mobileLayout="table"
+        columns={columns}
+        data={lines}
+        // One count's lines: no list registry entry, so no `listKey`.
+        infinite={{ dataKey: "lines", nextCursor }}
+        count={count}
+        defaultColumnVisibility={defaultColumnVisibility}
+        editableComponents={editableComponents}
+        getRowClassName={(row) =>
+          invalidLineIdSet.has(row.id ?? "")
+            ? "bg-destructive/30 hover:bg-destructive/40"
+            : undefined
+        }
+        primaryAction={primaryAction}
+        headerActions={
+          scanField || quickFilters ? (
+            <HStack spacing={2}>
+              {scanField}
+              {quickFilters}
+            </HStack>
+          ) : undefined
+        }
+        groupRowsBy={groupRowsBy}
+        title={title ?? t`Lines`}
+        titleBadge={titleBadge}
+        withInlineEditing={!isReadOnly}
+        // Draft counts are inherently editable — no Edit/Lock toggle, always on.
+        forceEditMode={!isReadOnly}
+      />
+    </div>
+  );
+};
+
+export default InventoryCountLines;

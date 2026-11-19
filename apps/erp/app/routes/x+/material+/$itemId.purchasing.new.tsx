@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { carbon } from "@carbon/api/carbon.server";
+import { validationError, validator } from "@carbon/form";
+import { useRouteData, useRouteDialog } from "@carbon/react";
+import type { ActionFunctionArgs } from "react-router";
+import { useParams } from "react-router";
+import { supplierPartFormValidator } from "~/modules/items/items.models";
+import type { MaterialSummary } from "~/modules/items/types";
+import { SupplierPartForm } from "~/modules/items/ui/Item";
+import { setCustomFields } from "~/utils/form";
+import { path } from "~/utils/path";
+
+export async function action(args: ActionFunctionArgs) {
+  const input = await validator(supplierPartFormValidator).request(args, {
+    params: ["itemId"]
+  });
+  if ("invalid" in input) return input.invalid;
+  const { id: _id, ...supplierPart } = input.data;
+  const api = await carbon(args.request);
+  const result = await api.items.createSupplierPart({
+    ...supplierPart,
+    customFields: input.formData && setCustomFields(input.formData)
+  });
+  // One supplier part per item and supplier: shown under the Supplier field.
+  if (result.error?.category === "conflict") {
+    return validationError({
+      fieldErrors: { supplierId: result.error.message }
+    });
+  }
+  return result;
+}
+
+export default function NewMaterialSupplierRoute() {
+  const { itemId } = useParams();
+
+  if (!itemId) throw new Error("itemId not found");
+  const routeData = useRouteData<{ materialSummary: MaterialSummary }>(
+    path.to.material(itemId)
+  );
+
+  const initialValues = {
+    itemId: itemId,
+    supplierId: "",
+    supplierMaterialId: "",
+    supplierUnitPrice: 0,
+    supplierUnitOfMeasureCode: "EA",
+    minimumOrderQuantity: 1,
+    orderMultiple: 1,
+    conversionFactor: 1
+  };
+
+  const dialog = useRouteDialog(path.to.materialPurchasing(itemId));
+
+  return (
+    <SupplierPartForm
+      type="Material"
+      initialValues={initialValues}
+      unitOfMeasureCode={routeData?.materialSummary?.unitOfMeasureCode ?? ""}
+      open={dialog.open}
+      onClose={dialog.close}
+    />
+  );
+}

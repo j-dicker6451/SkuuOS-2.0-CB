@@ -1,0 +1,125 @@
+---
+title: Project management
+plan: Business
+description: Link Carbon action tasks and project elements to Linear or Jira issues and keep both sides in step.
+---
+
+Carbon links a record to one Linear or Jira issue and keeps the two in step in both directions:
+
+- <Term id="nonconformance">Nonconformance</Term> **action tasks**
+- [Change notice](/docs/reference/change-orders) **action tasks**
+- [Project](/docs/reference/projects) **elements**, of every type
+
+Open the record and use the Linear or Jira button to link an existing issue or create a new one. One issue links to one record.
+
+## What syncs
+
+| Record | Fields |
+| --- | --- |
+| Action task | Status, assignee, due date, notes |
+| Project element | Name, description, state, owner, priority, target date |
+
+A change on either side reaches the other within about a minute, whatever made it: a user, the API, or a workflow. Assignees match by email address. If the issue's assignee has no matching Carbon employee, or Jira hides their email, the Carbon assignee stays as it is.
+
+An element's state follows the issue's state type: Backlog, Unstarted, Started, Completed or Cancelled. Jira has three status categories, so an element in Backlog or Cancelled keeps that state when the Jira issue moves within the matching category.
+
+### Locked records
+
+Carbon refuses a change from Linear or Jira that would edit a locked record, and shows **Not applied** with the reason on the linked issue:
+
+- every field of a task on a Done or Cancelled change notice
+- every field of an element on a Closed project
+- the name and description of an element once the project's plan is locked
+
+Carbon does not undo the change in the tracker.
+
+### Deleting
+
+Deleting the issue removes the link; the Carbon record stays. Deleting the Carbon record removes the link and Carbon's back-link on the issue; the issue stays.
+
+## Linear
+
+Authenticate with a **Linear API key** (it begins with `lin_api`).
+
+<Steps>
+  <Step>
+  ### Create the webhook in Linear
+
+  In Linear's API settings, create a new webhook and paste the URL shown in Carbon's setup instructions
+  (`/api/webhook/linear/<your company id>`) so Linear changes reach Carbon.
+  </Step>
+  <Step>
+  ### Copy the signing secret
+
+  Linear shows a **signing secret** on the webhook's detail page. Paste it into **Webhook Signing Secret**.
+  Carbon then accepts only Linear-signed webhook requests that are no more than one minute old.
+  </Step>
+  <Step>
+  ### Paste your Linear API key
+
+  Provide your Linear API key. Carbon checks the `lin_api` prefix.
+  </Step>
+  <Step>
+  ### Link records
+
+  Link action tasks and project elements to Linear issues. Carbon keeps them in step in both directions.
+  </Step>
+</Steps>
+
+| Setting | What it controls |
+| --- | --- |
+| API key | Your Linear API key — Carbon checks the `lin_api` prefix. |
+| Webhook signing secret | Optional. When set, webhook requests without a valid Linear signature are rejected. |
+
+<Callout type="warn">
+Webhooks without a saved secret remain compatible with older configurations, but Carbon cannot authenticate their requests. Configure a secret for every webhook.
+</Callout>
+
+## Jira
+
+Connect over **OAuth**. The only setting is an optional webhook secret.
+Step-by-step: [Connect Jira](/docs/integrations/setup/jira).
+
+<Steps>
+  <Step>
+  ### Authorize over OAuth
+
+  Authorize Carbon in Jira.
+  </Step>
+  <Step>
+  ### Create the webhook in Jira
+
+  Changes made in Jira come back to Carbon only through this webhook. To set it up, go to **System → WebHooks** in Jira and create a
+  webhook with the URL shown in Carbon's setup instructions (`/api/webhook/jira/<your company id>`),
+  subscribed to **Issue updated**. Fill in the webhook's **Secret** field, and paste
+  the same value into **Webhook Secret** in Carbon. With it saved, Carbon only accepts webhook requests
+  Jira has signed.
+  </Step>
+  <Step>
+  ### Link records
+
+  Link action tasks and project elements to Jira issues. Carbon keeps them in step in both directions.
+  </Step>
+</Steps>
+
+| Setting | What it controls |
+| --- | --- |
+| Webhook secret | Optional. When set, webhook requests without a valid Jira signature are rejected. |
+
+<Callout type="warn">
+Jira appears only when `JIRA_CLIENT_ID` is configured server-side. See [Environment variables](/docs/platform/self-hosting/environment-variables).
+</Callout>
+
+## Related
+
+<Cards>
+  <Card title="Quality" href="/docs/reference/quality">
+    The nonconformance issues whose action tasks link to issues.
+  </Card>
+  <Card title="Change notices" href="/docs/reference/change-orders">
+    Change notice action tasks link the same way.
+  </Card>
+  <Card title="Projects" href="/docs/reference/projects">
+    Project elements link to issues from the element page.
+  </Card>
+</Cards>

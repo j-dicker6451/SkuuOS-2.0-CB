@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { ComboboxProps } from "@carbon/form";
+import { Combobox, useField } from "@carbon/form";
+import { useLingui } from "@lingui/react/macro";
+import { useMemo } from "react";
+import { usePeople } from "~/stores";
+import Avatar from "../Avatar";
+import EmployeeAvatar from "../EmployeeAvatar";
+import { useEmptyState } from "./emptyStates";
+
+type EmployeeSelectProps = Omit<
+  ComboboxProps,
+  "options" | "type" | "inline"
+> & {
+  type?: "assignee";
+  inline?: boolean;
+};
+
+const EmployeePreview = (
+  value: string,
+  options: { value: string; label: string | React.ReactNode }[]
+) => {
+  return <EmployeeAvatar employeeId={value} />;
+};
+
+const Employee = ({ type, inline, ...props }: EmployeeSelectProps) => {
+  const { t } = useLingui();
+  const [people] = usePeople();
+  // A deactivated user or an invite that was never accepted (or was revoked)
+  // is not active and cannot be picked, as in the Assignee picker. The person
+  // already selected stays listed, so an existing assignment still shows.
+  const { defaultValue } = useField(props.name);
+  const selected = (props as { value?: string }).value ?? defaultValue;
+
+  const options = useMemo(() => {
+    const base =
+      people
+        .filter((person) => person.active !== false || person.id === selected)
+        .map((person) => ({
+          value: person.id,
+          label: (
+            <div className="flex flex-row items-center gap-2 flex-grow">
+              <Avatar
+                name={person.name}
+                path={person.avatarUrl}
+                size="xs"
+                decorative
+              />
+              <span>{person.name}</span>
+            </div>
+          )
+        })) ?? [];
+
+    if (type === "assignee") {
+      return [
+        {
+          value: "",
+          label: t`Unassigned`
+        },
+        ...base
+      ];
+    }
+
+    return base;
+  }, [type, people, selected, t]);
+
+  const emptyMessage = useEmptyState("employee");
+
+  return (
+    <>
+      <Combobox
+        options={options}
+        emptyMessage={emptyMessage}
+        {...props}
+        inline={inline ? EmployeePreview : undefined}
+        label={props?.label ?? t`Employee`}
+        placeholder={props?.placeholder ?? t`Select Employee`}
+      />
+    </>
+  );
+};
+
+Employee.displayName = "Employee";
+
+export default Employee;

@@ -1,0 +1,534 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { ServiceContext } from "@carbon/api/service-fn.server";
+import { generateDownloadToken } from "@carbon/auth/download-token.server";
+import type { Database } from "@carbon/database";
+import {
+  getDocumentType,
+  imageTransformErrorMessage,
+  isStorageNotFound,
+  isUnsafeStoragePath,
+  storage
+} from "@carbon/files";
+import { isHeic } from "@carbon/files/media";
+import { trigger } from "@carbon/jobs";
+import { datetime, requireAffected, searchFilter } from "@carbon/utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { z } from "zod";
+import { ERP_URL, path } from "~/utils/path";
+import type { GenericQueryFilters, Paging } from "~/utils/query";
+import { listCount, setGenericQueryFilters } from "~/utils/query";
+import { sanitize } from "~/utils/supabase";
+import type {
+  documentLabelsValidator,
+  documentSourceTypes,
+  documentValidator
+} from "./documents.models";
+import {
+  buildDocumentUploadPath,
+  buildStagedUploadPath,
+  parseStagedUploadPath
+} from "./documents.models";
+
+export async function deleteDocument(
+  client: SupabaseClient<Database>,
+  id: string
+) {
+  return requireAffected(
+    client.from("document").delete().eq("id", id).select("id")
+  );
+}
+
+export async function getDocument(
+  client: SupabaseClient<Database>,
+  documentId: string
+) {
+  return client.from("documents").select("*").eq("id", documentId).single();
+}
+
+export const DOCUMENTS_PAGING: Paging = {
+  defaultSorts: [{ column: "favorite", ascending: false }]
+};
+
+// The "Recent" view: the last activity first. It is a default sort, so the
+// cursor follows it and a sort the user picks replaces it.
+export const RECENT_DOCUMENTS_PAGING: Paging = {
+  defaultSorts: [
+    { column: "lastActivityAt", ascending: false },
+    ...DOCUMENTS_PAGING.defaultSorts
+  ]
+};
+
+export async function getDocuments(
+  client: SupabaseClient<Database>,
+  companyId: string,
+  args: GenericQueryFilters & {
+    search: string | null;
+    favorite?: boolean;
+    recent?: boolean;
+    createdBy?: string;
+    active: boolean;
+  }
+) {
+  let query = client
+    .from("documents")
+    .select("*", {
+      count: listCount(args)
+    })
+    .eq("companyId", companyId)
+    .eq("active", args.active);
+
+  if (args?.search) {
+    query = query.or(searchFilter(["name", "description"], args.search));
+  }
+
+  if (args?.favorite) {
+    query = query.eq("favorite", true);
+  }
+
+  query = setGenericQueryFilters(
+    query,
+    args,
+    args.recent ? RECENT_DOCUMENTS_PAGING : DOCUMENTS_PAGING
+  );
+
+  return query;
+}
+
+export async function getDocumentExtensions(
+  client: SupabaseClient<Database>,
+  companyId: string
+) {
+  return client.rpc("get_document_extensions", { company_id: companyId });
+}
+
+export async function getDocumentLabels(
+  client: SupabaseClient<Database>,
+  userId: string
+) {
+  return client.from("documentLabels").select("*").eq("userId", userId);
+}
+
+export async function moveDocumentToTrash(
+  client: SupabaseClient<Database>,
+  id: string,
+  userId: string
+) {
+  return requireAffected(
+    client
+      .from("document")
+      .update({
+        active: false,
+        updatedBy: userId,
+        updatedAt: datetime.timestamp()
+      })
+      .eq("id", id)
+      .select("id")
+  );
+}
+
+export async function restoreDocument(
+  client: SupabaseClient<Database>,
+  id: string,
+  userId: string
+) {
+  return requireAffected(
+    client
+      .from("document")
+      .update({
+        active: true,
+        updatedBy: userId,
+        updatedAt: datetime.timestamp()
+      })
+      .eq("id", id)
+      .select("id")
+  );
+}
+
+type SourceDocumentData = {
+  sourceDocument?: (typeof documentSourceTypes)[number];
+  sourceDocumentId?: string;
+};
+
+export async function upsertDocument(
+  client: SupabaseClient<Database>,
+  document:
+    | (Omit<z.infer<typeof documentValidator>, "id"> & {
+        path: string;
+        size: number;
+        companyId: string;
+        createdBy: string;
+      } & SourceDocumentData)
+    | (Omit<z.infer<typeof documentValidator>, "id"> & {
+        id: string;
+        updatedBy: string;
+      })
+) {
+  const type = getDocumentType(document.name ?? "");
+  if ("createdBy" in document) {
+    return (
+      client
+        .from("document")
+        // @ts-expect-error
+        .insert({ ...document, type })
+        .select("*")
+        .single()
+    );
+  }
+
+  // Labels live in documentLabel, not on the document row.
+  const { extension: _extension, labels: _labels, ...data } = document;
+  return requireAffected(
+    client
+      .from("document")
+      .update(
+        sanitize({
+          ...data,
+          type,
+          updatedAt: datetime.timestamp()
+        })
+      )
+      .eq("id", document.id)
+      .select("id")
+  );
+}
+
+/**
+ * Create a presigned upload URL for a document in the company's bucket. First step
+ * of the two-step upload flow: PUT the file bytes to the returned `signedUrl` (or
+ * use supabase-js `uploadToSignedUrl(path, token, file)`), then call
+ * `insertUploadedDocument` with the returned `path` to register the metadata row.
+ * `folder`/`entityId` scope the storage path so the file lands where the entity's
+ * document panel lists it (e.g. `job`/jobId, `parts`/itemId, `opportunity`/opportunityId).
+ *
+ * A `.heic`/`.heif` name is minted into `{companyId}/tmp/uploads/…` instead —
+ * HEIC is never stored as a document, so registration converts the staged
+ * bytes to JPEG at the real path. The caller's flow is unchanged: PUT to the
+ * signed URL, register the returned `path`, receive a `.jpg` document row.
+ * Abandoned staged uploads are swept nightly.
+ *       (packages/files/AGENTS.md): a non-browser caller mints a staged
+ *       upload URL, then insertUploadedDocument converts and lands it.
+ */
+export async function createDocumentUploadUrl(
+  client: SupabaseClient<Database>,
+  args: {
+    companyId: string;
+    folder: string;
+    entityId: string;
+    name: string;
+  }
+) {
+  const documentPath = isHeic(args.name)
+    ? buildStagedUploadPath(args)
+    : buildDocumentUploadPath(args);
+  return storage(client)
+    .company(args.companyId)
+    .createSignedUploadUrl(documentPath, { upsert: true });
+}
+
+/**
+ * Register the metadata row for a file already uploaded to storage. Second step of
+ * the upload flow: pass the `path` returned by `createDocumentUploadUrl` (or a
+ * per-module `create*DocumentUploadUrl`). Wraps `upsertDocument`, defaulting the
+ * read/write groups to the creating user. `size` is in KB, matching the
+ * `document.size` column and the browser upload hooks. A path minted for a
+ * HEIC name is a staged upload: the bytes are converted to JPEG and moved to
+ * the real document path here, so the registered row is never HEIC.
+ *       (packages/files/AGENTS.md): a non-browser caller mints a staged
+ *       upload URL, then insertUploadedDocument converts and lands it.
+ */
+export async function insertUploadedDocument(
+  client: SupabaseClient<Database>,
+  args: {
+    companyId: string;
+    createdBy: string;
+    path: string;
+    name: string;
+    size: number;
+    sourceDocument?: (typeof documentSourceTypes)[number];
+    sourceDocumentId?: string;
+  }
+) {
+  // The path is caller-supplied — never register a row pointing outside the
+  // caller's company.
+  if (!args.path.startsWith(`${args.companyId}/`)) {
+    return {
+      data: null,
+      error: new Error("Document path does not belong to this company")
+    };
+  }
+
+  let { path, name, size } = args;
+
+  // A staged upload (HEIC minted by createDocumentUploadUrl) is converted to
+  // JPEG here, before anything durable exists. The bytes are already in
+  // storage, so the imgproxy transform round-trip is the converter — bounded
+  // memory, no wasm in the app bundle.
+  const staged = parseStagedUploadPath(path);
+  if (staged) {
+    const converted = await storage(client)
+      .company(args.companyId)
+      .download(path, { transform: { quality: 85 } });
+    if (converted.error || !converted.data) {
+      return {
+        data: null,
+        error: new Error(
+          imageTransformErrorMessage(
+            converted.error,
+            "Failed to convert the staged image — is image transformation enabled on this stack? The staged upload was left in place; re-register to retry."
+          )
+        )
+      };
+    }
+
+    const extension = converted.data.type.includes("webp") ? "webp" : "jpg";
+    name = staged.name.replace(/\.[^.]+$/, `.${extension}`);
+    const finalPath = buildDocumentUploadPath({
+      companyId: args.companyId,
+      folder: staged.folder,
+      entityId: staged.entityId,
+      name
+    });
+    const stored = await storage(client)
+      .company(args.companyId)
+      .upload(finalPath, converted.data, {
+        contentType: converted.data.type || "image/jpeg",
+        upsert: true
+      });
+    if (stored.error || !stored.data?.path) {
+      return {
+        data: null,
+        error: stored.error ?? new Error("Failed to store the converted image")
+      };
+    }
+    await storage(client).company(args.companyId).remove([path]);
+    path = stored.data.path;
+    size = Math.round(converted.data.size / 1024);
+  }
+
+  const { sourceDocument, sourceDocumentId } = args;
+  return upsertDocument(client, {
+    companyId: args.companyId,
+    createdBy: args.createdBy,
+    path,
+    name,
+    size,
+    readGroups: [args.createdBy],
+    writeGroups: [args.createdBy],
+    ...(sourceDocument && sourceDocumentId
+      ? { sourceDocument, sourceDocumentId }
+      : {})
+  });
+}
+
+export async function updateDocumentFavorite(
+  client: SupabaseClient<Database>,
+  args: {
+    id: string;
+    favorite: boolean;
+    userId: string;
+  }
+) {
+  const { id, favorite, userId } = args;
+  if (!favorite) {
+    return client
+      .from("documentFavorite")
+      .delete()
+      .eq("documentId", id)
+      .eq("userId", userId);
+  } else {
+    return client
+      .from("documentFavorite")
+      .insert({ documentId: id, userId: userId });
+  }
+}
+
+export async function updateDocumentLabels(
+  client: SupabaseClient<Database>,
+  document: z.infer<typeof documentLabelsValidator> & {
+    userId: string;
+  }
+) {
+  if (!document.labels) {
+    throw new Error("No labels provided");
+  }
+
+  return client
+    .from("documentLabel")
+    .delete()
+    .eq("documentId", document.documentId)
+    .eq("userId", document.userId)
+    .then(() => {
+      return client.from("documentLabel").insert(
+        // @ts-expect-error
+        document.labels.map((label) => ({
+          documentId: document.documentId,
+          label,
+          userId: document.userId
+        }))
+      );
+    });
+}
+
+export async function insertDocumentExtraction(
+  client: SupabaseClient<Database>,
+  data: {
+    storagePath: string;
+    documentType: "purchaseInvoice" | "salesRfq";
+    sourceDocument: string;
+    sourceDocumentId?: string;
+    companyId: string;
+    createdBy: string;
+  }
+): Promise<{
+  data: { id: string; companyId: string } | null;
+  error: { message: string } | null;
+}> {
+  const result = await client
+    .from("documentExtraction")
+    .insert(data)
+    .select("id, companyId")
+    .single();
+
+  if (result.error || !result.data) {
+    return { data: result.data, error: result.error };
+  }
+
+  // Enqueue the Inngest job. If enqueue fails the row would otherwise sit at
+  // `pending` forever, so mark it failed and surface the error to the caller.
+  try {
+    await trigger("extract-document", {
+      documentExtractionId: result.data.id,
+      companyId: result.data.companyId
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to enqueue extraction job";
+    await client
+      .from("documentExtraction")
+      .update({
+        status: "failed",
+        error: message,
+        updatedBy: data.createdBy,
+        updatedAt: datetime.timestamp()
+      })
+      .eq("id", result.data.id)
+      .eq("companyId", result.data.companyId);
+    return { data: result.data, error: { message } };
+  }
+
+  return { data: result.data, error: null };
+}
+/** The model, read as the caller: a refusal unless it is the company's. */
+export async function findModel(ctx: ServiceContext, modelUploadId: string) {
+  const model = await ctx.asCaller.supabase
+    .from("modelUpload")
+    .select("id")
+    .eq("id", modelUploadId)
+    .eq("companyId", ctx.company.id)
+    .maybeSingle();
+  if (model.error) {
+    return ctx.error("internal", "Failed to read the model", model.error);
+  }
+  if (!model.data) return ctx.error("notFound", "Model not found");
+  return null;
+}
+
+/** A storage key the caller sent: refused unless it is a safe key in the company's folder. */
+export function refuseForeignPath(
+  ctx: ServiceContext,
+  path: string | undefined
+) {
+  if (path === undefined) return null;
+  if (path.startsWith(`${ctx.company.id}/`) && !isUnsafeStoragePath(path)) {
+    return null;
+  }
+  return ctx.error("validation", "The file must be in this company's storage");
+}
+
+/** How long a file link handed to an API caller lasts: an hour, as the
+ *  supplier quote share page signs the part files it shows (`signItemFile`). */
+export const FILE_LINK_SECONDS = 60 * 60;
+
+/**
+ * The link to a document's file: the `/download/:token` link the documents
+ * list gives each row (`x+/documents+/search.tsx`). The caller reads the
+ * document first, so no link is made for one it cannot see. The token names
+ * `ctx.auditUserId` (an API key's creator), and `download.$token.tsx` reads
+ * the document again as that user on every download. Unlike the list's, it
+ * expires after `FILE_LINK_SECONDS`: a key's creator can outlive the key, so a
+ * link copied into a log would otherwise outlast the key's revocation.
+ */
+export async function documentDownloadUrl(
+  ctx: ServiceContext,
+  documentId: string
+) {
+  const document = await ctx.asCaller.supabase
+    .from("document")
+    .select("id, name, path")
+    .eq("id", documentId)
+    .eq("companyId", ctx.company.id)
+    .maybeSingle();
+  if (document.error) {
+    return ctx.error("internal", "Failed to read the document", document.error);
+  }
+  if (!document.data) return ctx.error("notFound", "Document not found");
+  // The list mints no link for a row without a file either.
+  if (!document.data.path) {
+    return ctx.error("notFound", "The document has no file");
+  }
+
+  const token = await generateDownloadToken(
+    { userId: ctx.auditUserId, companyId: ctx.company.id, documentId },
+    { expiresInSeconds: FILE_LINK_SECONDS }
+  );
+  return {
+    documentId,
+    name: document.data.name,
+    url: `${ERP_URL}${path.to.download(token)}`,
+    expiresIn: FILE_LINK_SECONDS
+  };
+}
+
+/**
+ * A signed link to a file on a record's Files tab, valid
+ * `FILE_LINK_SECONDS`. The key is the one the record's upload URL
+ * operation gives the same name (`buildDocumentUploadPath`). The operation's
+ * gate is the access check, as the app's file route checks its caller and
+ * then reads with the service role; an API key is no storage user, so its
+ * own client could not sign.
+ */
+export async function signRecordFileUrl(
+  ctx: ServiceContext,
+  file: { folder: string; entityId: string; name: string }
+) {
+  const key = buildDocumentUploadPath({ companyId: ctx.company.id, ...file });
+  const foreign = refuseForeignPath(ctx, key);
+  if (foreign) return foreign;
+
+  const signed = await storage(ctx.asSystem.supabase)
+    .company(ctx.company.id)
+    .createSignedUrl(key, FILE_LINK_SECONDS);
+  if (!signed.data) {
+    if (await isStorageNotFound(signed.error)) {
+      return ctx.error("notFound", "File not found");
+    }
+    return ctx.error(
+      "internal",
+      "Failed to sign the file's link",
+      signed.error
+    );
+  }
+
+  // Set here, not through createSignedUrl's `download` option: that encodes
+  // the name twice, so `A+B.pdf` would download as `A%2BB.pdf`.
+  const url = new URL(signed.data.signedUrl);
+  url.searchParams.set("download", key.slice(key.lastIndexOf("/") + 1));
+  return {
+    path: key,
+    signedUrl: url.toString(),
+    expiresIn: FILE_LINK_SECONDS
+  };
+}

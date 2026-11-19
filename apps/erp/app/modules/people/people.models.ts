@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import type { Database } from "@carbon/database";
+import { parseAbsolute } from "@internationalized/date";
+import { z } from "zod";
+import { zfd } from "zod-form-data";
+import { DataType } from "~/modules/shared/types";
+
+export const attributeValidator = z
+  .object({
+    id: zfd.text(z.string().optional()),
+    name: z.string().trim().min(1, { message: "Name is required" }),
+    userAttributeCategoryId: z.string().min(20),
+    attributeDataTypeId: zfd.numeric(),
+    listOptions: z.string().min(1).array().optional(),
+    canSelfManage: zfd.checkbox()
+  })
+  .refine((input) => {
+    // allows bar to be optional only when foo is 'foo'
+    if (
+      input.attributeDataTypeId === DataType.List &&
+      (input.listOptions === undefined ||
+        input.listOptions.length === 0 ||
+        input.listOptions.some((option) => option.length === 0))
+    )
+      return false;
+
+    return true;
+  })
+  // Link is a custom field type only; person attributes cannot store one.
+  .refine((input) => input.attributeDataTypeId !== DataType.Link, {
+    message: "Link is not available for attributes",
+    path: ["attributeDataTypeId"]
+  });
+
+export const attributeCategoryValidator = z.object({
+  id: zfd.text(z.string().optional()),
+  name: z.string().trim().min(1, { message: "Name is required" }),
+  emoji: zfd.text(z.string().optional()),
+  isPublic: zfd.checkbox()
+});
+
+export const departmentValidator = z.object({
+  id: zfd.text(z.string().optional()),
+  name: z.string().trim().min(1, { message: "Name is required" }),
+  parentDepartmentId: zfd.text(z.string().optional())
+});
+
+export const flsaStatuses = [
+  "Exempt",
+  "Non-Exempt"
+] as const satisfies readonly Database["public"]["Enums"]["flsaStatus"][];
+
+export const employeeJobValidator = z.object({
+  title: zfd.text(z.string().optional()),
+  startDate: zfd.text(z.string().optional()),
+  locationId: z.string().min(1, { message: "Location is required" }),
+  shiftId: zfd.text(z.string().optional()),
+  departmentId: zfd.text(z.string().optional()),
+  managerId: zfd.text(z.string().optional()),
+  laborCategoryId: zfd.text(z.string().optional()),
+  /** Government Contracting 5a: dilution applies to Exempt staff. */
+  flsaStatus: zfd.text(z.enum(flsaStatuses).optional()),
+  /** Government Contracting 5d: Form 6765 Section E, line 38. */
+  isOfficer: zfd.checkbox().optional(),
+  /** In the missing-time population (Projects → Reports → Missing Time). */
+  timesheetRequired: zfd.checkbox().optional()
+});
+
+export const holidayValidator = z.object({
+  id: zfd.text(z.string().optional()),
+  name: z.string().trim().min(1, { message: "Name is required" }),
+  date: z.string().min(1, { message: "Date is required" })
+});
+
+export const shiftValidator = z.object({
+  id: zfd.text(z.string().optional()),
+  name: z.string().trim().min(1, { message: "Name is required" }),
+  startTime: z.string().min(1, { message: "Start time is required" }),
+  endTime: z.string().min(1, { message: "End time is required" }),
+  locationId: z.string().min(1, { message: "Location is required" }),
+  monday: zfd.checkbox(),
+  tuesday: zfd.checkbox(),
+  wednesday: zfd.checkbox(),
+  thursday: zfd.checkbox(),
+  friday: zfd.checkbox(),
+  saturday: zfd.checkbox(),
+  sunday: zfd.checkbox()
+});
+
+export const clockInValidator = z.object({
+  intent: z.literal("clockIn"),
+  employeeId: zfd.text(z.string().optional())
+});
+
+export const clockOutValidator = z.object({
+  intent: z.literal("clockOut"),
+  employeeId: zfd.text(z.string().optional()),
+  note: zfd.text(z.string().optional())
+});
+
+// The "Forgot to Clock Out?" prompt: the clock-out is the time being set.
+/** "Forgot to clock out?": the time must be after the open entry's clock in. */
+export const setClockOutValidator = z
+  .object({
+    intent: z.literal("clockOut"),
+    clockIn: zfd.text(z.string().optional()),
+    clockOut: z.string().min(1, { message: "Clock out is required" })
+  })
+  .superRefine((data, ctx) => {
+    if (data.clockIn && !isAfterInstant(data.clockOut, data.clockIn)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["clockOut"],
+        message: "Clock out must be after you clocked in"
+      });
+    }
+  });
+
+/** True when instant `a` is after instant `b` (both ISO timestamps). */
+function isAfterInstant(a: string, b: string) {
+  try {
+    return parseAbsolute(a, "UTC").compare(parseAbsolute(b, "UTC")) > 0;
+  } catch {
+    return true;
+  }
+}
+
+export const timecardValidator = z.object({
+  id: zfd.text(z.string().optional()),
+  employeeId: z.string().min(1, { message: "Employee is required" }),
+  clockIn: z.string().min(1, { message: "Clock in is required" }),
+  clockOut: zfd.text(z.string().optional()),
+  note: zfd.text(z.string().optional())
+});
+
+export const updateTimeCardEntryValidator = z.object({
+  intent: z.literal("updateEntry"),
+  entryId: z.string().min(1),
+  clockIn: z.string().min(1),
+  clockOut: zfd.text(z.string().optional()),
+  note: zfd.text(z.string().optional())
+});
+
+export const deleteTimeCardEntryValidator = z.object({
+  intent: z.literal("deleteEntry"),
+  entryId: z.string().min(1)
+});

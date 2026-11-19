@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Carbon (github.com/crbnos/carbon). Modified or adapted versions of this file,
+// including ports, remain AGPLv3; serving them over a network requires releasing their source.
+
+import { assertIsPost } from "@carbon/auth";
+import { requirePermissions } from "@carbon/auth/auth.server";
+import { getCarbonServiceRole } from "@carbon/auth/client.server";
+import { getLogger } from "@carbon/logger";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { userContext } from "~/context";
+import {
+  getAvailableTrackedEntities,
+  getCompanySettings,
+  getPickOrder
+} from "~/services/inventory.service";
+import { setPickingListLineTrackedEntity } from "~/services/picking.service";
+import { printTravelersOnStart } from "~/services/printing.server";
+
+const logger = getLogger("mes", "picking-tracked-line");
+
+/**
+ * GET: available tracked lots for a picking line (non-lineside, deduped),
+ * smart-ordered for the TrackedEntityPicker. POST: pick/unpick a chosen lot.
+ */
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { client, companyId } = await requirePermissions(request, {});
+  const { lineId } = params;
+  if (!lineId) throw new Response("Not found", { status: 404 });
+
+  const lineResult = await client
+    .from("pickingListLine")
+    .select(
+      "id, itemId, projectId, quantityToPick, quantityPicked, pickingList(locationId), item(itemTrackingType)"
+    )
+    .eq("id", lineId)
+    .eq("companyId", companyId)
+    .maybeSingle();
+
+  if (lineResult.error || !lineResult.data) {
+    logger.warning("Picking line not found for company", {
+      companyId,
+      lineId,
+      error: lineResult.error
+    });
+    throw new Response("Line not found", { status: 404 });
+  }
+
+  const line = lineResult.data;
+  const locationId = (line.pickingList as { locationId: string } | null)
+    ?.locationId;
+  const trackingType =
+    (line.item as { itemTrackingType: string } | null)?.itemTrackingType ??
+    "Batch";
+
+  const [entities, settings, defaultOrder] = await Promise.all([
+    locationId
+      ? getAvailableTrackedEntities(client, {
+          itemId: line.itemId,
+          companyId,
+          locationId,
+          excludeLineside: true,
+          excludeNonNettable: true,
+          excludeAllocated: true,
+          excludeLineId: lineId,
+          // A pick line draws one stock stripe: list the lots in it.
+          projectIds: [line.projectId ?? null]
+        })
+      : { data: [] },
+    getCompanySettings(client, companyId),
+    locationId
+      ? getPickOrder(client, { itemId: line.itemId, locationId, companyId })
+      : ("Default" as const)
+  ]);
+  const shelfLife = (settings.data?.inventoryShelfLife ?? {}) as {
+    nearExpiryWarningDays?: number | null;
+    expiredEntityPolicy?: "Warn" | "Block" | "BlockWithOverride";
+  };
+
+  return {
+    entities: entities.data ?? [],
+    trackingType,
+    quantityRequired: Math.max(
+      0,
+      Number(line.quantityToPick ?? 0) - Number(line.quantityPicked ?? 0)
+    ),
+    nearExpiryWarningDays: shelfLife.nearExpiryWarningDays ?? 0,
+    expiredEntityPolicy: shelfLife.expiredEntityPolicy ?? "Warn",
+    defaultOrder
+  };
+}
+
+export async function action({ context, request, params }: ActionFunctionArgs) {
+  assertIsPost(request);
+  const { userId, companyId } = await requirePermissions(request, {});
+  const effectiveUserId = context.get(userContext)?.effectiveUserId ?? userId;
+  const serviceRole = getCarbonServiceRole();
+
+  const { lineId, pickingListId } = params;
+  if (!lineId) return { success: false, message: "Missing line" };
+  if (!pickingListId) {
+    return { success: false, message: "Missing pickingListId" };
+  }
+
+  const formData = await request.formData();
+  const trackedEntityId = formData.get("trackedEntityId") as string;
+  const fromStorageUnitId =
+    (formData.get("fromStorageUnitId") as string) || null;
+  const quantity = Number(formData.get("quantity") ?? 0);
+  const unpick = formData.get("unpick") === "true";
+
+  if (!trackedEntityId) {
+    return { success: false, message: "Missing tracked entity" };
+  }
+
+  const result = await setPickingListLineTrackedEntity(serviceRole, {
+    pickingListLineId: lineId,
+    trackedEntityId,
+    fromStorageUnitId,
+    quantity,
+    unpick,
+    userId: effectiveUserId,
+    companyId
+  });
+
+  if (result.error) {
+    logger.error("Failed to pick tracked entity", {
+      companyId,
+      lineId,
+      trackedEntityId,
+      error: result.error
+    });
+    return {
+      success: false,
+      message:
+        typeof result.error === "string"
+          ? result.error
+          : (result.error.message ?? "Failed to pick line")
+    };
+  }
+
+  // The pick can move the list out of Draft (the status trigger), which
+  // starts it. After the pick, so a print failure never blocks it.
+  await printTravelersOnStart({
+    serviceRole,
+    pickingListId,
+    companyId,
+    userId: effectiveUserId
+  });
+
+  return { success: true, data: result.data };
+}
