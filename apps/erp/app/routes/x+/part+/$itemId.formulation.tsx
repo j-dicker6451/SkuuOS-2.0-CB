@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { requirePermissions } from "@carbon/auth/auth.server";
-import { VStack } from "@carbon/react";
-import { useLingui } from "@lingui/react/macro";
+import { Button, HStack, VStack } from "@carbon/react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { Link } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useParams } from "react-router";
 import { getMakeMethodsOnce } from "~/modules/items/items.service";
 import type { PartSummary } from "~/modules/items/types";
 import { usePartLayoutData } from "~/modules/items/ui/Parts/usePartLayoutData";
+import { findLatestSkuuBulkJobForItem } from "~/modules/skuu/skuu-job-bulk.server";
 import { loadSkuuFormulationView } from "~/modules/skuu/skuu-formulation.service";
 import { SkuuFormulationMethodPanel } from "~/modules/skuu/ui/SkuuFormulationMethodPanel";
+import { path } from "~/utils/path";
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { client, companyId } = await requirePermissions(request, {
     view: "parts"
@@ -25,7 +28,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const view = await loadSkuuFormulationView(client, active.id, companyId);
-  return { makeMethodId: active.id, view, methodStatus: active.status };
+  const latestBulkJob = view.profile?.enabled
+    ? await findLatestSkuuBulkJobForItem(client, itemId, companyId)
+    : null;
+  return {
+    makeMethodId: active.id,
+    view,
+    methodStatus: active.status,
+    latestBulkJob
+  };
 }
 
 export default function PartFormulationRoute() {
@@ -64,9 +75,29 @@ export default function PartFormulationRoute() {
 
   return (
     <VStack className="gap-4 p-4">
-      <h1 className="text-lg font-semibold">
-        {t`Formulation & method`} — {readableId}
-      </h1>
+      <HStack className="flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold">
+          {t`Formulation & method`} — {readableId}
+        </h1>
+        {data.latestBulkJob ? (
+          <HStack className="gap-2">
+            <Button variant="secondary" size="sm" asChild>
+              <Link
+                to={path.to.jobBulkBatchTicket(data.latestBulkJob.id)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Trans>Batch ticket</Trans>
+              </Link>
+            </Button>
+            <Button variant="secondary" size="sm" asChild>
+              <Link to={path.to.jobBulkRecord(data.latestBulkJob.id)}>
+                <Trans>Bulk batch record</Trans>
+              </Link>
+            </Button>
+          </HStack>
+        ) : null}
+      </HStack>
       <SkuuFormulationMethodPanel
         makeMethodId={data.makeMethodId}
         profile={view.profile}

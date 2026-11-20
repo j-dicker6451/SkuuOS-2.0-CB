@@ -64,12 +64,40 @@ export type SpikeInput = {
   secondProduct?: SpikeSecondProduct;
 };
 
+function coercePhaseInstructions(
+  phase: Record<string, unknown>
+): SpikeFormulaPhase {
+  const instructions = [
+    phase.instructions,
+    phase.method,
+    phase.methodText,
+    phase.text,
+    phase.description
+  ].find((v) => typeof v === "string" && v.trim().length > 0) as
+    | string
+    | undefined;
+  return {
+    phaseNumber: Number(phase.phaseNumber),
+    instructions: instructions ?? ""
+  };
+}
+
+export function normalizeSpikeInput(raw: unknown): SpikeInput {
+  const input = { ...(raw as SpikeInput) };
+  if (Array.isArray(input.phases)) {
+    input.phases = input.phases.map((p) =>
+      coercePhaseInstructions(p as Record<string, unknown>)
+    );
+  }
+  return input;
+}
+
 export function loadSpikeInput(): SpikeInput {
   const file =
     process.env.SKUU_PRODUCT_INPUT ??
     process.env.SKUU_SPIKE_INPUT ??
     path.join(__dirname, "example-formula.json");
-  return JSON.parse(readFileSync(file, "utf8")) as SpikeInput;
+  return normalizeSpikeInput(JSON.parse(readFileSync(file, "utf8")));
 }
 
 export type SpikeContext = {

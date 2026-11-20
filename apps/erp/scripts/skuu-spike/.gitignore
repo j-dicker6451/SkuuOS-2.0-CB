@@ -1,2 +1,3 @@
 report-last-run.txt
-*.local.jsonreport-product-seed.txt
+report-product-seed.txt
+*.local.json

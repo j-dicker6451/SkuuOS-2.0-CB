@@ -55,7 +55,7 @@ const ticketFixture: BulkBatchTicket = {
 };
 
 describe("bulk-batch-ticket loader", () => {
-  it("returns serializable ticket (no Map) for render", async () => {
+  it("returns serializable ticket when buildBulkBatchTicket resolves (loader 200)", async () => {
     vi.mocked(buildBulkBatchTicket).mockResolvedValue(ticketFixture);
     const res = await loader({
       request: new Request("http://localhost/x/job/job_x/bulk-batch-ticket"),

@@ -799,16 +799,45 @@ async function runFillJob(
     createdBy: ctx.userId
   });
   const jobId = ensured.primaryId;
+  const expectedBulkKg = kgPerUnit * units;
+
   if (ensured.reused) {
+    const jobRow = await ctx.db
+      .selectFrom("job")
+      .select("status")
+      .where("id", "=", jobId)
+      .where("companyId", "=", ctx.companyId)
+      .executeTakeFirstOrThrow();
+    const issued = await ctx.db
+      .selectFrom("jobMaterial")
+      .select((eb) => eb.fn.sum<number>("quantityIssued").as("s"))
+      .where("jobId", "=", jobId)
+      .where("companyId", "=", ctx.companyId)
+      .where("methodType", "=", "Pull from Inventory")
+      .executeTakeFirst();
+    const sumIssued = Number(issued?.s ?? 0);
     const outputLot = await resolveJobOutputTrackedEntity(
       ctx.db,
       ctx.companyId,
       jobId,
       fillItemId
     );
-    return { jobId, fillLots: outputLot ? [outputLot] : [] };
+    const jobDone =
+      jobRow.status === "Done" ||
+      jobRow.status === "Closed" ||
+      jobRow.status === "Complete";
+    if (
+      jobDone &&
+      sumIssued + 0.05 >= expectedBulkKg &&
+      outputLot?.status === "Available"
+    ) {
+      return { jobId, fillLots: [outputLot] };
+    }
   }
-  await stampJobBatchLotNumber(ctx, jobId, fillItemId);
+
+  if (!ensured.reused) {
+    await stampJobBatchLotNumber(ctx, jobId, fillItemId);
+  }
   await recalculateJobRequirements(client, ctx.db, {
     id: jobId,
     companyId: ctx.companyId,
@@ -835,7 +864,13 @@ async function runFillJob(
 
   const bulkMaterial = await ctx.db
     .selectFrom("jobMaterial")
-    .select(["id", "itemId", "quantity"])
+    .select([
+      "id",
+      "itemId",
+      "quantity",
+      "estimatedQuantity",
+      "quantityIssued"
+    ])
     .where("jobId", "=", jobId)
     .where("companyId", "=", ctx.companyId)
     .where("methodType", "=", "Pull from Inventory")
@@ -849,7 +884,21 @@ async function runFillJob(
     companyId: ctx.companyId,
     userId: ctx.userId
   });
-  const bulkQty = kgPerUnit * units;
+  const plannedPerUnit = Number(
+    bulkMaterial.estimatedQuantity ?? bulkMaterial.quantity ?? kgPerUnit
+  );
+  if (Math.abs(plannedPerUnit - kgPerUnit) > 0.001) {
+    throw new Error(
+      `Fill job ${jobId}: bulk BOM kg/unit is ${plannedPerUnit} but expected ${kgPerUnit} (pack mL × density / 1000)`
+    );
+  }
+  const alreadyIssued = Number(bulkMaterial.quantityIssued ?? 0);
+  const bulkToIssue = Math.max(0, expectedBulkKg - alreadyIssued);
+  if (bulkToIssue <= 1e-6) {
+    throw new Error(
+      `Fill job ${jobId}: bulk pull already issued (${alreadyIssued} kg) — expected ${expectedBulkKg} kg from ${units}×${kgPerUnit}`
+    );
+  }
   await ensureTrackedLotAvailableForIssue(ctx, bulkLotId);
   const issueResult = await invokePosting(
     handles,
@@ -860,7 +909,7 @@ async function runFillJob(
       jobOperationId: operation.id,
       itemId: bulkMaterial.itemId,
       parentTrackedEntityId: outputEntity.id,
-      children: [{ trackedEntityId: bulkLotId, quantity: bulkQty }]
+      children: [{ trackedEntityId: bulkLotId, quantity: bulkToIssue }]
     },
     issueMaterial
   );
@@ -981,6 +1030,7 @@ export async function runSpikeFlow(
   note: (section: string, message: string) => void,
   options: RunSpikeFlowOptions = {}
 ): Promise<SpikeReportLine[]> {
+  const skipShipment = options.skipTeardown === true;
   const extra: SpikeReportLine[] = [];
   const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
   note("tag", `Run tag ${ctx.prefix} (env prefix ${tag})`);
@@ -1270,7 +1320,8 @@ export async function runSpikeFlow(
 
   const shippedLot = fillResults[0]?.fillLots[0];
   let shipmentId: string | undefined;
-  if (shippedLot) {
+  const shipUnits = input.fills[0]?.units ?? 10;
+  if (shippedLot && !skipShipment) {
     const fillItemId = await ctx.db
       .selectFrom("item")
       .select("id")
@@ -1287,14 +1338,19 @@ export async function runSpikeFlow(
     const ship = await shipFillUnits(
       ctx,
       fillItemId,
-      10,
+      shipUnits,
       { id: lotForShip.id, quantity: Number(lotForShip.quantity) },
       "0"
     );
     shipmentId = ship.shipmentId;
     note(
       "ship",
-      `Posted shipment for 10 units of ${lotForShip.readableId ?? fillItemId} (lot ${lotForShip.id})`
+      `Posted shipment for ${shipUnits} units of ${lotForShip.readableId ?? fillItemId} (lot ${lotForShip.id})`
+    );
+  } else if (shippedLot && skipShipment) {
+    note(
+      "ship",
+      "Skipped shipment (product seed / walkthrough — FG lot stays on hand)"
     );
   }
 

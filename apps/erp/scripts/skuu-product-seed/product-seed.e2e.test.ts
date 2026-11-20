@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { bootstrapSpikeEnv } from "../skuu-spike/env-bootstrap";
 import { buildSpikeContext, loadSpikeInput } from "../skuu-spike/context";
+import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
 import { runSpikeFlow } from "../skuu-spike/flow";
 import { createReporter } from "../skuu-spike/report";
 import { hasLocalDatabase } from "../../test/database/fixtures/local-database";
@@ -37,6 +38,22 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
         ctx = await buildSpikeContext(input, tag);
         note("seed", `Company ${ctx.companyId} prefix ${ctx.prefix}`);
         await runSpikeFlow(ctx, input, note, { skipTeardown: true });
+        const bulkHumanId = `${ctx.prefix}-JOB-BULK`;
+        const bulkJobRow = await ctx.db
+          .selectFrom("job")
+          .select("id")
+          .where("companyId", "=", ctx.companyId)
+          .where("jobId", "=", bulkHumanId)
+          .executeTakeFirst();
+        expect(bulkJobRow, `bulk job ${bulkHumanId}`).toBeDefined();
+        const ticket = await buildBulkBatchTicket(
+          ctx.service.asSystem.supabase,
+          { jobId: bulkJobRow!.id, companyId: ctx.companyId }
+        );
+        expect(ticket, "buildBulkBatchTicket for seeded bulk job").not.toBeNull();
+        expect(ticket!.phases.some((p) => p.instructions.length > 0)).toBe(
+          Boolean(input.phases?.length)
+        );
         writeFileSync(
           reportPath,
           report.map((r) => `${r.section}: ${r.message}`).join("\n") + "\n",

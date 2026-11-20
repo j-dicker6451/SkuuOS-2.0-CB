@@ -9,6 +9,7 @@ import {
   mergeSkuuFormulaPhases
 } from "./skuu-phased-formula";
 import { loadSkuuFormulationView } from "./skuu-formulation.service";
+import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
 
 type Client = SupabaseClient<Database>;
 
@@ -58,32 +59,13 @@ export type SkuuBatchRecordView = {
   }>;
 };
 
-async function resolveJobMakeMethodId(
-  client: Client,
-  jobId: string,
-  companyId: string
-): Promise<string | null> {
-  const { data } = await client
-    .from("jobMakeMethod")
-    .select("makeMethodId")
-    .eq("jobId", jobId)
-    .eq("companyId", companyId)
-    .order("createdAt", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.makeMethodId ?? null;
-}
-
 export async function loadSkuuBatchRecordView(
   client: Client,
   args: { jobId: string; companyId: string }
 ): Promise<SkuuBatchRecordView | null> {
-  const makeMethodId = await resolveJobMakeMethodId(
-    client,
-    args.jobId,
-    args.companyId
-  );
-  if (!makeMethodId) return null;
+  const resolved = await resolveSkuuBulkMakeMethodForJob(client, args);
+  if (!resolved) return null;
+  const { makeMethodId } = resolved;
 
   const { data: job } = await client
     .from("job")
@@ -113,14 +95,20 @@ export async function loadSkuuBatchRecordView(
     .eq("jobId", args.jobId)
     .eq("companyId", args.companyId);
 
-  const formulaByMethodMaterial = new Map(
-    formulation.materials.map((m) => [m.methodMaterialId, m])
-  );
-
   const jobMaterialByMethodMaterial = new Map<string, (typeof jobMaterials)[0]>();
+  const materialByItemId = new Map(
+    formulation.materials.map((m) => [m.itemId, m.methodMaterialId])
+  );
   for (const jm of jobMaterials ?? []) {
     const parentId = jm.jobMakeMethod?.parentMaterialId;
-    if (parentId) jobMaterialByMethodMaterial.set(parentId, jm);
+    if (parentId) {
+      jobMaterialByMethodMaterial.set(parentId, jm);
+      continue;
+    }
+    const mmId = jm.itemId ? materialByItemId.get(jm.itemId) : undefined;
+    if (mmId && !jobMaterialByMethodMaterial.has(mmId)) {
+      jobMaterialByMethodMaterial.set(mmId, jm);
+    }
   }
 
   const { data: dispenseRows } = await client

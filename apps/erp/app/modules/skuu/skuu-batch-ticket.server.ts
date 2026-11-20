@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadSkuuJobMaterialLotsByMethodMaterial } from "./skuu-job-material-lots";
 import { buildSkuuPhasedFormulaBlocks } from "./skuu-phased-formula";
 import { loadSkuuFormulationView } from "./skuu-formulation.service";
+import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
 
 type Client = SupabaseClient<Database>;
 
@@ -49,26 +50,13 @@ export type BulkBatchTicket = {
   percentOk: boolean;
 };
 
-async function resolveJobMakeMethodId(
-  client: Client,
-  jobId: string,
-  companyId: string
-): Promise<string | null> {
-  const { data: jmm } = await client
-    .from("jobMakeMethod")
-    .select("makeMethodId")
-    .eq("jobId", jobId)
-    .eq("companyId", companyId)
-    .order("createdAt", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return jmm?.makeMethodId ?? null;
-}
-
 export async function buildBulkBatchTicket(
   client: Client,
   args: { jobId: string; companyId: string }
 ): Promise<BulkBatchTicket | null> {
+  const resolved = await resolveSkuuBulkMakeMethodForJob(client, args);
+  if (!resolved) return null;
+
   const { data: job, error: jobErr } = await client
     .from("job")
     .select("id, jobId, itemId, quantity")
@@ -77,12 +65,7 @@ export async function buildBulkBatchTicket(
     .single();
   if (jobErr || !job) return null;
 
-  const makeMethodId = await resolveJobMakeMethodId(
-    client,
-    args.jobId,
-    args.companyId
-  );
-  if (!makeMethodId) return null;
+  const { makeMethodId } = resolved;
 
   const { data: item } = await client
     .from("item")
