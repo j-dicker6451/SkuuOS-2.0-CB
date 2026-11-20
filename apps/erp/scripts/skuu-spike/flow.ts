@@ -45,6 +45,12 @@ import {
   stampJobBatchLotNumber
 } from "./spike-tracking";
 import {
+  ensureSpikeFillMethodMaterial,
+  ensureSpikeMethodMaterialId,
+  ensureSpikeMethodOperation,
+  ensureSpikeProcess,
+} from "./spike-shared-lookups";
+import {
   assertSharedRawLotCrossBulkJobs,
   assertSpikeTrace,
   formatTraceReport,
@@ -318,90 +324,89 @@ async function setupBulkItem(
   bulkItemId: string
 ) {
   const methodKey = input.formulaRef.replace(/[^a-zA-Z0-9-_]/g, "-");
-  const processId = `${ctx.prefix}-proc-${methodKey}`;
-  const operationId = `${ctx.prefix}-mop-${methodKey}`;
+  const mixProcessName = `${input.product} mix`;
+  const sharedProcessId = `skuu-process-${methodKey}-mix`;
   const formulaRows: { methodMaterialId: string; percentWw: number }[] = [];
 
-  const makeMethodId = await runTrx(db, async (trx) => {
+  const { makeMethodId, processId } = await runTrx(db, async (trx) => {
     const resolvedMakeMethodId = await resolveSpikeMakeMethodId(
       trx,
       ctx.companyId,
       ctx.userId,
       bulkItemId
     );
-    await trx
-      .insertInto("process")
-      .values({
-        id: processId,
-        name: `${input.product} mix`,
-        defaultStandardFactor: ctx.lookups.standardFactor,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
-    await trx
-      .insertInto("methodOperation")
-      .values({
-        id: operationId,
-        makeMethodId: resolvedMakeMethodId,
-        processId,
-        description: "Blend",
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
+    const processId = await ensureSpikeProcess(
+      trx,
+      ctx,
+      mixProcessName,
+      sharedProcessId
+    );
+    const operationId = await ensureSpikeMethodOperation(
+      trx,
+      ctx,
+      resolvedMakeMethodId,
+      processId,
+      "Blend",
+      `${ctx.prefix}-mop-${methodKey}`
+    );
 
     for (let i = 0; i < input.ingredients.length; i++) {
       const ing = input.ingredients[i]!;
-      const methodMaterialId = `${ctx.prefix}-mmat-${methodKey}-${i}`;
-      await trx
-        .insertInto("methodMaterial")
-        .values({
-          id: methodMaterialId,
-          makeMethodId: resolvedMakeMethodId,
-          methodOperationId: operationId,
-          itemId: ingredientItemIds[i]!,
-          itemType: "Material",
-          methodType: "Pull from Inventory",
-          quantity: 0,
-          unitOfMeasureCode: ctx.lookups.unitKg,
-          companyId: ctx.companyId,
-          createdBy: ctx.userId
-        })
-        .onConflict((oc) => oc.column("id").doNothing())
-        .execute();
+      const methodMaterialId = await ensureSpikeMethodMaterialId(
+        trx,
+        ctx,
+        resolvedMakeMethodId,
+        operationId,
+        ingredientItemIds[i]!,
+        `${ctx.prefix}-mmat-${methodKey}-${i}`
+      );
       await trx
         .insertInto("skuuMethodMaterialFormula")
         .values({
           methodMaterialId,
           companyId: ctx.companyId,
           percentWw: ing.percentage,
-          phaseNumber: 1,
+          phaseNumber: ing.phaseNumber ?? 1,
           createdBy: ctx.userId,
           updatedBy: ctx.userId
         })
-        .onConflict((oc) => oc.column("methodMaterialId").doNothing())
+        .onConflict((oc) =>
+          oc.column("methodMaterialId").doUpdateSet({
+            percentWw: ing.percentage,
+            phaseNumber: ing.phaseNumber ?? 1,
+            updatedBy: ctx.userId,
+            updatedAt: new Date().toISOString()
+          })
+        )
         .execute();
       formulaRows.push({ methodMaterialId, percentWw: ing.percentage });
     }
 
-    await trx
-      .insertInto("skuuFormulaPhase")
-      .values({
-        makeMethodId: resolvedMakeMethodId,
-        phaseNumber: 1,
-        companyId: ctx.companyId,
-        instructions: "Spike demo phase — precautions N/A.",
-        createdBy: ctx.userId,
-        updatedBy: ctx.userId
-      })
-      .onConflict((oc) =>
-        oc.columns(["makeMethodId", "phaseNumber"]).doNothing()
-      )
-      .execute();
-    return resolvedMakeMethodId;
+    const phaseRows =
+      input.phases && input.phases.length > 0
+        ? input.phases
+        : [{ phaseNumber: 1, instructions: "Spike demo phase — precautions N/A." }];
+    for (const phase of phaseRows) {
+      await trx
+        .insertInto("skuuFormulaPhase")
+        .values({
+          makeMethodId: resolvedMakeMethodId,
+          phaseNumber: phase.phaseNumber,
+          companyId: ctx.companyId,
+          instructions: phase.instructions ?? "",
+          createdBy: ctx.userId,
+          updatedBy: ctx.userId
+        })
+        .onConflict((oc) =>
+          oc.columns(["makeMethodId", "phaseNumber"]).doUpdateSet({
+            instructions: phase.instructions ?? "",
+            updatedBy: ctx.userId,
+            updatedAt: new Date().toISOString()
+          })
+        )
+        .execute();
+    }
+    return { makeMethodId: resolvedMakeMethodId, processId };
   });
 
   await syncSkuuBulkToPostgrest(ctx, makeMethodId, input, formulaRows);
@@ -619,47 +624,30 @@ async function setupFillItem(
       ctx.userId,
       fillItemId
     );
-    const processId = `${ctx.prefix}-fproc-${key}`;
-    const opId = `${ctx.prefix}-fop-${key}`;
-    await trx
-      .insertInto("process")
-      .values({
-        id: processId,
-        name: `Fill ${packSizeMl}mL`,
-        defaultStandardFactor: ctx.lookups.standardFactor,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
-    await trx
-      .insertInto("methodOperation")
-      .values({
-        id: opId,
-        makeMethodId,
-        processId,
-        description: "Fill",
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
-    await trx
-      .insertInto("methodMaterial")
-      .values({
-        id: `${ctx.prefix}-fmat-${key}`,
-        makeMethodId,
-        methodOperationId: opId,
-        itemId: bulkItemId,
-        itemType: "Part",
-        methodType: "Pull from Inventory",
-        quantity: kgPerUnit,
-        unitOfMeasureCode: ctx.lookups.unitKg,
-        companyId: ctx.companyId,
-        createdBy: ctx.userId
-      })
-      .onConflict((oc) => oc.column("id").doNothing())
-      .execute();
+    const fillName = `Fill ${packSizeMl}mL`;
+    const processId = await ensureSpikeProcess(
+      trx,
+      ctx,
+      fillName,
+      `skuu-process-fill-${key}-${packSizeMl}ml`
+    );
+    const opId = await ensureSpikeMethodOperation(
+      trx,
+      ctx,
+      makeMethodId,
+      processId,
+      "Fill",
+      `${ctx.prefix}-fop-${key}`
+    );
+    await ensureSpikeFillMethodMaterial(
+      trx,
+      ctx,
+      makeMethodId,
+      opId,
+      bulkItemId,
+      kgPerUnit,
+      `${ctx.prefix}-fmat-${key}`
+    );
   });
   return { fillItemId, kgPerUnit };
 }
@@ -845,10 +833,16 @@ async function shipFillUnits(
   return { salesOrderId, shipmentId: shipment.id };
 }
 
+export type RunSpikeFlowOptions = {
+  /** When true, do not run tagged teardown — rows stay in ERP (product seed / UI walkthrough). */
+  skipTeardown?: boolean;
+};
+
 export async function runSpikeFlow(
   ctx: SpikeContext,
   input: SpikeInput,
-  note: (section: string, message: string) => void
+  note: (section: string, message: string) => void,
+  options: RunSpikeFlowOptions = {}
 ): Promise<SpikeReportLine[]> {
   const extra: SpikeReportLine[] = [];
   const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
@@ -858,8 +852,12 @@ export async function runSpikeFlow(
     `UoM mass=${ctx.lookups.unitKg} count=${ctx.lookups.unitEa} currency=${ctx.lookups.currencyCode}`
   );
 
-  await teardownTagged(ctx.db, ctx.companyId, ctx.prefix);
-  note("reset", `Cleared prior tagged rows for ${ctx.prefix}`);
+  if (options.skipTeardown) {
+    note("reset", "Teardown skipped — seeded product left in ERP");
+  } else {
+    await teardownTagged(ctx.db, ctx.companyId, ctx.prefix);
+    note("reset", `Cleared prior tagged rows for ${ctx.prefix}`);
+  }
 
   const percentCheck = validatePercentSum(
     input.ingredients.map((i, idx) => ({

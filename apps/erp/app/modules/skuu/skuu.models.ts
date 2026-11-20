@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { zfd } from "zod-form-data";
 import { z } from "zod";
+import { zfd } from "zod-form-data";
 
 export const skuuBulkProfileValidator = z.object({
   makeMethodId: z.string().min(1),

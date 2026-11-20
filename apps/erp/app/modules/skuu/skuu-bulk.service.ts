@@ -190,6 +190,8 @@ export async function upsertSkuuMaterialPercent(
     companyId: string;
     userId: string;
     percentWw: number | null;
+    phaseNumber?: number | null;
+    lineKind?: "ingredient" | "bulk_lot_rework";
   }
 ) {
   const now = new Date().toISOString();
@@ -219,6 +221,8 @@ export async function upsertSkuuMaterialPercent(
       methodMaterialId: args.methodMaterialId,
       companyId: args.companyId,
       percentWw: args.percentWw,
+      phaseNumber: args.phaseNumber ?? 1,
+      lineKind: args.lineKind ?? "ingredient",
       createdBy: args.userId,
       updatedBy: args.userId,
       updatedAt: now

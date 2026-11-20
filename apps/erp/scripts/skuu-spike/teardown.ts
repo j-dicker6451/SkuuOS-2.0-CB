@@ -408,19 +408,6 @@ async function collectTrackedEntityIds(
   return [...ids];
 }
 
-function spikeEnvTag(): string {
-  return process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
-}
-
-/** `{SKUU_SPIKE_PREFIX}-{formulaRef}` run tag → formula ref segment for BULK-/FG- SKUs. */
-function formulaRefFromRunPrefix(prefix: string): string | null {
-  const tag = spikeEnvTag();
-  const head = `${tag}-`;
-  if (!prefix.startsWith(head)) return null;
-  const ref = prefix.slice(head.length);
-  return ref.length > 0 ? ref : null;
-}
-
 type SpikeItemRow = {
   id: string;
   readableId: string | null;
@@ -433,22 +420,14 @@ async function querySpikeOwnedItems(
   prefix: string
 ): Promise<SpikeItemRow[]> {
   const likePrefix = `${prefix}%`;
-  const formulaRef = formulaRefFromRunPrefix(prefix);
+  // BULK-/FG- SKUs are shared by formula ref across prefixes (spike vs product-seed).
   return trx
     .selectFrom("item")
     .select(["id", "readableId", "type"])
     .where("companyId", "=", companyId)
-    .where((eb) => {
-      const parts = [
-        eb("readableId", "like", likePrefix),
-        eb("id", "like", likePrefix)
-      ];
-      if (formulaRef) {
-        parts.push(eb("readableId", "=", `BULK-${formulaRef}`));
-        parts.push(eb("readableId", "like", `FG-${formulaRef}-%`));
-      }
-      return eb.or(parts);
-    })
+    .where((eb) =>
+      eb.or([eb("readableId", "like", likePrefix), eb("id", "like", likePrefix)])
+    )
     .execute();
 }
 
@@ -784,11 +763,28 @@ export async function teardownTagged(
     });
 
     await teardownStep(trx, "delete-processes", async () => {
-      await trx
-        .deleteFrom("process")
+      const candidates = await trx
+        .selectFrom("process")
+        .select("id")
         .where("companyId", "=", companyId)
         .where("id", "like", likePrefix)
         .execute();
+      for (const { id: processId } of candidates) {
+        const stillUsed = await trx
+          .selectFrom("methodOperation")
+          .select("id")
+          .where("companyId", "=", companyId)
+          .where("processId", "=", processId)
+          .limit(1)
+          .executeTakeFirst();
+        if (!stillUsed) {
+          await trx
+            .deleteFrom("process")
+            .where("companyId", "=", companyId)
+            .where("id", "=", processId)
+            .execute();
+        }
+      }
     });
 
     await teardownStep(trx, "delete-items", async () => {

@@ -4,6 +4,7 @@ import { defineServiceFn } from "@carbon/api/service-fn.server";
 import { z } from "zod";
 import {
   skuuBulkProfileValidator,
+  skuuFormulaPhaseValidator,
   skuuMaterialPercentValidator
 } from "./skuu.models";
 import {
@@ -13,6 +14,10 @@ import {
   upsertSkuuBulkProfile,
   upsertSkuuMaterialPercent
 } from "./skuu-bulk.service";
+import {
+  loadSkuuFormulationView,
+  upsertSkuuFormulaPhase
+} from "./skuu-formulation.service";
 
 export const saveSkuuBulkProfile = defineServiceFn({
   input: skuuBulkProfileValidator,
@@ -60,7 +65,9 @@ export const saveSkuuMaterialPercent = defineServiceFn({
       methodMaterialId: input.methodMaterialId,
       companyId: ctx.company.id,
       userId: ctx.auditUserId,
-      percentWw: input.percentWw
+      percentWw: input.percentWw,
+      phaseNumber: input.phaseNumber,
+      lineKind: input.lineKind
     });
     if (result.error) return { data: null, error: result.error };
     const { data: material } = await ctx.asCaller.supabase
@@ -86,6 +93,36 @@ export const saveSkuuMaterialPercent = defineServiceFn({
       }
     }
     return { data: result.data, error: null };
+  }
+});
+
+export const saveSkuuFormulaPhase = defineServiceFn({
+  input: skuuFormulaPhaseValidator,
+  permission: { update: "parts" },
+  async run(ctx, input) {
+    const result = await upsertSkuuFormulaPhase(ctx.asCaller.supabase, {
+      makeMethodId: input.makeMethodId,
+      companyId: ctx.company.id,
+      userId: ctx.auditUserId,
+      phaseNumber: input.phaseNumber,
+      instructions: input.instructions,
+      methodOperationId: input.methodOperationId ?? null
+    });
+    if (result.error) return { data: null, error: result.error };
+    return { data: true, error: null };
+  }
+});
+
+export const getSkuuFormulation = defineServiceFn({
+  input: z.object({ makeMethodId: z.string() }),
+  permission: { read: "parts" },
+  async run(ctx, input) {
+    const view = await loadSkuuFormulationView(
+      ctx.asCaller.supabase,
+      input.makeMethodId,
+      ctx.company.id
+    );
+    return { data: view, error: null };
   }
 });
 

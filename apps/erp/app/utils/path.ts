@@ -2158,6 +2158,10 @@ export const path = {
     part: (id: string) => generatePath(`${x}/part/${id}`),
     partCosting: (id: string) => generatePath(`${x}/part/${id}/costing`),
     partDetails: (id: string) => generatePath(`${x}/part/${id}/details`),
+    partFormulation: (id: string) =>
+      generatePath(`${x}/part/${id}/formulation`),
+    partProductBuild: (id: string) =>
+      generatePath(`${x}/part/${id}/product-build`),
     partInventory: (id: string) => generatePath(`${x}/part/${id}/inventory`),
     partInventoryLocation: (id: string, locationId: string) =>
       generatePath(`${x}/part/${id}/inventory?location=${locationId}`),
@@ -2793,6 +2797,10 @@ export const path = {
     shippingMethods: `${x}/inventory/shipping-methods`,
     skuuBulkFormula: `${x}/part/skuu-bulk/formula`,
     skuuBulkFormulaMaterial: `${x}/part/skuu-bulk/formula-material`,
+    skuuFormulaPhase: `${x}/part/skuu-bulk/phase`,
+    skuuNewProduct: `${x}/skuu/new-product`,
+    jobBulkBatchTicket: (jobId: string) =>
+      generatePath(`${x}/job/${jobId}/bulk-batch-ticket`),
     splitIssueItem: `${x}/issue/item/split`,
     sso: `${x}/settings/sso`,
     stockMovementCorrect: (id: string) =>
