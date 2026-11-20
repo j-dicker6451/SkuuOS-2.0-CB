@@ -38,13 +38,17 @@ export async function loadSkuuFillBulkPullOverlay(
   if (!pull?.itemId) return null;
 
   const units = Number(job.quantity);
-  const kgPerUnit = Number(pull.estimatedQuantity ?? pull.quantity ?? 0);
-  if (!(kgPerUnit > 0) || !(units > 0)) return null;
+  const lineKg = Number(pull.estimatedQuantity ?? pull.quantity ?? 0);
+  if (!(lineKg > 0) || !(units > 0)) return null;
+
+  // Exploded fill BOM stores total bulk kg on the line, not per finished unit.
+  const kgPerUnit = Math.round((lineKg / units) * 1000) / 1000;
+  const totalKg = Math.round(lineKg * 1000) / 1000;
 
   return {
     bulkItemId: pull.itemId,
     packSizeMl,
     kgPerUnit,
-    totalKg: Math.round(kgPerUnit * units * 1000) / 1000
+    totalKg
   };
 }

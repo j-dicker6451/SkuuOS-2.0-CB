@@ -132,6 +132,16 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
         expect(ticket!.phases.some((p) => p.instructions.length > 0)).toBe(
           Boolean(input.phases?.length)
         );
+        const issuedLines = ticket!.phases
+          .flatMap((p) => p.lines)
+          .filter((l) => l.batchLots.length > 0);
+        expect(
+          issuedLines.length,
+          "MES-issued raw lots should appear on the batch ticket"
+        ).toBeGreaterThan(0);
+        expect(
+          issuedLines.some((l) => l.batchLots[0]?.supplierBatchNumber)
+        ).toBe(true);
         writeFileSync(
           reportPath,
           report.map((r) => `${r.section}: ${r.message}`).join("\n") + "\n",

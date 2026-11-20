@@ -10,12 +10,12 @@ describe("formatSkuuFillBulkPullBadge", () => {
   it("formats pack size, per-unit kg, and total bulk pull", () => {
     const overlay: SkuuFillBulkPullOverlay = {
       bulkItemId: "bulk-1",
-      packSizeMl: 250,
-      kgPerUnit: 0.2496,
+      packSizeMl: 15,
+      kgPerUnit: 0.016,
       totalKg: 249.6
     };
     expect(formatSkuuFillBulkPullBadge(overlay)).toBe(
-      "250 mL (0.250 kg) per unit · total 249.600 kg"
+      "15 mL (0.016 kg) per unit · total 249.600 kg"
     );
   });
 });

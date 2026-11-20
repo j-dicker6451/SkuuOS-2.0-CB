@@ -38,7 +38,7 @@ import {
 } from "~/modules/shared/shared.service";
 import { detailBreadcrumb, type Handle } from "~/utils/handle";
 import { recordMeta } from "~/utils/meta";
-import { loadSkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
+import { loadSkuuJobBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import { resolveSkuuBulkMakeMethodForJob } from "~/modules/skuu/skuu-job-bulk.server";
 import { loadSkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display.server";
 import { loadSkuuJobQuantitySummary } from "~/modules/skuu/skuu-job-quantity.server";
@@ -163,11 +163,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     companyId
   });
   const skuuBomQuantity = skuuBulkResolved
-    ? await loadSkuuBomExplorerQuantityOverlay(
-        client,
-        skuuBulkResolved.makeMethodId,
-        companyId
-      )
+    ? await loadSkuuJobBomExplorerQuantityOverlay(client, jobId, companyId)
     : null;
 
   const skuuFillBulkPull =
@@ -264,7 +260,7 @@ function JobBoMExplorerWrapper({
   method: JobMethodTreeItem[] | null;
   orderStatus: Promise<JobOrderStatusData>;
   skuuBomQuantity: Awaited<
-    ReturnType<typeof loadSkuuBomExplorerQuantityOverlay>
+    ReturnType<typeof loadSkuuJobBomExplorerQuantityOverlay>
   >;
   skuuFillBulkPull: Awaited<ReturnType<typeof loadSkuuFillBulkPullOverlay>>;
 }) {

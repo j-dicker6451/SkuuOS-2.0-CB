@@ -73,14 +73,12 @@ function resolvePayload(table: string, fixture: typeof consumeFixture) {
           {
             id: "jm_water_phase1",
             itemId: "item_water",
-            order: 1,
-            jobMakeMethod: { parentMaterialId: "mm_water_p1" }
+            order: 1
           },
           {
             id: "jm_water_phase6",
             itemId: "item_water",
-            order: 6,
-            jobMakeMethod: { parentMaterialId: "mm_water_p6" }
+            order: 6
           }
         ],
         error: null

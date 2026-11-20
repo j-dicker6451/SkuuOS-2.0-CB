@@ -10,6 +10,7 @@ import {
 } from "./skuu-phased-formula";
 import { loadSkuuFormulationView } from "./skuu-formulation.service";
 import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
+import { mapFormulaLinesToJobMaterials } from "./skuu-job-formula-job-material";
 import {
   loadSkuuJobMaterialLots,
   loadSkuuJobMaterialLotsFromConsumption,
@@ -97,26 +98,26 @@ export async function loadSkuuBatchRecordView(
 
   const { data: jobMaterials } = await client
     .from("jobMaterial")
-    .select(
-      "id, itemId, estimatedQuantity, order, jobMakeMethod(parentMaterialId)"
-    )
+    .select("id, itemId, estimatedQuantity, order")
     .eq("jobId", args.jobId)
     .eq("companyId", args.companyId);
 
-  const jobMaterialByMethodMaterial = new Map<string, (typeof jobMaterials)[0]>();
-  const materialByItemId = new Map(
-    formulation.materials.map((m) => [m.itemId, m.methodMaterialId])
+  const mmToJm = mapFormulaLinesToJobMaterials(
+    formulation.materials.map((m) => ({
+      methodMaterialId: m.methodMaterialId,
+      itemId: m.itemId,
+      order: m.order
+    })),
+    jobMaterials ?? []
   );
-  for (const jm of jobMaterials ?? []) {
-    const parentId = jm.jobMakeMethod?.parentMaterialId;
-    if (parentId) {
-      jobMaterialByMethodMaterial.set(parentId, jm);
-      continue;
-    }
-    const mmId = jm.itemId ? materialByItemId.get(jm.itemId) : undefined;
-    if (mmId && !jobMaterialByMethodMaterial.has(mmId)) {
-      jobMaterialByMethodMaterial.set(mmId, jm);
-    }
+  const jmById = new Map((jobMaterials ?? []).map((jm) => [jm.id, jm]));
+  const jobMaterialByMethodMaterial = new Map<
+    string,
+    NonNullable<typeof jobMaterials>[number]
+  >();
+  for (const [mmId, jmId] of mmToJm) {
+    const jm = jmById.get(jmId);
+    if (jm) jobMaterialByMethodMaterial.set(mmId, jm);
   }
 
   const { data: dispenseRows } = await client

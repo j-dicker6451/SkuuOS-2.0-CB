@@ -3,6 +3,10 @@
 import type { Database } from "@carbon/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
+import {
+  mapFormulaLinesToJobMaterials,
+  type SkuuFormulaLineRef
+} from "./skuu-job-formula-job-material";
 
 type Client = SupabaseClient<Database>;
 
@@ -263,11 +267,7 @@ export async function loadSkuuJobMaterialLotsMerged(
   );
 }
 
-type FormulaMaterialLineRef = {
-  methodMaterialId: string;
-  itemId: string | null;
-  order: number;
-};
+type FormulaMaterialLineRef = SkuuFormulaLineRef;
 
 export async function mapSkuuLotsToFormulaMethodMaterials(
   client: Client,
@@ -277,7 +277,7 @@ export async function mapSkuuLotsToFormulaMethodMaterials(
 ): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
   const { data: jm } = await client
     .from("jobMaterial")
-    .select("id, itemId, order, jobMakeMethod(parentMaterialId)")
+    .select("id, itemId, order")
     .eq("jobId", jobId)
     .eq("companyId", companyId);
   if (!jm?.length) return new Map();
@@ -289,36 +289,11 @@ export async function mapSkuuLotsToFormulaMethodMaterials(
     jm.map((r) => r.id)
   );
 
+  const mmToJm = mapFormulaLinesToJobMaterials(formulaLines, jm);
   const out = new Map<string, SkuuJobMaterialLotRef[]>();
-  const usedJm = new Set<string>();
-
-  for (const line of formulaLines) {
-    let match =
-      jm.find(
-        (r) =>
-          !usedJm.has(r.id) &&
-          r.jobMakeMethod?.parentMaterialId === line.methodMaterialId
-      ) ??
-      jm.find(
-        (r) =>
-          !usedJm.has(r.id) &&
-          line.itemId != null &&
-          r.itemId === line.itemId &&
-          Number(r.order) === line.order
-      ) ??
-      jm.find(
-        (r) =>
-          !usedJm.has(r.id) &&
-          line.itemId != null &&
-          r.itemId === line.itemId &&
-          formulaLines.filter((l) => l.itemId === line.itemId).length === 1
-      );
-
-    if (!match) continue;
-    const lots = byJm.get(match.id);
-    if (!lots?.length) continue;
-    usedJm.add(match.id);
-    out.set(line.methodMaterialId, lots);
+  for (const [methodMaterialId, jobMaterialId] of mmToJm) {
+    const lots = byJm.get(jobMaterialId);
+    if (lots?.length) out.set(methodMaterialId, lots);
   }
   return out;
 }

@@ -9,6 +9,9 @@ import {
   validatePercentSum
 } from "@skuu/formula";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
+import { mapFormulaLinesToJobMaterials } from "./skuu-job-formula-job-material";
+import { loadSkuuFormulationMaterials } from "./skuu-formulation.service";
 
 export type SkuuBulkProfile = {
   enabled: boolean;
@@ -54,6 +57,57 @@ export type SkuuBomExplorerQuantityOverlay = {
   percentByMaterialId: Record<string, number>;
   percentByItemId: Record<string, number>;
 };
+
+/** Job BoM tree: % w/w keyed by jobMaterial.id (get_job_method), not methodMaterial.id. */
+export async function loadSkuuJobBomExplorerQuantityOverlay(
+  client: SkuuClient,
+  jobId: string,
+  companyId: string
+): Promise<SkuuBomExplorerQuantityOverlay | null> {
+  const resolved = await resolveSkuuBulkMakeMethodForJob(client, {
+    jobId,
+    companyId
+  });
+  if (!resolved) return null;
+
+  const [base, formulation, jobMaterials] = await Promise.all([
+    loadSkuuBomExplorerQuantityOverlay(
+      client,
+      resolved.makeMethodId,
+      companyId
+    ),
+    loadSkuuFormulationMaterials(client, resolved.makeMethodId, companyId),
+    client
+      .from("jobMaterial")
+      .select("id, itemId, order")
+      .eq("jobId", jobId)
+      .eq("companyId", companyId)
+      .then((r) => r.data ?? [])
+  ]);
+
+  if (!base?.enabled) return null;
+
+  const mmToJm = mapFormulaLinesToJobMaterials(
+    formulation.map((m) => ({
+      methodMaterialId: m.methodMaterialId,
+      itemId: m.itemId,
+      order: m.order
+    })),
+    jobMaterials
+  );
+
+  const percentByMaterialId: Record<string, number> = {};
+  for (const [mmId, jmId] of mmToJm) {
+    const pct = base.percentByMaterialId[mmId];
+    if (pct != null) percentByMaterialId[jmId] = pct;
+  }
+
+  return {
+    enabled: true,
+    percentByMaterialId,
+    percentByItemId: {}
+  };
+}
 
 /** Manufacturing tree badges: show % w/w instead of ERP kg multipliers. */
 export async function loadSkuuBomExplorerQuantityOverlay(
