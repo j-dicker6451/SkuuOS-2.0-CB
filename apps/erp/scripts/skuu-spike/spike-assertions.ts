@@ -41,11 +41,17 @@ export async function assertSpikeRawMaterials(
         `Raw ingredient ${row.readableId ?? id}: UoM ${row.unitOfMeasureCode}, expected ${ctx.lookups.unitKg}`
       );
     }
+    if (!row.readableId) {
+      throw new Error(
+        `Raw ingredient item ${id} has no readableId; material.id is the item readableId in Carbon`
+      );
+    }
+    // material.id = item.readableId (not item.id); same join as materials view / items.server.
     const materialRow = await ctx.db
       .selectFrom("material")
       .select("id")
       .where("companyId", "=", ctx.companyId)
-      .where("id", "=", row.id)
+      .where("id", "=", row.readableId)
       .executeTakeFirst();
     if (!materialRow) {
       throw new Error(
