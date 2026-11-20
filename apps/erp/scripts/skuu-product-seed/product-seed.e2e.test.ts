@@ -26,7 +26,9 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
   it(
     "seed product from committed demo-serum fixture and leave rows in ERP",
     async () => {
-      process.env.SKUU_PRODUCT_INPUT = demoFixture;
+      if (!process.env.SKUU_PRODUCT_INPUT) {
+        process.env.SKUU_PRODUCT_INPUT = demoFixture;
+      }
       const input = loadSpikeInput();
       const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-product";
       const { report, note } = createReporter();

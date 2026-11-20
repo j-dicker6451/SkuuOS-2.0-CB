@@ -226,9 +226,27 @@ export function buildTrackedIssueChildren(
   multiLotDemo: boolean
 ): { trackedEntityId: string; quantity: number }[] {
   if (!multiLotDemo || lots.length < 2) {
-    return allocateTrackedIssueDraws(lots.slice(0, 1), toIssue);
+    return allocateTrackedIssueDraws(lots, toIssue);
   }
   return allocateTrackedIssueDraws(lots, toIssue);
+}
+
+/** Input lots still Available (re-read after each jobMaterial issue). */
+export async function listAvailableInputLots(
+  db: Db,
+  companyId: string,
+  itemId: string
+): Promise<SpikeLot[]> {
+  const rows = await db
+    .selectFrom("trackedEntity")
+    .select(["id", "quantity"])
+    .where("companyId", "=", companyId)
+    .where("itemId", "=", itemId)
+    .where("status", "=", "Available")
+    .where("quantity", ">", 0)
+    .orderBy("quantity", "asc")
+    .execute();
+  return rows.map((r) => ({ id: r.id, quantity: Number(r.quantity) }));
 }
 
 /** MES shop floor: trackedEntitiesToOperation (consume) per job material line. */
@@ -264,11 +282,17 @@ export async function issueTrackedMaterialsMes(
     if (!jm.requiresBatchTracking) {
       continue;
     }
-    const lots = lotsByItem.get(jm.itemId) ?? [];
     const toIssue = Number(
       jm.quantityToIssue ?? jm.quantity ?? jm.estimatedQuantity ?? 0
     );
     if (toIssue <= 0) continue;
+
+    const lots = await listAvailableInputLots(ctx.db, ctx.companyId, jm.itemId);
+    if (lots.length === 0) {
+      throw new Error(
+        `No Available input lots for item ${jm.itemId} (job material ${jm.id})`
+      );
+    }
 
     const children = buildTrackedIssueChildren(
       lots,

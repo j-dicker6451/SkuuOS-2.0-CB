@@ -2,7 +2,13 @@
 
 import { grossInputKg } from "./bulk-formula";
 
-/** % w/w — always 4 dp in Skuu UI. */
+/** % w/w — 2 dp on formulation screens and BOM overlays. */
+export function formatPercentWw(percent: number | null | undefined): string {
+  if (percent == null || !Number.isFinite(percent)) return "—";
+  return `${percent.toFixed(2)}%`;
+}
+
+/** % w/w — 4 dp where higher precision is required (e.g. line math checks). */
 export function formatPercentWw4(percent: number | null | undefined): string {
   if (percent == null || !Number.isFinite(percent)) return "—";
   return `${percent.toFixed(4)}%`;

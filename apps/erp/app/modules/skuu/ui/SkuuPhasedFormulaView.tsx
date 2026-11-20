@@ -15,7 +15,7 @@ import {
   VStack
 } from "@carbon/react";
 import { Trans } from "@lingui/react/macro";
-import { formatMassQuantityKg, formatPercentWw4 } from "@skuu/formula";
+import { formatMassQuantityKg, formatPercentWw } from "@skuu/formula";
 import type { SkuuPhasedFormulaBlock } from "../skuu-phased-formula";
 
 type Props = {
@@ -27,9 +27,7 @@ export function SkuuPhasedFormulaView({ title, blocks }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          {title ?? <Trans>Formula by phase</Trans>}
-        </CardTitle>
+        <CardTitle>{title ?? <Trans>Formula by phase</Trans>}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {blocks.map((block) => (
@@ -69,10 +67,8 @@ export function SkuuPhasedFormulaView({ title, blocks }: Props) {
                     <Tr key={line.methodMaterialId}>
                       <Td>{line.itemReadableId}</Td>
                       <Td>{line.itemName}</Td>
-                      <Td>{formatPercentWw4(line.percentWw)}</Td>
-                      <Td>
-                        {formatMassQuantityKg(line.kgPerBatch)}
-                      </Td>
+                      <Td>{formatPercentWw(line.percentWw)}</Td>
+                      <Td>{formatMassQuantityKg(line.kgPerBatch)}</Td>
                     </Tr>
                   ))
                 )}
@@ -85,7 +81,11 @@ export function SkuuPhasedFormulaView({ title, blocks }: Props) {
   );
 }
 
-export function SkuuPhasedFormulaStack({ blocks }: { blocks: SkuuPhasedFormulaBlock[] }) {
+export function SkuuPhasedFormulaStack({
+  blocks
+}: {
+  blocks: SkuuPhasedFormulaBlock[];
+}) {
   return (
     <VStack className="gap-4">
       <SkuuPhasedFormulaView blocks={blocks} />

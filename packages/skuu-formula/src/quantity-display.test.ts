@@ -6,11 +6,17 @@ import {
   formatDispenseAndOrderKg,
   formatLiters,
   formatMassQuantityKg,
+  formatPercentWw,
   formatPercentWw4,
   formatSkuuGrossBatchLabel
 } from "./quantity-display";
 
 describe("quantity-display", () => {
+  it("formats % w/w to 2 dp", () => {
+    expect(formatPercentWw(62.76)).toBe("62.76%");
+    expect(formatPercentWw(0.4)).toBe("0.40%");
+  });
+
   it("formats % w/w to 4 dp", () => {
     expect(formatPercentWw4(62.76)).toBe("62.7600%");
     expect(formatPercentWw4(0.4)).toBe("0.4000%");

@@ -14,6 +14,7 @@ import {
   Tr
 } from "@carbon/react";
 import { Trans } from "@lingui/react/macro";
+import { formatMassQuantityKg } from "@skuu/formula";
 import type { MethodMaterial } from "~/modules/items/types";
 
 type Props = {
@@ -66,7 +67,7 @@ export function SkuuProductBuildPanel({
             <Trans>
               Fill {packSizeMl} mL
               {kgPerUnit != null
-                ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL`
+                ? ` · ${formatMassQuantityKg(kgPerUnit, { forceUnit: "kg" })} bulk per unit @ ${densityGPerMl} g/mL`
                 : ""}
             </Trans>
           ) : (
@@ -98,7 +99,7 @@ export function SkuuProductBuildPanel({
               <Td>{bulkName ?? bulkRow?.name ?? "—"}</Td>
               <Td>
                 {kgPerUnit != null
-                  ? `${kgPerUnit.toFixed(4)} kg`
+                  ? formatMassQuantityKg(kgPerUnit, { forceUnit: "kg" })
                   : (bulkRow?.quantity ?? "—")}
               </Td>
             </Tr>

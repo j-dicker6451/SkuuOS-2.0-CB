@@ -17,7 +17,12 @@ import {
   sumPercentWw,
   validatePercentSum
 } from "@skuu/formula";
-import { Boolean, Hidden, Number, Submit } from "~/components/Form";
+import {
+  Boolean as BooleanField,
+  Hidden,
+  Number as NumberField,
+  Submit
+} from "~/components/Form";
 import { path } from "~/utils/path";
 import {
   skuuBulkProfileValidator,
@@ -90,18 +95,18 @@ export function SkuuBulkFormulaSection({
           <Hidden name="makeMethodId" />
           {!readOnly && (
             <HStack className="gap-4 items-end flex-wrap">
-              <Boolean name="enabled" label={t`Use % w/w formula`} />
-              <Number
+              <BooleanField name="enabled" label={t`Use % w/w formula`} />
+              <NumberField
                 name="batchBasisKg"
                 label={t`Basis (kg)`}
                 minValue={0.001}
               />
-              <Number
+              <NumberField
                 name="productDensityGPerMl"
                 label={t`Density (g/mL)`}
                 minValue={0.0001}
               />
-              <Number
+              <NumberField
                 name="expectedYieldPercent"
                 label={t`Expected yield %`}
                 minValue={0.01}
@@ -137,53 +142,53 @@ export function SkuuBulkFormulaSection({
             </Trans>
           </p>
         ) : (
-        <div className="flex flex-col gap-2">
-          {materialPercents.map((line) => {
-            const preview =
-              line.percentWw != null && enabled
-                ? formatDispensedAmounts(
-                    lineKgFromPercent(line.percentWw, grossBasisKg),
-                    line.percentWw
-                  )
-                : null;
-            return (
-              <ValidatedForm
-                key={line.methodMaterialId}
-                method="post"
-                action={path.to.skuuBulkFormulaMaterial}
-                validator={skuuMaterialPercentValidator}
-                defaultValues={{
-                  methodMaterialId: line.methodMaterialId,
-                  percentWw: line.percentWw ?? undefined
-                }}
-                className="flex flex-row gap-2 items-end"
-              >
-                <Hidden name="methodMaterialId" />
-                <Number
-                  name="percentWw"
-                  label={t`% w/w`}
-                  minValue={0}
-                  maxValue={100}
-                  isDisabled={!enabled || readOnly}
-                />
-                {!readOnly && enabled && (
-                  <Submit>
-                    <Trans>Save</Trans>
-                  </Submit>
-                )}
-                {preview && (
-                  <span className="text-xs text-muted-foreground pb-2">
-                    {preview.percentWw}% net · {preview.kg} kg gross ·{" "}
-                    {preview.g} g
-                    {line.phaseNumber != null
-                      ? ` · Phase ${line.phaseNumber}`
-                      : ""}
-                  </span>
-                )}
-              </ValidatedForm>
-            );
-          })}
-        </div>
+          <div className="flex flex-col gap-2">
+            {materialPercents.map((line) => {
+              const preview =
+                line.percentWw != null && enabled
+                  ? formatDispensedAmounts(
+                      lineKgFromPercent(line.percentWw, grossBasisKg),
+                      line.percentWw
+                    )
+                  : null;
+              return (
+                <ValidatedForm
+                  key={line.methodMaterialId}
+                  method="post"
+                  action={path.to.skuuBulkFormulaMaterial}
+                  validator={skuuMaterialPercentValidator}
+                  defaultValues={{
+                    methodMaterialId: line.methodMaterialId,
+                    percentWw: line.percentWw ?? undefined
+                  }}
+                  className="flex flex-row gap-2 items-end"
+                >
+                  <Hidden name="methodMaterialId" />
+                  <NumberField
+                    name="percentWw"
+                    label={t`% w/w`}
+                    minValue={0}
+                    maxValue={100}
+                    isDisabled={!enabled || readOnly}
+                  />
+                  {!readOnly && enabled && (
+                    <Submit>
+                      <Trans>Save</Trans>
+                    </Submit>
+                  )}
+                  {preview && (
+                    <span className="text-xs text-muted-foreground pb-2">
+                      {preview.percentWw}% net · {preview.kg} kg gross ·{" "}
+                      {preview.g} g
+                      {line.phaseNumber != null
+                        ? ` · Phase ${line.phaseNumber}`
+                        : ""}
+                    </span>
+                  )}
+                </ValidatedForm>
+              );
+            })}
+          </div>
         )}
       </CardContent>
     </Card>

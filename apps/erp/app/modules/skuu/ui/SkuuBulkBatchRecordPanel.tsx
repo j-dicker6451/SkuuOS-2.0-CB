@@ -14,15 +14,21 @@ import {
   VStack
 } from "@carbon/react";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Boolean, Hidden, Submit } from "~/components/Form";
-import { path } from "~/utils/path";
+import { formatMassQuantityKg, formatPercentWw } from "@skuu/formula";
+import {
+  Boolean as BooleanField,
+  Hidden,
+  Input,
+  Submit
+} from "~/components/Form";
 import { formatSkuuMaterialLotCodes } from "~/modules/items/material-line-label";
-import type { SkuuBatchRecordView } from "../skuu-batch-record.service";
+import { path } from "~/utils/path";
 import {
   skuuBatchRecordCompleteValidator,
   skuuDispenseMarkValidator,
   skuuDispenseRowValidator
 } from "../skuu.models";
+import type { SkuuBatchRecordView } from "../skuu-batch-record.service";
 
 type Props = {
   jobId: string;
@@ -62,7 +68,8 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
               <div key={line.jobMaterialId} className="border rounded-md p-3">
                 <p className="font-medium text-sm">
                   {line.itemReadableId} · {line.itemName} ·{" "}
-                  {line.percentWw.toFixed(4)}% · {line.plannedKg.toFixed(4)} kg
+                  {formatPercentWw(line.percentWw)} ·{" "}
+                  {formatMassQuantityKg(line.plannedKg, { forceUnit: "kg" })}{" "}
                   planned
                 </p>
                 {line.dispenses.length > 0 ? (
@@ -77,9 +84,12 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
                   </p>
                 ) : null}
                 {line.dispenses.map((d) => (
-                  <HStack key={d.id} className="gap-2 items-center mt-2 flex-wrap">
+                  <HStack
+                    key={d.id}
+                    className="gap-2 items-center mt-2 flex-wrap"
+                  >
                     <span className="text-xs">
-                      {d.quantityKg.toFixed(4)} kg
+                      {formatMassQuantityKg(d.quantityKg, { forceUnit: "kg" })}
                       {d.supplierBatchNumber
                         ? ` · lot ${d.supplierBatchNumber}`
                         : ""}
@@ -98,7 +108,10 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
                       >
                         <Hidden name="jobId" />
                         <Hidden name="dispenseId" />
-                        <Boolean name="markedAdded" label={t`Added to tank`} />
+                        <BooleanField
+                          name="markedAdded"
+                          label={t`Added to tank`}
+                        />
                         <Submit isSmall>
                           <Trans>Save</Trans>
                         </Submit>
@@ -126,7 +139,11 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
                   >
                     <Hidden name="jobId" />
                     <Hidden name="jobMaterialId" />
-                    <Input name="quantityKg" label={t`Actual kg`} type="number" />
+                    <Input
+                      name="quantityKg"
+                      label={t`Actual kg`}
+                      type="number"
+                    />
                     <Input
                       name="supplierBatchNumber"
                       label={t`Supplier batch / lot`}

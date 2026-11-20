@@ -10,20 +10,22 @@ import {
   Table,
   Tbody,
   Td,
+  Textarea,
   Th,
   Thead,
   Tr,
-  Textarea,
   VStack
 } from "@carbon/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
+  formatMassQuantityKg,
+  formatPercentWw,
   grossInputKg,
   lineKgFromPercent,
   sumPercentWw,
   validatePercentSum
 } from "@skuu/formula";
-import { Hidden, Number, Submit } from "~/components/Form";
+import { Hidden, Number as NumberField, Submit } from "~/components/Form";
 import { path } from "~/utils/path";
 import {
   skuuFormulaPhaseValidator,
@@ -116,8 +118,12 @@ export function SkuuFormulationMethodPanel({
         <CardContent className="flex flex-col gap-6">
           <p className="text-sm text-muted-foreground">
             <Trans>
-              Standard batch {batchBasisKg} kg · gross {grossBasis.toFixed(4)}{" "}
-              kg at {yieldPct}% yield
+              Standard batch{" "}
+              {formatMassQuantityKg(batchBasisKg, {
+                forceUnit: "kg"
+              })}{" "}
+              · gross {formatMassQuantityKg(grossBasis, { forceUnit: "kg" })} at{" "}
+              {formatPercentWw(yieldPct)} yield
               {density != null ? ` · density ${density} g/mL` : ""}. Formula
               total {total.toFixed(2)}% {check.ok ? "(OK)" : "— needs 100%"}.
             </Trans>
@@ -197,15 +203,18 @@ export function SkuuFormulationMethodPanel({
                         <Td>{m.itemName}</Td>
                         <Td>
                           {m.percentWw != null
-                            ? `${Number(m.percentWw).toFixed(4)}`
+                            ? formatPercentWw(Number(m.percentWw))
                             : "—"}
                         </Td>
                         <Td>
                           {m.percentWw != null
-                            ? lineKgFromPercent(
-                                Number(m.percentWw),
-                                grossBasis
-                              ).toFixed(4)
+                            ? formatMassQuantityKg(
+                                lineKgFromPercent(
+                                  Number(m.percentWw),
+                                  grossBasis
+                                ),
+                                { forceUnit: "kg" }
+                              )
                             : "—"}
                         </Td>
                         {!readOnly && (
@@ -222,7 +231,7 @@ export function SkuuFormulationMethodPanel({
                               className="flex gap-2 items-end"
                             >
                               <Hidden name="methodMaterialId" />
-                              <Number
+                              <NumberField
                                 name="percentWw"
                                 label={t`% w/w`}
                                 minValue={0}

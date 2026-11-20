@@ -32,6 +32,7 @@ import {
   assertJobConsumptionTrace,
   assertJobMaterialsGross,
   issueTrackedMaterialsMes,
+  listAvailableInputLots,
   reportBatchOperationCompleteMes,
   resolveJobOutputTrackedEntity,
   syncSkuuBulkToPostgrest
@@ -621,7 +622,11 @@ async function createAndRunBulkJob(
     .execute();
 
   for (const jobMat0 of jobMatsForDispense) {
-    const lots = lotsByItem.get(jobMat0.itemId) ?? [];
+    const lots = await listAvailableInputLots(
+      ctx.db,
+      ctx.companyId,
+      jobMat0.itemId
+    );
     if (!lots.length) continue;
     const existing = await ctx.db
       .selectFrom("skuuJobMaterialDispense")
