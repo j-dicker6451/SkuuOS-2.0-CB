@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { grossInputKg } from "./bulk-formula";
+
 /** % w/w — always 4 dp in Skuu UI. */
 export function formatPercentWw4(percent: number | null | undefined): string {
   if (percent == null || !Number.isFinite(percent)) return "—";
@@ -48,4 +50,25 @@ export function formatDispenseAndOrderKg(
   const ord = formatMassQuantityKg(order, { forceUnit: "kg" });
   if (order <= dispenseKg + 1e-6) return disp;
   return `Dispense ${disp}, order ${ord}`;
+}
+
+/** Gross manufacture batch for tickets / job header (kg + optional L). */
+export function formatSkuuGrossBatchLabel(args: {
+  targetFinishedKg: number;
+  expectedYieldPercent: number;
+  productDensityGPerMl: number | null;
+}): string {
+  const grossKg = grossInputKg(
+    args.targetFinishedKg,
+    args.expectedYieldPercent
+  );
+  const kgLabel = formatMassQuantityKg(grossKg, { forceUnit: "kg" });
+  if (
+    args.productDensityGPerMl == null ||
+    !(args.productDensityGPerMl > 0)
+  ) {
+    return kgLabel;
+  }
+  const grossL = grossKg / args.productDensityGPerMl;
+  return `${kgLabel} (${formatLiters(grossL, 1)})`;
 }

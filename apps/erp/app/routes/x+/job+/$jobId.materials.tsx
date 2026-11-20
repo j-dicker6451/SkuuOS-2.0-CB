@@ -22,6 +22,7 @@ import { JobMaterialsTable } from "~/modules/production/ui/Jobs";
 import { getCompanySettings } from "~/modules/settings/settings.service";
 import { getLocationTimeZone } from "~/modules/shared/shared.service";
 import { loadSkuuJobMaterialLots } from "~/modules/skuu/skuu-job-material-lots";
+import { loadSkuuJobQuantitySummary } from "~/modules/skuu/skuu-job-quantity.server";
 import { path } from "~/utils/path";
 import { getGenericQueryFilters } from "~/utils/query";
 
@@ -172,6 +173,28 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     ).entries()
   );
 
+  const skuuJobQuantitySummary = await loadSkuuJobQuantitySummary(client, {
+    jobId,
+    companyId
+  });
+  const skuuBulkJob = skuuJobQuantitySummary != null;
+
+  const packKgByItemId: Record<string, number> = {};
+  if (skuuBulkJob && materialItemIds.length > 0 && locationId) {
+    const { data: planningRows } = await client
+      .from("itemPlanning")
+      .select("itemId, minimumOrderQuantity, orderMultiple")
+      .eq("companyId", companyId)
+      .eq("locationId", locationId)
+      .in("itemId", materialItemIds);
+    for (const row of planningRows ?? []) {
+      const multiple = Number(row.orderMultiple ?? 0);
+      const moq = Number(row.minimumOrderQuantity ?? 0);
+      const pack = multiple > 0 ? multiple : moq > 0 ? moq : 0;
+      if (pack > 0) packKgByItemId[row.itemId] = pack;
+    }
+  }
+
   return {
     count: materials.count ?? 0,
     jobItemIds,
@@ -183,7 +206,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     orderStatusByMaterialId,
     picksByMaterialId: picks.data,
     consumeFirstByItemId,
-    skuuLotsByJobMaterialId
+    skuuLotsByJobMaterialId,
+    skuuBulkJob,
+    packKgByItemId
   };
 }
 
@@ -236,7 +261,9 @@ export default function JobMaterialsRoute() {
     orderStatusByMaterialId,
     picksByMaterialId,
     consumeFirstByItemId,
-    skuuLotsByJobMaterialId
+    skuuLotsByJobMaterialId,
+    skuuBulkJob,
+    packKgByItemId
   } = useLoaderData<typeof loader>();
   const { setIsExplorerCollapsed } = usePanels();
 
@@ -258,6 +285,8 @@ export default function JobMaterialsRoute() {
         picksByMaterialId={picksByMaterialId}
         consumeFirstByItemId={consumeFirstByItemId}
         skuuLotsByJobMaterialId={skuuLotsByJobMaterialId}
+        skuuBulkJob={skuuBulkJob}
+        packKgByItemId={packKgByItemId}
       />
     </VStack>
   );

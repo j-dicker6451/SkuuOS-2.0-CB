@@ -57,6 +57,10 @@ import {
   getJobOrderStatusCategory
 } from "../../production.models";
 import type { ItemOrderStatus, Job, JobMaterial } from "../../types";
+import {
+  formatDispenseAndOrderKg,
+  formatMassQuantityKg
+} from "@skuu/formula";
 import { JobOrderStatusBadge } from "./JobOrderStatus";
 
 type JobMaterialsTableProps = {
@@ -82,6 +86,8 @@ type JobMaterialsTableProps = {
       quantityKg: number;
     }>
   >;
+  skuuBulkJob?: boolean;
+  packKgByItemId?: Record<string, number>;
 };
 function HeaderTooltip({ label, hint }: { label: ReactNode; hint: ReactNode }) {
   return (
@@ -118,7 +124,9 @@ const JobMaterialsTable = memo(
     orderStatusByMaterialId,
     picksByMaterialId = {},
     consumeFirstByItemId = {},
-    skuuLotsByJobMaterialId = {}
+    skuuLotsByJobMaterialId = {},
+    skuuBulkJob = false,
+    packKgByItemId = {}
   }: JobMaterialsTableProps) => {
     const { jobId } = useParams();
     const { t } = useLingui();
@@ -316,15 +324,31 @@ const JobMaterialsTable = memo(
               }
             />
           ),
-          cell: ({ row }) => (
-            <JobOrderStatusBadge
-              status={
-                row.original.id
-                  ? orderStatusByMaterialId[row.original.id]
-                  : undefined
-              }
-            />
-          ),
+          cell: ({ row }) => {
+            const status =
+              row.original.id
+                ? orderStatusByMaterialId[row.original.id]
+                : undefined;
+            const category = getJobOrderStatusCategory(status);
+            const shortfall = Number(status?.shortfall ?? 0);
+            const showOrderHint =
+              skuuBulkJob &&
+              row.original.itemType === "Material" &&
+              category === "needsOrder" &&
+              shortfall > 0;
+            const packKg =
+              packKgByItemId[row.original.jobMaterialItemId ?? ""];
+            return (
+              <VStack spacing={0}>
+                <JobOrderStatusBadge status={status} />
+                {showOrderHint ? (
+                  <span className="text-xs text-muted-foreground max-w-[200px]">
+                    {formatDispenseAndOrderKg(shortfall, packKg)}
+                  </span>
+                ) : null}
+              </VStack>
+            );
+          },
           meta: {
             mobile: "P2",
             icon: <LuShoppingCart />,
@@ -430,7 +454,17 @@ const JobMaterialsTable = memo(
               }
             />
           ),
-          cell: ({ row }) => formatter.format(row.original.estimatedQuantity),
+          cell: ({ row }) => {
+            const est = Number(row.original.estimatedQuantity ?? 0);
+            const uom = row.original.unitOfMeasureCode ?? "";
+            if (skuuBulkJob && row.original.itemType === "Material") {
+              return formatMassQuantityKg(est);
+            }
+            if (uom) {
+              return `${formatter.format(est)} ${uom}`;
+            }
+            return formatter.format(est);
+          },
           meta: {
             mobile: "P2",
             icon: <LuHash />
@@ -714,7 +748,10 @@ const JobMaterialsTable = memo(
       orderStatusByMaterialId,
       picksByMaterialId,
       consumeFirstByItemId,
-      nonNettable
+      nonNettable,
+      skuuBulkJob,
+      packKgByItemId,
+      nearExpiryWarningDays
     ]);
 
     const renderContextMenu = useMemo(() => {

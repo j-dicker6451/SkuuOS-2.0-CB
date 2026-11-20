@@ -9,13 +9,10 @@ import { backfillSpikeMaterialTradeName } from "./spike-material-lookups";
 export async function ensureSkuuCompanyMaterialDefaults(
   ctx: SpikeContext
 ): Promise<void> {
-  const now = new Date().toISOString();
   await ctx.db
     .updateTable("companySettings")
     .set({
-      materialGeneratedIds: false,
-      updatedAt: now,
-      updatedBy: ctx.userId
+      materialGeneratedIds: false
     })
     .where("id", "=", ctx.companyId)
     .execute();

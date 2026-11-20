@@ -21,5 +21,6 @@ export {
   formatDispenseAndOrderKg,
   formatLiters,
   formatMassQuantityKg,
-  formatPercentWw4
+  formatPercentWw4,
+  formatSkuuGrossBatchLabel
 } from "./quantity-display";

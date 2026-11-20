@@ -266,6 +266,21 @@ export default function PartMakeMethodPage() {
         replenishmentSystem={partData?.partSummary?.replenishmentSystem}
         revisionStatus={revisionStatus}
         releaseControl={releaseControl}
+        skuuBomQuantity={
+          skuuBulk.enabled
+            ? {
+                enabled: true,
+                batchBasisKg: Number(skuuBulk.batchBasisKg),
+                expectedYieldPercent: Number(skuuBulk.expectedYieldPercent),
+                percentByMaterialId: Object.fromEntries(
+                  skuuMaterialPercents.map((m) => [
+                    m.methodMaterialId,
+                    m.percentWw
+                  ])
+                )
+              }
+            : undefined
+        }
       />
       {skuuBulk.enabled && skuuPhasedBlocks.length > 0 ? (
         <SkuuPhasedFormulaView

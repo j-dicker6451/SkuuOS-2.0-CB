@@ -38,7 +38,7 @@ import {
 } from "~/modules/shared/shared.service";
 import { detailBreadcrumb, type Handle } from "~/utils/handle";
 import { recordMeta } from "~/utils/meta";
-import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
+import { loadSkuuJobQuantitySummary } from "~/modules/skuu/skuu-job-quantity.server";
 import { path } from "~/utils/path";
 
 // Resolves each job material's procurement status for the BoM explorer badge:
@@ -150,13 +150,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     unbatchedBatchableOperations = count ?? 0;
   }
 
-  const skuuBulkBatchTicket =
-    (await buildBulkBatchTicket(client, { jobId, companyId })) != null;
+  const skuuJobQuantitySummary = await loadSkuuJobQuantitySummary(client, {
+    jobId,
+    companyId
+  });
 
   return {
     job: job.data,
     projectCharge: projectCharge.data ?? null,
-    skuuBulkBatchTicket,
+    skuuBulkBatchTicket: skuuJobQuantitySummary != null,
+    skuuJobQuantitySummary,
     unbatchedBatchableOperations,
     tags: tags.data ?? [],
     trackedEntities: getTrackedEntitiesByJobId(client, jobId),

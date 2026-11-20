@@ -78,6 +78,11 @@ const JobProperties = () => {
   if (!jobId) throw new Error("jobId not found");
 
   const routeData = useRouteData<{
+    skuuJobQuantitySummary?: {
+      headerLabel: string;
+      targetFinishedKg: number;
+      netFinishedLiters: number | null;
+    } | null;
     job: Job;
     projectCharge?: JobProjectCharge | null;
     tags: { name: string }[];
@@ -454,6 +459,11 @@ const JobProperties = () => {
           inline
           isReadOnly={isDisabled}
           value={routeData?.job?.quantity ?? 0}
+          helperText={
+            routeData?.skuuJobQuantitySummary
+              ? t`Target finished ${routeData.skuuJobQuantitySummary.targetFinishedKg} kg — manufacture ${routeData.skuuJobQuantitySummary.headerLabel}`
+              : undefined
+          }
           onChange={(value) => {
             onUpdate("quantity", value);
           }}

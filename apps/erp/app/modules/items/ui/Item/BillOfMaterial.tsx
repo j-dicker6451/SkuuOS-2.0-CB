@@ -98,6 +98,12 @@ import type {
 import type { action as updateMaterialAction } from "~/routes/x+/items+/methods+/material.$id";
 import type { action as createMaterialAction } from "~/routes/x+/items+/methods+/material.new";
 import type { action as updateItemsAction } from "~/routes/x+/items+/update";
+import {
+  formatMassQuantityKg,
+  formatPercentWw4,
+  grossInputKg,
+  lineKgFromPercent
+} from "@skuu/formula";
 import { itemTradeDisplayName } from "../../material-line-label";
 import type { Item as ItemType } from "~/stores";
 import { useItems } from "~/stores";
@@ -134,11 +140,19 @@ type ItemWithData = SortableItem & {
   data: Material;
 };
 
+export type SkuuBomQuantityOverlay = {
+  enabled: boolean;
+  batchBasisKg: number;
+  expectedYieldPercent: number;
+  percentByMaterialId: Record<string, number | null | undefined>;
+};
+
 type BillOfMaterialProps = {
   configurable?: boolean;
   makeMethod: MakeMethod;
   materials: Material[];
   operations: Operation[];
+  skuuBomQuantity?: SkuuBomQuantityOverlay;
   parameters?: ConfigurationParameter[];
   configurationRules?: ConfigurationRule[];
   replenishmentSystem?: string;
@@ -194,7 +208,8 @@ const BillOfMaterial = ({
   isDisabled = false,
   disabledReason,
   methodCorrectionId,
-  title
+  title,
+  skuuBomQuantity
 }: BillOfMaterialProps) => {
   const permissions = usePermissions();
   const { t } = useLingui();
@@ -288,7 +303,8 @@ const BillOfMaterial = ({
     checkedState,
     rulesByField,
     replenishmentSystem,
-    missingPullFrom
+    missingPullFrom,
+    skuuBomQuantity
   ).sort((a, b) => a.data.order - b.data.order);
 
   const onToggleItem = (id: string) => {
@@ -462,6 +478,7 @@ const BillOfMaterial = ({
                 orderState={orderState}
                 temporaryItems={temporaryItems}
                 rulesByField={rulesByField}
+                skuuBomQuantity={skuuBomQuantity}
                 onConfigure={onConfigure}
                 replenishmentSystem={replenishmentSystem}
                 parentItemId={parentItemId}
@@ -637,6 +654,7 @@ function MaterialForm({
   methodOperations,
   temporaryItems,
   rulesByField,
+  skuuBomQuantity,
   onConfigure,
   replenishmentSystem,
   parentItemId: propParentItemId,
@@ -652,6 +670,7 @@ function MaterialForm({
   orderState: OrderState;
   temporaryItems: TemporaryItems;
   rulesByField: Map<string, ConfigurationRule>;
+  skuuBomQuantity?: SkuuBomQuantityOverlay;
   replenishmentSystem?: string;
   parentItemId?: string;
   setSelectedItemId: Dispatch<SetStateAction<string | null>>;
@@ -931,7 +950,29 @@ function MaterialForm({
         />
         <Number
           name="quantity"
-          label={t`Quantity`}
+          label={
+            skuuBomQuantity?.enabled
+              ? t`Qty per kg bulk (ERP sync)`
+              : t`Quantity`
+          }
+          helperText={
+            skuuBomQuantity?.enabled &&
+            item.data.id &&
+            skuuBomQuantity.percentByMaterialId[item.data.id] != null
+              ? (() => {
+                  const pct = Number(
+                    skuuBomQuantity.percentByMaterialId[item.data.id]
+                  );
+                  const gross = grossInputKg(
+                    skuuBomQuantity.batchBasisKg,
+                    skuuBomQuantity.expectedYieldPercent
+                  );
+                  return `${formatPercentWw4(pct)} · ${formatMassQuantityKg(
+                    lineKgFromPercent(pct, gross)
+                  )} per standard batch`;
+                })()
+              : undefined
+          }
           isConfigured={rulesByField.has(key("quantity"))}
           onConfigure={
             configurable && !temporaryItems[item.id]
@@ -1327,7 +1368,8 @@ function makeItems(
   checkedState: CheckedState,
   rulesByField?: Map<string, ConfigurationRule>,
   replenishmentSystem?: string,
-  missingPullFrom?: (material: Material) => boolean
+  missingPullFrom?: (material: Material) => boolean,
+  skuuBomQuantity?: SkuuBomQuantityOverlay
 ): ItemWithData[] {
   return materials.map((material) => {
     const order = material.id
@@ -1341,7 +1383,8 @@ function makeItems(
       checked,
       rulesByField,
       replenishmentSystem,
-      missingPullFrom?.(material) ?? false
+      missingPullFrom?.(material) ?? false,
+      skuuBomQuantity
     );
   });
 }
@@ -1364,11 +1407,29 @@ function makeItem(
   checked: boolean,
   rulesByField?: Map<string, ConfigurationRule>,
   replenishmentSystem?: string,
-  missingPullFrom = false
+  missingPullFrom = false,
+  skuuBomQuantity?: SkuuBomQuantityOverlay
 ): ItemWithData {
   const hasRules = material.id
     ? materialHasRules(material.id, rulesByField)
     : false;
+
+  let quantityLabel: ReactNode = material.quantity;
+  if (
+    skuuBomQuantity?.enabled &&
+    material.id &&
+    skuuBomQuantity.percentByMaterialId[material.id] != null
+  ) {
+    const pct = Number(skuuBomQuantity.percentByMaterialId[material.id]);
+    const gross = grossInputKg(
+      skuuBomQuantity.batchBasisKg,
+      skuuBomQuantity.expectedYieldPercent
+    );
+    const kgBatch = lineKgFromPercent(pct, gross);
+    quantityLabel = `${formatPercentWw4(pct)} · ${formatMassQuantityKg(
+      kgBatch
+    )} / batch`;
+  }
 
   return {
     id: material.id!,
@@ -1403,7 +1464,7 @@ function makeItem(
             ? material.sourcingType
             : undefined
         }
-        quantity={material.quantity}
+        quantity={quantityLabel}
         itemType={material.itemType}
       />
     ),

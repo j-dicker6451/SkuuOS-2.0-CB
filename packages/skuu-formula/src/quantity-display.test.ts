@@ -6,7 +6,8 @@ import {
   formatDispenseAndOrderKg,
   formatLiters,
   formatMassQuantityKg,
-  formatPercentWw4
+  formatPercentWw4,
+  formatSkuuGrossBatchLabel
 } from "./quantity-display";
 
 describe("quantity-display", () => {
@@ -33,5 +34,15 @@ describe("quantity-display", () => {
 
   it("formatLiters", () => {
     expect(formatLiters(244.898)).toBe("244.898 L");
+  });
+
+  it("formatSkuuGrossBatchLabel (PLUS01-scale batch)", () => {
+    expect(
+      formatSkuuGrossBatchLabel({
+        targetFinishedKg: 249.6,
+        expectedYieldPercent: 98,
+        productDensityGPerMl: 1.04
+      })
+    ).toBe("254.694 kg (244.9 L)");
   });
 });

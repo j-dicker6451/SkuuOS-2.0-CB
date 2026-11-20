@@ -170,6 +170,10 @@ const JobHeader = () => {
     projectCharge?: JobProjectCharge | null;
     unbatchedBatchableOperations?: number;
     skuuBulkBatchTicket?: boolean;
+    skuuJobQuantitySummary?: {
+      headerLabel: string;
+      targetFinishedKg: number;
+    } | null;
   }>(path.to.job(jobId));
   const projectCharge = routeData?.projectCharge;
 
@@ -372,11 +376,18 @@ const JobHeader = () => {
   );
 
   // Phones: the hero line under the app bar, "item · Qty N".
+  const skuuQty = routeData?.skuuJobQuantitySummary;
   const jobQuantity = routeData?.job?.quantity;
+  const quantityLabel =
+    skuuQty != null
+      ? skuuQty.headerLabel
+      : jobQuantity != null
+        ? t`Qty ${jobQuantity}`
+        : null;
   const heroSubtitle =
     [
       routeData?.job?.itemReadableIdWithRevision,
-      jobQuantity != null ? t`Qty ${jobQuantity}` : null
+      quantityLabel
     ]
       .filter(Boolean)
       .join(" · ") || undefined;
