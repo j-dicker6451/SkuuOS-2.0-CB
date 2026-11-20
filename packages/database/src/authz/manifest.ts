@@ -1123,6 +1123,7 @@ export const manifest = {
   skuuMethodMaterialFormula: company("parts", { read: "parts_view" }),
   skuuFormulaPhase: company("parts", { read: "parts_view" }),
   skuuJobMaterialDispense: company("production", { read: "production_view" }),
+  skuuJobPhaseRecord: company("production", { read: "production_view" }),
   material: company("parts"),
   materialDimension: policies({
     select: or(isNull("companyId"), inCompany("companyId", "parts_view")),

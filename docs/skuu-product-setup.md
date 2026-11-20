@@ -10,6 +10,7 @@ Plain-language flows for bulk formulation, finished goods, and batch tickets. No
 | Bulk — Formulation & method | `/x/part/{bulkItemId}/formulation` |
 | Finished good — Product build | `/x/part/{fgItemId}/product-build` |
 | Bulk batch ticket (print) | `/x/job/{jobId}/bulk-batch-ticket` |
+| Bulk batch record (MES checklist) | `/x/job/{jobId}/bulk-record` |
 
 Part tabs **Formulation & method** (Make, kg) and **Product build** (Make, EA) appear on the part header.
 

@@ -27,3 +27,25 @@ export const skuuFormulaPhaseValidator = z.object({
   instructions: z.string().max(16000).default(""),
   methodOperationId: z.string().optional()
 });
+
+export const skuuDispenseRowValidator = z.object({
+  jobId: z.string().min(1),
+  jobMaterialId: z.string().min(1),
+  quantityKg: zfd.numeric(z.number().positive()),
+  supplierBatchNumber: z.string().optional(),
+  trackedEntityId: z.string().optional()
+});
+
+export const skuuDispenseMarkValidator = z.object({
+  jobId: z.string().min(1),
+  dispenseId: z.string().min(1),
+  markedAdded: zfd.checkbox().optional(),
+  correctionReason: z.string().optional()
+});
+
+export const skuuBatchRecordCompleteValidator = z.object({
+  jobId: z.string().min(1),
+  phaseNumber: zfd.numeric(z.number().int().min(1)),
+  notes: z.string().max(8000).optional(),
+  correctionReason: z.string().max(2000).optional()
+});

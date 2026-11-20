@@ -3,6 +3,7 @@
 import { upsertMaterial, upsertPart } from "~/modules/items/items.service";
 import type { SpikeContext } from "./context";
 import {
+  backfillSpikeMaterialTradeName,
   resolveSpikeMaterialLookups,
   retargetMaterialReadableId
 } from "./spike-material-lookups";
@@ -91,7 +92,15 @@ export async function ensureSpikeMaterial(
     .where("companyId", "=", ctx.companyId)
     .where("readableId", "=", partCode)
     .executeTakeFirst();
-  if (existing) return existing.id;
+  if (existing) {
+    await backfillSpikeMaterialTradeName(
+      ctx,
+      existing.id,
+      partCode,
+      input.name
+    );
+    return existing.id;
+  }
 
   const client = ctx.service.asSystem.supabase;
   if (!client) {
@@ -129,7 +138,12 @@ export async function ensureSpikeMaterial(
   const assignedReadableId =
     (created.data as { readableId?: string } | null)?.readableId ?? partCode;
   if (lookups.materialGeneratedIds && assignedReadableId !== partCode) {
-    await retargetMaterialReadableId(ctx, assignedReadableId, partCode);
+    await retargetMaterialReadableId(
+      ctx,
+      assignedReadableId,
+      partCode,
+      input.name
+    );
   }
 
   const row = await ctx.db
@@ -141,5 +155,6 @@ export async function ensureSpikeMaterial(
   if (!row) {
     throw new Error(`Material ${partCode} missing after upsertMaterial`);
   }
+  await backfillSpikeMaterialTradeName(ctx, row.id, partCode, input.name);
   return row.id;
 }

@@ -76,10 +76,40 @@ export async function resolveSpikeMaterialLookups(
 }
 
 /** When generated material IDs are on, upsertMaterial assigns a generated code — retarget to Cosmetri partCode. */
+/** Trade name from spike/json — not Carbon's generated substance+shape label. */
+export async function backfillSpikeMaterialTradeName(
+  ctx: SpikeContext,
+  itemId: string,
+  partCode: string,
+  tradeName: string
+): Promise<void> {
+  const row = await ctx.db
+    .selectFrom("item")
+    .select(["id", "name", "readableId"])
+    .where("companyId", "=", ctx.companyId)
+    .where("id", "=", itemId)
+    .executeTakeFirst();
+  if (!row) return;
+  if (row.name === tradeName) return;
+
+  const now = new Date().toISOString();
+  await ctx.db
+    .updateTable("item")
+    .set({
+      name: tradeName,
+      updatedBy: ctx.userId,
+      updatedAt: now
+    })
+    .where("companyId", "=", ctx.companyId)
+    .where("id", "=", itemId)
+    .execute();
+}
+
 export async function retargetMaterialReadableId(
   ctx: SpikeContext,
   generatedReadableId: string,
-  partCode: string
+  partCode: string,
+  tradeName: string
 ): Promise<void> {
   if (generatedReadableId === partCode) return;
 
@@ -127,6 +157,7 @@ export async function retargetMaterialReadableId(
       .updateTable("item")
       .set({
         readableId: partCode,
+        name: tradeName,
         updatedBy: ctx.userId,
         updatedAt: now
       })

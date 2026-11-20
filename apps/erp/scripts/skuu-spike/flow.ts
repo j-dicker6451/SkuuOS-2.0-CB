@@ -382,10 +382,24 @@ async function setupBulkItem(
       formulaRows.push({ methodMaterialId, percentWw: ing.percentage });
     }
 
+    const phaseNumbers = new Set<number>();
+    for (const ing of input.ingredients) {
+      phaseNumbers.add(ing.phaseNumber ?? 1);
+    }
+    if (input.phases) {
+      for (const p of input.phases) phaseNumbers.add(p.phaseNumber);
+    }
+    if (phaseNumbers.size === 0) phaseNumbers.add(1);
     const phaseRows =
       input.phases && input.phases.length > 0
         ? input.phases
-        : [{ phaseNumber: 1, instructions: "Spike demo phase — precautions N/A." }];
+        : [...phaseNumbers].sort((a, b) => a - b).map((phaseNumber) => ({
+            phaseNumber,
+            instructions:
+              phaseNumber === 1
+                ? "Add method instructions for this phase in Formulation & method."
+                : ""
+          }));
     for (const phase of phaseRows) {
       await trx
         .insertInto("skuuFormulaPhase")

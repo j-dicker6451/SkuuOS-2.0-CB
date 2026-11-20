@@ -36,7 +36,10 @@ import {
 import { toMethodCorrectionsProps } from "~/modules/items/ui/Item/MethodCorrections";
 import { getModelByItemId, getTagsList } from "~/modules/shared/shared.service";
 import type { MethodItemType, MethodType } from "~/modules/shared/types";
+import { buildSkuuPhasedFormulaBlocks } from "~/modules/skuu/skuu-phased-formula";
+import { loadSkuuFormulationView } from "~/modules/skuu/skuu-formulation.service";
 import { SkuuBulkFormulaSection } from "~/modules/skuu/ui/SkuuBulkFormulaSection";
+import { SkuuPhasedFormulaView } from "~/modules/skuu/ui/SkuuPhasedFormulaView";
 import { path } from "~/utils/path";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -127,6 +130,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       .eq("companyId", companyId)
   ]);
 
+  const skuuFormulation =
+    skuuBulkRow?.enabled === true
+      ? await loadSkuuFormulationView(client, makeMethodId, companyId)
+      : null;
+  const skuuPhasedBlocks =
+    skuuFormulation != null
+      ? buildSkuuPhasedFormulaBlocks(
+          skuuFormulation.phases,
+          skuuFormulation.materials,
+          skuuFormulation.profile
+        )
+      : [];
+
   const skuuMaterialPercents = (methodMaterials.data ?? []).map((m) => ({
     methodMaterialId: m.id,
     percentWw:
@@ -177,7 +193,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       productDensityGPerMl: skuuBulkRow?.productDensityGPerMl ?? null,
       expectedYieldPercent: skuuBulkRow?.expectedYieldPercent ?? 100
     },
-    skuuMaterialPercents
+    skuuMaterialPercents,
+    skuuPhasedBlocks
   };
 }
 
@@ -197,7 +214,8 @@ export default function PartMakeMethodPage() {
     revisionStatus,
     releaseControl,
     skuuBulk,
-    skuuMaterialPercents
+    skuuMaterialPercents,
+    skuuPhasedBlocks
   } = loaderData;
 
   const { itemId, makeMethodId } = useParams();
@@ -249,6 +267,12 @@ export default function PartMakeMethodPage() {
         revisionStatus={revisionStatus}
         releaseControl={releaseControl}
       />
+      {skuuBulk.enabled && skuuPhasedBlocks.length > 0 ? (
+        <SkuuPhasedFormulaView
+          title={t`Bulk manufacturing — formula by phase`}
+          blocks={skuuPhasedBlocks}
+        />
+      ) : null}
       <SkuuBulkFormulaSection
         makeMethodId={makeMethodId}
         enabled={skuuBulk.enabled}
@@ -261,6 +285,7 @@ export default function PartMakeMethodPage() {
         expectedYieldPercent={Number(skuuBulk.expectedYieldPercent)}
         materialPercents={skuuMaterialPercents}
         readOnly={!permissions.can("update", "parts")}
+        hideMaterialLines={skuuBulk.enabled && skuuPhasedBlocks.length > 0}
       />
       <MethodCorrections
         key={`corrections:${makeMethod.id}`}

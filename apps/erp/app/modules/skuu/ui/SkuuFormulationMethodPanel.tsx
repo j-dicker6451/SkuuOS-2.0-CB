@@ -31,6 +31,7 @@ import {
 } from "../skuu.models";
 import type { SkuuBulkProfile } from "../skuu-bulk.service";
 import type { SkuuFormulationMaterialLine } from "../skuu-formulation.service";
+import { mergeSkuuFormulaPhases } from "../skuu-phased-formula";
 import { SkuuBulkFormulaSection } from "./SkuuBulkFormulaSection";
 
 type PhaseRow = {
@@ -86,16 +87,7 @@ export function SkuuFormulationMethodPanel({
     }))
   );
 
-  const phaseNumbers = new Set([
-    ...phases.map((p) => p.phaseNumber),
-    ...materials.map((m) => m.phaseNumber ?? 1)
-  ]);
-  const phaseList = [...phaseNumbers]
-    .sort((a, b) => a - b)
-    .map((n) => {
-      const found = phases.find((p) => p.phaseNumber === n);
-      return found ?? { phaseNumber: n, instructions: "" };
-    });
+  const phaseList = mergeSkuuFormulaPhases(phases, materials);
 
   const grouped = groupByPhase(materials);
 
@@ -160,11 +152,11 @@ export function SkuuFormulationMethodPanel({
                   </Submit>
                 </ValidatedForm>
               )}
-              {readOnly && phase.instructions ? (
-                <p className="text-sm whitespace-pre-wrap mb-4">
+              {readOnly && (
+                <p className="text-sm whitespace-pre-wrap mb-4 text-muted-foreground">
                   {phase.instructions}
                 </p>
-              ) : null}
+              )}
 
               <Table>
                 <TableHeader>

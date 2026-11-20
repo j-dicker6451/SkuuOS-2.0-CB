@@ -169,6 +169,7 @@ const JobHeader = () => {
     job: Job;
     projectCharge?: JobProjectCharge | null;
     unbatchedBatchableOperations?: number;
+    skuuBulkBatchTicket?: boolean;
   }>(path.to.job(jobId));
   const projectCharge = routeData?.projectCharge;
 
@@ -436,6 +437,32 @@ const JobHeader = () => {
                   </Button>
                 </RecordAction>
               )}
+            {routeData?.skuuBulkBatchTicket && (
+              <>
+                <RecordAction slot="overflow">
+                  <Button
+                    leftIcon={<LuClipboardList />}
+                    variant="secondary"
+                    asChild
+                  >
+                    <Link
+                      to={path.to.jobBulkBatchTicket(jobId)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Trans>Batch ticket</Trans>
+                    </Link>
+                  </Button>
+                </RecordAction>
+                <RecordAction slot="overflow">
+                  <Button variant="secondary" asChild>
+                    <Link to={path.to.jobBulkRecord(jobId)}>
+                      <Trans>Bulk batch record</Trans>
+                    </Link>
+                  </Button>
+                </RecordAction>
+              </>
+            )}
             <RecordAction slot="overflow">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

@@ -57,14 +57,10 @@ export default function BulkBatchTicketPrint() {
         </p>
       </header>
 
-      {[...ticket.linesByPhase.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([phaseNo, lines]) => {
-          const phase = ticket.phases.find((p) => p.phaseNumber === phaseNo);
-          return (
-            <section key={phaseNo} className="mb-6">
-              <h2 className="font-semibold">Phase {phaseNo}</h2>
-              {phase?.instructions ? (
+      {ticket.phases.map((phase) => (
+            <section key={phase.phaseNumber} className="mb-6">
+              <h2 className="font-semibold">Phase {phase.phaseNumber}</h2>
+              {phase.instructions ? (
                 <pre className="whitespace-pre-wrap text-xs mb-2">
                   {phase.instructions}
                 </pre>
@@ -82,8 +78,8 @@ export default function BulkBatchTicketPrint() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((line) => (
-                    <tr key={line.partCode}>
+                  {phase.lines.map((line) => (
+                    <tr key={`${phase.phaseNumber}-${line.partCode}`}>
                       <td>{line.partCode}</td>
                       <td>{line.name}</td>
                       <td>{line.percentWw.toFixed(4)}</td>
@@ -96,8 +92,7 @@ export default function BulkBatchTicketPrint() {
                 </tbody>
               </table>
             </section>
-          );
-        })}
+      ))}
 
       <section>
         <h2 className="font-semibold mb-2">In-process QC &amp; release</h2>

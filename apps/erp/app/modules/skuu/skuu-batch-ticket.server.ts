@@ -8,6 +8,7 @@ import {
   validatePercentSum
 } from "@skuu/formula";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildSkuuPhasedFormulaBlocks } from "./skuu-phased-formula";
 import { loadSkuuFormulationView } from "./skuu-formulation.service";
 
 type Client = SupabaseClient<Database>;
@@ -21,6 +22,12 @@ export type BulkBatchTicketLine = {
   grams: number;
 };
 
+export type BulkBatchTicketPhase = {
+  phaseNumber: number;
+  instructions: string;
+  lines: BulkBatchTicketLine[];
+};
+
 export type BulkBatchTicket = {
   productName: string;
   productCode: string;
@@ -30,11 +37,26 @@ export type BulkBatchTicket = {
   densityGPerMl: number | null;
   expectedYieldPercent: number;
   targetFinishedKg: number;
-  phases: Array<{ phaseNumber: number; instructions: string }>;
-  linesByPhase: Map<number, BulkBatchTicketLine[]>;
+  phases: BulkBatchTicketPhase[];
   percentTotal: number;
   percentOk: boolean;
 };
+
+async function resolveJobMakeMethodId(
+  client: Client,
+  jobId: string,
+  companyId: string
+): Promise<string | null> {
+  const { data: jmm } = await client
+    .from("jobMakeMethod")
+    .select("makeMethodId")
+    .eq("jobId", jobId)
+    .eq("companyId", companyId)
+    .order("createdAt", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return jmm?.makeMethodId ?? null;
+}
 
 export async function buildBulkBatchTicket(
   client: Client,
@@ -42,11 +64,18 @@ export async function buildBulkBatchTicket(
 ): Promise<BulkBatchTicket | null> {
   const { data: job, error: jobErr } = await client
     .from("job")
-    .select("id, jobId, itemId, quantity, makeMethodId")
+    .select("id, jobId, itemId, quantity")
     .eq("id", args.jobId)
     .eq("companyId", args.companyId)
     .single();
-  if (jobErr || !job?.makeMethodId) return null;
+  if (jobErr || !job) return null;
+
+  const makeMethodId = await resolveJobMakeMethodId(
+    client,
+    args.jobId,
+    args.companyId
+  );
+  if (!makeMethodId) return null;
 
   const { data: item } = await client
     .from("item")
@@ -56,7 +85,7 @@ export async function buildBulkBatchTicket(
 
   const view = await loadSkuuFormulationView(
     client,
-    job.makeMethodId,
+    makeMethodId,
     args.companyId
   );
   if (!view.profile?.enabled) return null;
@@ -67,47 +96,45 @@ export async function buildBulkBatchTicket(
   const density = view.profile.productDensityGPerMl;
   const batchSizeL = density && density > 0 ? grossKg / density : null;
 
-  const lines: BulkBatchTicketLine[] = view.materials
-    .filter((m) => m.lineKind !== "bulk_lot_rework" && m.percentWw != null)
-    .map((m) => {
-      const pct = Number(m.percentWw);
-      const kg = lineKgFromPercent(pct, grossKg);
-      return {
-        phaseNumber: m.phaseNumber ?? 1,
-        partCode: m.itemReadableId ?? m.itemId,
-        name: m.itemName ?? "",
-        percentWw: pct,
-        kg,
-        grams: kg * 1000
-      };
-    });
+  const blocks = buildSkuuPhasedFormulaBlocks(
+    view.phases,
+    view.materials,
+    view.profile
+  );
 
-  const linesByPhase = new Map<number, BulkBatchTicketLine[]>();
-  for (const line of lines) {
-    const bucket = linesByPhase.get(line.phaseNumber) ?? [];
-    bucket.push(line);
-    linesByPhase.set(line.phaseNumber, bucket);
-  }
+  const lines: BulkBatchTicketLine[] = blocks.flatMap((block) =>
+    block.lines.map((line) => ({
+      phaseNumber: block.phaseNumber,
+      partCode: line.itemReadableId ?? line.methodMaterialId,
+      name: line.itemName ?? "",
+      percentWw: Number(line.percentWw),
+      kg: line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg),
+      grams: (line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg)) * 1000
+    }))
+  );
+
+  const ingredientLines = view.materials.filter(
+    (m) => m.lineKind !== "bulk_lot_rework" && m.percentWw != null
+  );
 
   const check = validatePercentSum(
-    view.materials.map((m) => ({
+    ingredientLines.map((m) => ({
       id: m.methodMaterialId,
       percentWw: m.percentWw
     }))
   );
   const total = sumPercentWw(
-    view.materials.map((m) => ({
+    ingredientLines.map((m) => ({
       id: m.methodMaterialId,
       percentWw: m.percentWw
     }))
   );
 
-  const phases =
-    view.phases.length > 0
-      ? view.phases
-      : [{ phaseNumber: 1, instructions: "", methodOperationId: null }].map(
-          (p) => ({ phaseNumber: p.phaseNumber, instructions: p.instructions })
-        );
+  const phases: BulkBatchTicketPhase[] = blocks.map((block) => ({
+    phaseNumber: block.phaseNumber,
+    instructions: block.instructions,
+    lines: lines.filter((l) => l.phaseNumber === block.phaseNumber)
+  }));
 
   return {
     productName: item?.name ?? "",
@@ -118,11 +145,7 @@ export async function buildBulkBatchTicket(
     densityGPerMl: density,
     expectedYieldPercent: yieldPct,
     targetFinishedKg: batchSizeKg,
-    phases: phases.map((p) => ({
-      phaseNumber: p.phaseNumber,
-      instructions: p.instructions
-    })),
-    linesByPhase,
+    phases,
     percentTotal: total,
     percentOk: check.ok
   };

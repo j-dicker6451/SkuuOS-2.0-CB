@@ -2801,6 +2801,9 @@ export const path = {
     skuuNewProduct: `${x}/skuu/new-product`,
     jobBulkBatchTicket: (jobId: string) =>
       generatePath(`${x}/job/${jobId}/bulk-batch-ticket`),
+    jobBulkRecord: (jobId: string) =>
+      generatePath(`${x}/job/${jobId}/bulk-record`),
+    skuuJobBatchRecord: `${x}/job/skuu-batch-record`,
     splitIssueItem: `${x}/issue/item/split`,
     sso: `${x}/settings/sso`,
     stockMovementCorrect: (id: string) =>

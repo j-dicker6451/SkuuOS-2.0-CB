@@ -130,5 +130,10 @@ export async function loadSkuuFormulationView(
     loadSkuuFormulaPhases(client, makeMethodId, companyId),
     loadSkuuFormulationMaterials(client, makeMethodId, companyId)
   ]);
-  return { profile, phases, materials };
+  const { mergeSkuuFormulaPhases } = await import("./skuu-phased-formula");
+  return {
+    profile,
+    phases: mergeSkuuFormulaPhases(phases, materials),
+    materials
+  };
 }

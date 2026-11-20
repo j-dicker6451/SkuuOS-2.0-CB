@@ -36,6 +36,8 @@ type SkuuBulkFormulaSectionProps = {
     phaseNumber?: number | null;
   }>;
   readOnly?: boolean;
+  /** When phased BOM is shown elsewhere, hide the flat line editor list. */
+  hideMaterialLines?: boolean;
 };
 
 export function SkuuBulkFormulaSection({
@@ -45,7 +47,8 @@ export function SkuuBulkFormulaSection({
   productDensityGPerMl,
   expectedYieldPercent,
   materialPercents,
-  readOnly
+  readOnly,
+  hideMaterialLines
 }: SkuuBulkFormulaSectionProps) {
   const { t } = useLingui();
   const total = sumPercentWw(
@@ -126,6 +129,14 @@ export function SkuuBulkFormulaSection({
           </Trans>
         </p>
 
+        {hideMaterialLines ? (
+          <p className="text-sm text-muted-foreground">
+            <Trans>
+              Ingredient lines are grouped by phase below (or on the Formulation
+              tab).
+            </Trans>
+          </p>
+        ) : (
         <div className="flex flex-col gap-2">
           {materialPercents.map((line) => {
             const preview =
@@ -173,6 +184,7 @@ export function SkuuBulkFormulaSection({
             );
           })}
         </div>
+        )}
       </CardContent>
     </Card>
   );
