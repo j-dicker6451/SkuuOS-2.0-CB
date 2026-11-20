@@ -15,7 +15,7 @@ UoM and currency codes are read from the seeded company (`kg`, `EA`, `company.ba
 
 | Role | Type | Replenishment | Tracking | UoM | Create path |
 | --- | --- | --- | --- | --- | --- |
-| Raw ingredient | **Material** | Buy | Batch | kg | `upsertMaterial` (New Material — `item` + `material` + cost/replenishment) |
+| Raw ingredient | **Material** | Buy | Batch | kg | `upsertMaterial` (New Material — `item` + `material` + cost/replenishment). If **generated material IDs** are on, spike ensures substance **Cosmetic raw material** (`COSRAW`) and shape **Bulk** (`BULK`), then retargets the item to your `partCode` (1A…). Manual-ID companies pass `id` only, like the Material form. |
 | Bulk | Part | Make | Batch | kg | `upsertPart` — readableId `BULK-{formulaRef}` |
 | Finished SKU | Part | Make | Batch | EA | `upsertPart` — readableId `FG-{formulaRef}-{packMl}ML` |
 | Packaging | Part | Buy | Batch | (sku) | not in this spike |

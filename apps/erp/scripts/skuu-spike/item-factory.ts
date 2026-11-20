@@ -2,6 +2,10 @@
 
 import { upsertMaterial, upsertPart } from "~/modules/items/items.service";
 import type { SpikeContext } from "./context";
+import {
+  resolveSpikeMaterialLookups,
+  retargetMaterialReadableId
+} from "./spike-material-lookups";
 import { spikeAuthHint } from "./supabase-local";
 
 type EnsurePartInput = {
@@ -94,22 +98,38 @@ export async function ensureSpikeMaterial(
     throw new Error("PostgREST client required for upsertMaterial (crbn up / PORT_API).");
   }
 
-  const created = await upsertMaterial(client, ctx.db, {
+  const lookups = await resolveSpikeMaterialLookups(ctx);
+
+  const materialPayload = {
     id: partCode,
     name: input.name,
-    replenishmentSystem: "Buy",
-    defaultMethodType: "Purchase to Order",
-    itemTrackingType: "Batch",
+    replenishmentSystem: "Buy" as const,
+    defaultMethodType: "Purchase to Order" as const,
+    itemTrackingType: "Batch" as const,
     unitOfMeasureCode: input.unitOfMeasureCode,
     unitCost: input.unitCost ?? 1,
     companyId: ctx.companyId,
-    createdBy: ctx.userId
-  });
+    createdBy: ctx.userId,
+    ...(lookups.materialGeneratedIds
+      ? {
+          materialSubstanceId: lookups.materialSubstanceId,
+          materialFormId: lookups.materialFormId
+        }
+      : {})
+  };
+
+  const created = await upsertMaterial(client, ctx.db, materialPayload);
 
   if (created.error) {
     throw new Error(
       spikeAuthHint(`upsertMaterial failed for ${partCode}: ${created.error.message}`)
     );
+  }
+
+  const assignedReadableId =
+    (created.data as { readableId?: string } | null)?.readableId ?? partCode;
+  if (lookups.materialGeneratedIds && assignedReadableId !== partCode) {
+    await retargetMaterialReadableId(ctx, assignedReadableId, partCode);
   }
 
   const row = await ctx.db
