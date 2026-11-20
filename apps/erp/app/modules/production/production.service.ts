@@ -17237,6 +17237,8 @@ export async function getMethod(
           if (parts.billOfMaterial) {
             const locationId = job.locationId;
 
+            const materialsParentQuantity = totalQuantityForChildren;
+
             const mapMethodMaterialToJobMaterial = async (
               child: MethodTreeItem
             ) => {
@@ -17275,6 +17277,7 @@ export async function getMethod(
               ]);
 
               if (itemId === "") return null;
+
               // A configured (or authored) quantity of 0 removes the line from
               // the BOM. Made sub-assemblies drop out of `configuredChildren`
               // below with the row, so their sub-tree is never exploded either.
@@ -17380,7 +17383,7 @@ export async function getMethod(
 
               // Calculate scrap quantities for this material
               // targetQuantity for this child = parent's total (including scrap) * quantity per parent
-              const childTargetQuantity = totalQuantityForChildren * quantity;
+              const childTargetQuantity = materialsParentQuantity * quantity;
               // scrapQuantity = portion attributable to scrap
               const childScrapQuantity = scrapAllowance(
                 childTargetQuantity,

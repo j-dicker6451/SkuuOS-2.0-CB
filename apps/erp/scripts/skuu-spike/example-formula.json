@@ -1,0 +1,52 @@
+{
+  "product": "Skuu Demo Moisturiser Base",
+  "formulaRef": "SKU-DEMO-BASE-01",
+  "version": "1",
+  "batchKg": 100,
+  "expectedYieldPercent": 98,
+  "productDensityGPerMl": 1.04,
+  "ingredients": [
+    {
+      "name": "Purified Water",
+      "percentage": 62.5,
+      "partCode": "RM-WATER-DEMO"
+    },
+    {
+      "name": "Glycerin",
+      "percentage": 25,
+      "partCode": "RM-GLYCERIN-DEMO"
+    },
+    {
+      "name": "Emulsifier Blend",
+      "percentage": 10,
+      "partCode": "RM-EMULSIFIER-DEMO"
+    },
+    {
+      "name": "Preservative",
+      "percentage": 2.5,
+      "partCode": "RM-PRESERVATIVE-DEMO"
+    }
+  ],
+  "secondProduct": {
+    "product": "Skuu Demo Variant Base",
+    "formulaRef": "SKU-DEMO-BASE-02",
+    "batchKg": 40,
+    "expectedYieldPercent": 98,
+    "ingredients": [
+      {
+        "name": "Purified Water",
+        "percentage": 55,
+        "partCode": "RM-WATER-DEMO"
+      },
+      {
+        "name": "Glycerin",
+        "percentage": 45,
+        "partCode": "RM-GLYCERIN-DEMO"
+      }
+    ]
+  },
+  "fills": [
+    { "packSizeMl": 50, "units": 120 },
+    { "packSizeMl": 100, "units": 80 }
+  ]
+}

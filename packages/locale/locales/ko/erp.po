@@ -1441,6 +1441,9 @@ msgstr "총계의 %"
 msgid "% of Total"
 msgstr "전체의 %"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "기본 ERP, MES 및 QMS 기능"
 msgid "Basic Information"
 msgstr "기본 정보"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "배치"
 
@@ -5767,6 +5773,9 @@ msgstr "독립적인 방법으로 구성되고 원가가 산정됨"
 
 msgid "Built-in"
 msgstr "기본 제공"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "일괄 가져오기"
@@ -10069,6 +10078,9 @@ msgstr "시연"
 msgid "Density"
 msgstr "밀도"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "부서"
 
@@ -11098,9 +11110,6 @@ msgstr "직원 역량 편집"
 msgid "Edit Estimate Line"
 msgstr "견적 라인 편집"
 
-msgid "Edit expiration date"
-msgstr "만료일 편집"
-
 msgid "Edit Expiry"
 msgstr "유통기한 편집"
 
@@ -11154,6 +11163,9 @@ msgstr "라인 편집"
 
 msgid "Edit Location"
 msgstr "사업장 편집"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "유지보수 지시 편집"
@@ -11733,6 +11745,11 @@ msgstr "차변을 양수로, 대변을 음수로 입력하세요. CSV는 account
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "차변을 양수로, 대변을 음수로 입력하세요. CSV는 accountNumber, debit, credit 열이 필요합니다. 가져오기는 전체 시산표를 바꿉니다."
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "{lotSize}개 로트 중 통과한 수량을 입력하세요. 수락 수량은 적치할 수 있습니다. 나머지는 NCR이 종료될 때까지 보류됩니다."
 
@@ -12240,6 +12257,9 @@ msgstr "예상 입고"
 
 msgid "Expected Receipt Date"
 msgstr "예상 입고일"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "앞당기기"
@@ -16956,6 +16976,9 @@ msgstr "관리자"
 msgid "Manual"
 msgstr "수동"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "제조사"
 
@@ -20960,9 +20983,6 @@ msgstr "재정의 사유: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "재정의 사유: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "{label}의 유효기한을 재정의합니다."
-
 msgid "Overtime"
 msgstr "초과근무"
 
@@ -24649,6 +24669,15 @@ msgstr "이익잉여금"
 msgid "Retained Earnings (default)"
 msgstr "이익잉여금(기본값)"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "폐기 또는 매각을 통해 자산을 운용에서 제외하고, 순장부가액 대비 손익을 계상한 후 상태를 '처분됨'으로 설정하는 것."
 
@@ -25476,6 +25505,9 @@ msgstr "애플리케이션 저장"
 
 msgid "Save as Draft"
 msgstr "초안으로 저장"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "변경 사항 저장"
@@ -32157,6 +32189,9 @@ msgstr "업데이트"
 msgid "Update costs on"
 msgstr "원가 업데이트 기준일"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "예측 업데이트"
 
@@ -32366,6 +32401,9 @@ msgstr "다음 공구 ID를 가져오려면 ...을(를) 사용하세요"
 
 msgid "Use {earliest}"
 msgstr "{earliest} 사용"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "다른 계정 사용"
@@ -33455,6 +33493,9 @@ msgstr "이 품목의 개가 시리얼 번호를 그릴 때. 설정 → 생산�
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "이 내용이 맞으면 합의됨으로 표시하세요. 그러면 커맨드 센터의 발견(Discovery) 단계가 완료됩니다."
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "이 마일스톤이 완료되면 변경 요청을 통해서만 계획이 변경됩니다."

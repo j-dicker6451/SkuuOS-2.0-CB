@@ -1441,6 +1441,9 @@ msgstr "占总计的%"
 msgid "% of Total"
 msgstr "占总计的%"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "基本的 ERP、MES 和 QMS 功能"
 msgid "Basic Information"
 msgstr "基本信息"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "批次"
 
@@ -5767,6 +5773,9 @@ msgstr "作为独立方法构建和计算成本"
 
 msgid "Built-in"
 msgstr "内置"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "批量导入"
@@ -10069,6 +10078,9 @@ msgstr "演示"
 msgid "Density"
 msgstr "密度"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "部门"
 
@@ -11098,9 +11110,6 @@ msgstr "编辑员工能力"
 msgid "Edit Estimate Line"
 msgstr "编辑预估行"
 
-msgid "Edit expiration date"
-msgstr "编辑到期日期"
-
 msgid "Edit Expiry"
 msgstr "编辑有效期"
 
@@ -11154,6 +11163,9 @@ msgstr "编辑行"
 
 msgid "Edit Location"
 msgstr "编辑位置"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "编辑维护工单"
@@ -11733,6 +11745,11 @@ msgstr "输入借方为正数，贷方为负数。CSV 需要包含以下列：ac
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "输入借方为正数，贷方为负数。CSV 需要包含以下列：accountNumber、借方 和 贷方。导入会替换整个试算表。"
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "请输入 {lotSize} 批次中通过的数量。接受数量可以上架。其余部分保持冻结，直到其 NCR 关闭。"
 
@@ -12240,6 +12257,9 @@ msgstr "预期收货"
 
 msgid "Expected Receipt Date"
 msgstr "预期收货日期"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "加急"
@@ -16956,6 +16976,9 @@ msgstr "经理"
 msgid "Manual"
 msgstr "手动"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "制造商"
 
@@ -20960,9 +20983,6 @@ msgstr "覆盖原因：{0}"
 msgid "Override reason: {overrideReason}"
 msgstr "覆盖原因：{overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "覆盖 {label} 上的过期日期。"
-
 msgid "Overtime"
 msgstr "加班"
 
@@ -24649,6 +24669,15 @@ msgstr "未分配利润"
 msgid "Retained Earnings (default)"
 msgstr "未分配利润（默认）"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "通过报废或出售将资产退出使用，将收益或损失计入账面净值，并将其状态设为已处置。"
 
@@ -25476,6 +25505,9 @@ msgstr "保存应用"
 
 msgid "Save as Draft"
 msgstr "保存为草稿"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "保存更改"
@@ -32157,6 +32189,9 @@ msgstr "更新"
 msgid "Update costs on"
 msgstr "更新成本于"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "更新预测"
 
@@ -32366,6 +32401,9 @@ msgstr "使用 ... 获取下一个工具 ID"
 
 msgid "Use {earliest}"
 msgstr "使用{earliest}"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "使用不同的账户"
@@ -33455,6 +33493,9 @@ msgstr "此物料的件何时生成序列号。留空以遵循设置 → 生产�
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "当这看起来正确时，将其标记为已同意。这将完成您的指挥中心上的发现步骤。"
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "当此里程碑完成时，计划只能通过变更请求进行更改"

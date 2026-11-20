@@ -18,6 +18,7 @@ import * as sales from "./sales/sales.server";
 import * as service from "./service/service.server";
 import * as settings from "./settings/settings.server";
 import * as shared from "./shared/shared.server";
+import * as skuu from "./skuu/skuu.server";
 import * as users from "./users/users.server";
 import * as workflows from "./workflows/workflows.server";
 
@@ -41,6 +42,7 @@ export const router = {
   sales,
   service,
   settings,
+  skuu,
   shared,
   users,
   workflows

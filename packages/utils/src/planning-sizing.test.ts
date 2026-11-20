@@ -712,4 +712,13 @@ describe("reducedOrderQuantity", () => {
       45
     );
   });
+
+  it("honors decimal order multiples (e.g. 0.5 kg)", () => {
+    expect(
+      reducedOrderQuantity(2.3, 10, {
+        minimum: 0,
+        multiples: [0.5]
+      })
+    ).toBeCloseTo(2.5, 5);
+  });
 });

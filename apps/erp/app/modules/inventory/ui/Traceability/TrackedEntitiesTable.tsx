@@ -234,6 +234,31 @@ const TrackedEntitiesTable = memo(
           }
         },
         {
+          id: "retestDate",
+          accessorKey: "retestDate",
+          header: t`Retest`,
+          cell: ({ row }) => {
+            const retest = row.original.retestDate ?? undefined;
+            if (!retest) return null;
+            const todayLocal = today(getLocalTimeZone());
+            const retestDay = parseDate(retest);
+            const overdue = retestDay.compare(todayLocal) < 0;
+            const formatted = formatDate(retest);
+            return overdue ? (
+              <Badge variant="red" className="gap-1">
+                <LuTriangleAlert className="size-3" />
+                {t`Retest due`} · {formatted}
+              </Badge>
+            ) : (
+              <span className="text-sm text-muted-foreground">{formatted}</span>
+            );
+          },
+          meta: {
+            filter: { type: "dateRange" },
+            icon: <LuCalendarClock />
+          }
+        },
+        {
           accessorKey: "sourceDocument",
           header: t`Source Document`,
           cell: ({ row }) => (
@@ -345,6 +370,7 @@ const TrackedEntitiesTable = memo(
             onClose={editExpiry.close}
             trackedEntityId={editingExpiry.id}
             expirationDate={editingExpiry.expirationDate ?? null}
+            retestDate={editingExpiry.retestDate ?? null}
             label={editingExpiry.sourceDocumentReadableId ?? editingExpiry.id}
           />
         )}

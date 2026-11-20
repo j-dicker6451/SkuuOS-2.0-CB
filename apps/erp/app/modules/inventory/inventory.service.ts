@@ -2497,6 +2497,7 @@ export async function updateTrackedEntityExpiry(
   args: {
     trackedEntityId: string;
     expirationDate: string | null;
+    retestDate?: string | null;
     reason: string;
     userId: string;
     source?: string;
@@ -2539,13 +2540,18 @@ export async function updateTrackedEntityExpiry(
     ]
   };
 
+  const patch: Database["public"]["Tables"]["trackedEntity"]["Update"] = {
+    expirationDate: args.expirationDate,
+    attributes: nextAttrs as unknown as Json
+  };
+  if (args.retestDate !== undefined) {
+    patch.retestDate = args.retestDate || null;
+  }
+
   return requireAffected(
     client
       .from("trackedEntity")
-      .update({
-        expirationDate: args.expirationDate,
-        attributes: nextAttrs as unknown as Json
-      })
+      .update(patch)
       .eq("id", args.trackedEntityId)
       .select("id")
   );

@@ -36,6 +36,7 @@
     "@carbon/react": "workspace:*",
     "@carbon/stripe": "workspace:*",
     "@carbon/utils": "workspace:*",
+    "@skuu/formula": "workspace:*",
     "@carbon/viewer": "workspace:*",
     "@dagrejs/dagre": "^1.1.4",
     "@dnd-kit/core": "catalog:",
@@ -183,6 +184,7 @@
     "lint": "biome lint --write ",
     "start": "NODE_ENV=production node ./server/node.ts",
     "test": "vitest run",
+    "ssr:smoke": "vitest run test/unit/ssr-module-graph.smoke.test.ts",
     "typecheck": "react-router typegen && ../../packages/dev/bin/heavy-lock tsc --noEmit",
     "typegen": "react-router typegen"
   },

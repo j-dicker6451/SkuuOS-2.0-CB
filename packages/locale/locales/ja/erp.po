@@ -1441,6 +1441,9 @@ msgstr "全体の %"
 msgid "% of Total"
 msgstr "総量比"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "基本的なERP、MES、およびQMS機能"
 msgid "Basic Information"
 msgstr "基本情報"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "バッチ"
 
@@ -5767,6 +5773,9 @@ msgstr "独自の方法として構築および原価計算"
 
 msgid "Built-in"
 msgstr "組み込み"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "一括インポート"
@@ -10069,6 +10078,9 @@ msgstr "デモンストレーション"
 msgid "Density"
 msgstr "密度"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "部門"
 
@@ -11098,9 +11110,6 @@ msgstr "従業員スキルを編集"
 msgid "Edit Estimate Line"
 msgstr "見積明細の編集"
 
-msgid "Edit expiration date"
-msgstr "有効期限を編集"
-
 msgid "Edit Expiry"
 msgstr "使用期限を編集"
 
@@ -11154,6 +11163,9 @@ msgstr "行を編集"
 
 msgid "Edit Location"
 msgstr "ロケーションを編集"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "保全指示を編集"
@@ -11733,6 +11745,11 @@ msgstr "借方を正の数で、貸方を負の数で入力してください。
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "借方を正の数で、貸方を負の数で入力してください。CSVには accountNumber、debit、credit の列が必要です。インポートにより、試算表全体が置き換わります。"
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "{lotSize} のロットのうち合格した数量を入力してください。承諾数量は格納できます。残りは NCR がクローズされるまで保留されます。"
 
@@ -12240,6 +12257,9 @@ msgstr "予想受取日"
 
 msgid "Expected Receipt Date"
 msgstr "予想受取日"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "前倒し"
@@ -16956,6 +16976,9 @@ msgstr "マネージャー"
 msgid "Manual"
 msgstr "手動"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "製造業者"
 
@@ -20960,9 +20983,6 @@ msgstr "上書き理由: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "上書き理由: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "有効期限を {label} で上書きします。"
-
 msgid "Overtime"
 msgstr "残業"
 
@@ -24649,6 +24669,15 @@ msgstr "利益剰余金"
 msgid "Retained Earnings (default)"
 msgstr "利益剰余金 (既定)"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "スクラップまたは販売により資産をサービスから除却し、利益または損失を未償却残高に対して計上し、ステータスを除却済に設定します。"
 
@@ -25476,6 +25505,9 @@ msgstr "アプリケーションを保存"
 
 msgid "Save as Draft"
 msgstr "下書きとして保存"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "変更を保存"
@@ -32157,6 +32189,9 @@ msgstr "更新"
 msgid "Update costs on"
 msgstr "原価を更新"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "予測を更新"
 
@@ -32366,6 +32401,9 @@ msgstr "「...」を使用して次のツールIDを取得します"
 
 msgid "Use {earliest}"
 msgstr "{earliest}を使用"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "別のアカウントを使用"
@@ -33455,6 +33493,9 @@ msgstr "この品目の単位がシリアル番号を描画するとき。空の
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "これが正しく見えたら、同意済みとしてマークしてください。これでコマンドセンターの検出ステップが完了します。"
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "このマイルストーンが完了すると、計画は変更要求を通じてのみ変更されます。"

@@ -1441,6 +1441,9 @@ msgstr "% от общего"
 msgid "% of Total"
 msgstr "% от всего"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "Базовая функциональность ERP, MES и QMS"
 msgid "Basic Information"
 msgstr "Основная информация"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "Партия"
 
@@ -5767,6 +5773,9 @@ msgstr "Построен и рассчитан как собственный м�
 
 msgid "Built-in"
 msgstr "Встроенный"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "Массовый импорт"
@@ -10069,6 +10078,9 @@ msgstr "Демонстрация"
 msgid "Density"
 msgstr "Плотность"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "отдел"
 
@@ -11098,9 +11110,6 @@ msgstr "Изменить навык сотрудника"
 msgid "Edit Estimate Line"
 msgstr "Изменить строку сметы"
 
-msgid "Edit expiration date"
-msgstr "Изменить дату истечения срока"
-
 msgid "Edit Expiry"
 msgstr "Изменить срок годности"
 
@@ -11154,6 +11163,9 @@ msgstr "Изменить строку"
 
 msgid "Edit Location"
 msgstr "Изменить площадку"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "Изменить заявку на техобслуживание"
@@ -11733,6 +11745,11 @@ msgstr "Введите дебеты как положительные значе
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "Введите дебеты как положительные значения, а кредиты как отрицательные. CSV должен содержать столбцы accountNumber, debit и credit. Импорт заменяет весь пробный баланс."
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "Укажите, сколько из партии {lotSize} прошло контроль. Принятое количество готово к размещению. Остальное задержано до закрытия NCR."
 
@@ -12240,6 +12257,9 @@ msgstr "Ожидаемое получение"
 
 msgid "Expected Receipt Date"
 msgstr "Ожидаемая дата получения"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "Ускорить"
@@ -16956,6 +16976,9 @@ msgstr "Менеджер"
 msgid "Manual"
 msgstr "Ручной"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "Производитель"
 
@@ -20960,9 +20983,6 @@ msgstr "Причина переопределения: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "Причина переопределения: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "Переопределить срок действия для {label}."
-
 msgid "Overtime"
 msgstr "Переработки"
 
@@ -24649,6 +24669,15 @@ msgstr "Нераспределенная прибыль"
 msgid "Retained Earnings (default)"
 msgstr "Нераспределенная прибыль (по умолчанию)"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "Вывод активов из эксплуатации путем выбраковки или продажи, учет любой прибыли или убытка против остаточной стоимости и установка статуса на Выбыло."
 
@@ -25476,6 +25505,9 @@ msgstr "Сохранить применения"
 
 msgid "Save as Draft"
 msgstr "Сохранить как черновик"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "Сохранить изменения"
@@ -32157,6 +32189,9 @@ msgstr "Обновить"
 msgid "Update costs on"
 msgstr "Обновить Себестоимость на"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "Обновить прогноз"
 
@@ -32366,6 +32401,9 @@ msgstr "Используйте ... для получения следующег�
 
 msgid "Use {earliest}"
 msgstr "Использовать {earliest}"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "Использовать другую учетную запись"
@@ -33455,6 +33493,9 @@ msgstr "Когда единицы этой номенклатуры получа
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "Когда это выглядит правильно, отметьте это как согласованное. Это завершает шаг Открытия на вашем центре управления."
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "Когда этот этап завершается, план изменяется только через запрос на изменение"

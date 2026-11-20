@@ -6088,6 +6088,7 @@ export const updateTrackedEntityExpiry = defineServiceFn({
   input: z.looseObject({
     trackedEntityId: z.string(),
     expirationDate: z.string().nullable().optional(),
+    retestDate: z.string().nullable().optional(),
     reason: z
       .string()
       .min(3, { message: "Reason must be at least 3 characters" })
@@ -6105,6 +6106,7 @@ export const updateTrackedEntityExpiry = defineServiceFn({
       await service.updateTrackedEntityExpiry(ctx.asCaller.supabase, {
         trackedEntityId: input.trackedEntityId,
         expirationDate: input.expirationDate || null,
+        retestDate: input.retestDate || null,
         reason: input.reason,
         source: input.source,
         userId: ctx.auditUserId

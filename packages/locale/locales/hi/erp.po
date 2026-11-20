@@ -1441,6 +1441,9 @@ msgstr "कुल का %"
 msgid "% of Total"
 msgstr "कुल का %"
 
+msgid "% w/w"
+msgstr ""
+
 #. placeholder {0}: numberFormatter.format(redirectedTotal)
 #. placeholder {1}: redirectedParts.join(", ")
 msgid "↩ {0} redirected from superseded {1}"
@@ -5225,6 +5228,9 @@ msgstr "मूल ERP, MES और QMS कार्यक्षमता"
 msgid "Basic Information"
 msgstr "बुनियादी जानकारी"
 
+msgid "Basis (kg)"
+msgstr ""
+
 msgid "Batch"
 msgstr "बैच"
 
@@ -5767,6 +5773,9 @@ msgstr "अपनी स्वयं की विधि के रूप मे
 
 msgid "Built-in"
 msgstr "अंतर्निहित"
+
+msgid "Bulk formula (% w/w) — SkuuOS"
+msgstr ""
 
 msgid "Bulk Import"
 msgstr "बल्क आयात"
@@ -10069,6 +10078,9 @@ msgstr "प्रदर्शन"
 msgid "Density"
 msgstr "घनत्व"
 
+msgid "Density (g/mL)"
+msgstr ""
+
 msgid "department"
 msgstr "विभाग"
 
@@ -11098,9 +11110,6 @@ msgstr "कर्मचारी कौशल संपादित करें
 msgid "Edit Estimate Line"
 msgstr "अनुमान पंक्ति संपादित करें"
 
-msgid "Edit expiration date"
-msgstr "समाप्ति तिथि संपादित करें"
-
 msgid "Edit Expiry"
 msgstr "समाप्ति तिथि संपादित करें"
 
@@ -11154,6 +11163,9 @@ msgstr "लाइन संपादित करें"
 
 msgid "Edit Location"
 msgstr "स्थान संपादित करें"
+
+msgid "Edit lot dates (SkuuOS)"
+msgstr ""
 
 msgid "Edit Maintenance Dispatch"
 msgstr "रखरखाव कार्य संपादित करें"
@@ -11733,6 +11745,11 @@ msgstr "डेबिट्स को सकारात्मक और क्�
 msgid "Enter debits as positive and credits as negative amounts. The CSV needs the columns accountNumber, debit and credit. An import replaces the whole trial balance."
 msgstr "डेबिट्स को सकारात्मक और क्रेडिट्स को नकारात्मक राशि के रूप में दर्ज करें। CSV को accountNumber, नामे और जमा कॉलम की आवश्यकता है। एक आयात पूरे trial balance को प्रतिस्थापित करता है।"
 
+#. placeholder {0}: total.toFixed(2)
+#. placeholder {1}: check.ok ? "(OK)" : `— ${check.message ?? "out of range"}`
+msgid "Enter each material line as % w/w (per basis kg). Running total: {0}% {1}"
+msgstr ""
+
 msgid "Enter how much of the lot of {lotSize} passed. The accepted quantity is ready for putaway. The rest stays held until its NCR is closed."
 msgstr "बताएँ कि {lotSize} के लॉट में से कितना उत्तीर्ण हुआ। स्वीकृत मात्रा पुटअवे के लिए तैयार है। बाकी इसकी NCR बंद होने तक रोका रहता है।"
 
@@ -12240,6 +12257,9 @@ msgstr "अपेक्षित रसीद"
 
 msgid "Expected Receipt Date"
 msgstr "अपेक्षित प्राप्ति तारीख"
+
+msgid "Expected yield %"
+msgstr ""
 
 msgid "Expedite"
 msgstr "तेज़ी से करें"
@@ -16956,6 +16976,9 @@ msgstr "प्रबंधक"
 msgid "Manual"
 msgstr "मैनुअल"
 
+msgid "Manufacture = target ÷ (expected yield %). Density links L and kg on batch tickets."
+msgstr ""
+
 msgid "Manufacturer"
 msgstr "निर्माता"
 
@@ -20960,9 +20983,6 @@ msgstr "ओवरराइड कारण: {0}"
 msgid "Override reason: {overrideReason}"
 msgstr "ओवरराइड कारण: {overrideReason}"
 
-msgid "Override the expiration on {label}."
-msgstr "{label} पर समाप्ति को ओवरराइड करें।"
-
 msgid "Overtime"
 msgstr "ओवरटाइम"
 
@@ -24649,6 +24669,15 @@ msgstr "प्रतिधारित आय"
 msgid "Retained Earnings (default)"
 msgstr "प्रतिधारित आय (डिफ़ॉल्ट)"
 
+msgid "Retest"
+msgstr ""
+
+msgid "Retest date"
+msgstr ""
+
+msgid "Retest due"
+msgstr ""
+
 msgid "Retiring an asset from service by scrapping or sale, booking any gain or loss against net book value and setting its status to Disposed."
 msgstr "किसी संपत्ति को स्क्रैपिंग या विक्रय द्वारा सेवा से सेवामुक्त करना, किसी भी लाभ या हानि को शुद्ध बही मूल्य के विरुद्ध दर्ज करना और इसकी स्थिति को निपटाया गया पर सेट करना।"
 
@@ -25476,6 +25505,9 @@ msgstr "आवेदन सहेजें"
 
 msgid "Save as Draft"
 msgstr "ड्राफ्ट के रूप में सहेजें"
+
+msgid "Save bulk settings"
+msgstr ""
 
 msgid "Save changes"
 msgstr "परिवर्तन सहेजें"
@@ -32157,6 +32189,9 @@ msgstr "अपडेट करें"
 msgid "Update costs on"
 msgstr "लागत अपडेट करें"
 
+msgid "Update expiration and retest dates for {label}."
+msgstr ""
+
 msgid "Update Forecast"
 msgstr "पूर्वानुमान अपडेट करें"
 
@@ -32366,6 +32401,9 @@ msgstr "अगली टूल ID प्राप्त करने के ल�
 
 msgid "Use {earliest}"
 msgstr "{earliest} का उपयोग करें"
+
+msgid "Use % w/w formula"
+msgstr ""
 
 msgid "Use a different account"
 msgstr "एक अलग खाता उपयोग करें"
@@ -33455,6 +33493,9 @@ msgstr "जब इस आइटम की इकाइयाँ अपने स
 
 msgid "When this looks right, mark it agreed. That completes the Discovery step on your command center."
 msgstr "जब यह सही लगे, तो इसे सहमत के रूप में चिह्नित करें। यह आपके कमांड सेंटर पर डिस्कवरी चरण को पूरा करता है।"
+
+msgid "When this lot must be retested (SkuuOS). Leave blank to clear."
+msgstr ""
 
 msgid "When this milestone completes, the plan changes only through a change request"
 msgstr "जब यह मील का पत्थर पूरा हो जाता है, योजना में केवल परिवर्तन अनुरोध के माध्यम से परिवर्तन होता है।"

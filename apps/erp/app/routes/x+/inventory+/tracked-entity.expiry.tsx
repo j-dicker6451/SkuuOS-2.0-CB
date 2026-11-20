@@ -11,16 +11,17 @@ import { path, requestReferrer } from "~/utils/path";
 export async function action(args: ActionFunctionArgs) {
   const input = await validator(trackedEntityExpiryValidator).request(args);
   if ("invalid" in input) return input.invalid;
-  const { trackedEntityId, expirationDate, reason } = input.data;
+  const { trackedEntityId, expirationDate, retestDate, reason } = input.data;
   const api = await carbon(args.request);
   const result = await api.inventory.updateTrackedEntityExpiry({
     trackedEntityId,
     // Empty clears the date.
     expirationDate: expirationDate || null,
+    retestDate: retestDate || null,
     reason
   });
   return respond(args.request, result).redirect(
     requestReferrer(args.request) ?? path.to.trackedEntities,
-    { message: "Expiration date updated" }
+    { message: "Lot dates updated" }
   );
 }
