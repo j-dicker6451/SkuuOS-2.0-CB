@@ -47,6 +47,7 @@ import { useOptimisticLocation, useQuantityFormatter } from "~/hooks";
 import { useCompanySettings } from "~/hooks/useCompanySettings";
 import { useIntegrations } from "~/hooks/useIntegrations";
 import { getLinkToItemDetails } from "~/modules/items/ui/Item/ItemForm";
+import { formatSkuuBulkBomLineQuantityLabel } from "~/modules/skuu/skuu-bom-quantity-display";
 import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import { generateBomIds } from "~/utils/bom";
 import {
@@ -657,12 +658,21 @@ function BoMNodeData({ node }: { node: BoMNode }) {
     skuuBomQuantity.percentByItemId?.[node.data.itemId] != null
       ? skuuBomQuantity.percentByItemId[node.data.itemId]
       : undefined;
+  const formatSkuuPct = (pct: number) =>
+    skuuBomQuantity?.enabled
+      ? formatSkuuBulkBomLineQuantityLabel(
+          pct,
+          skuuBomQuantity.targetFinishedKg,
+          skuuBomQuantity.expectedYieldPercent
+        )
+      : formatPercentWw(pct);
+
   const skuuPct =
     fillBulkBadge ??
     (skuuPctRaw != null
-      ? formatPercentWw(Number(skuuPctRaw))
+      ? formatSkuuPct(Number(skuuPctRaw))
       : skuuPctByItem != null
-        ? formatPercentWw(Number(skuuPctByItem))
+        ? formatSkuuPct(Number(skuuPctByItem))
         : null);
 
   return (

@@ -98,12 +98,7 @@ import type {
 import type { action as updateMaterialAction } from "~/routes/x+/items+/methods+/material.$id";
 import type { action as createMaterialAction } from "~/routes/x+/items+/methods+/material.new";
 import type { action as updateItemsAction } from "~/routes/x+/items+/update";
-import {
-  formatMassQuantityKg,
-  formatPercentWw,
-  grossInputKg,
-  lineKgFromPercent
-} from "@skuu/formula";
+import { formatSkuuBulkBomLineQuantityLabel } from "~/modules/skuu/skuu-bom-quantity-display";
 import { itemTradeDisplayName } from "../../material-line-label";
 import type { Item as ItemType } from "~/stores";
 import { useItems } from "~/stores";
@@ -963,12 +958,10 @@ function MaterialForm({
                   const pct = Number(
                     skuuBomQuantity.percentByMaterialId[item.data.id]
                   );
-                  const gross = grossInputKg(
+                  return `${formatSkuuBulkBomLineQuantityLabel(
+                    pct,
                     skuuBomQuantity.batchBasisKg,
                     skuuBomQuantity.expectedYieldPercent
-                  );
-                  return `${formatPercentWw(pct)} · ${formatMassQuantityKg(
-                    lineKgFromPercent(pct, gross)
                   )} per standard batch`;
                 })()
               : undefined
@@ -1421,14 +1414,12 @@ function makeItem(
     skuuBomQuantity.percentByMaterialId[material.id] != null
   ) {
     const pct = Number(skuuBomQuantity.percentByMaterialId[material.id]);
-    const gross = grossInputKg(
+    quantityLabel = formatSkuuBulkBomLineQuantityLabel(
+      pct,
       skuuBomQuantity.batchBasisKg,
-      skuuBomQuantity.expectedYieldPercent
+      skuuBomQuantity.expectedYieldPercent,
+      { standardBatch: true }
     );
-    const kgBatch = lineKgFromPercent(pct, gross);
-    quantityLabel = `${formatPercentWw(pct)} · ${formatMassQuantityKg(
-      kgBatch
-    )} / batch`;
   }
 
   return {

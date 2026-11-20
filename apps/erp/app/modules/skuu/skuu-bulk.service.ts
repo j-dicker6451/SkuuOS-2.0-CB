@@ -56,6 +56,9 @@ export type SkuuBomExplorerQuantityOverlay = {
   enabled: true;
   percentByMaterialId: Record<string, number>;
   percentByItemId: Record<string, number>;
+  /** Net finished kg the label is scaled to (method batch basis or job qty). */
+  targetFinishedKg: number;
+  expectedYieldPercent: number;
 };
 
 /** Job BoM tree: % w/w keyed by jobMaterial.id (get_job_method), not methodMaterial.id. */
@@ -70,7 +73,7 @@ export async function loadSkuuJobBomExplorerQuantityOverlay(
   });
   if (!resolved) return null;
 
-  const [base, formulation, jobMaterials] = await Promise.all([
+  const [base, formulation, jobMaterials, jobRow] = await Promise.all([
     loadSkuuBomExplorerQuantityOverlay(
       client,
       resolved.makeMethodId,
@@ -82,7 +85,13 @@ export async function loadSkuuJobBomExplorerQuantityOverlay(
       .select("id, itemId, order")
       .eq("jobId", jobId)
       .eq("companyId", companyId)
-      .then((r) => r.data ?? [])
+      .then((r) => r.data ?? []),
+    client
+      .from("job")
+      .select("quantity")
+      .eq("id", jobId)
+      .eq("companyId", companyId)
+      .maybeSingle()
   ]);
 
   if (!base?.enabled) return null;
@@ -102,10 +111,17 @@ export async function loadSkuuJobBomExplorerQuantityOverlay(
     if (pct != null) percentByMaterialId[jmId] = pct;
   }
 
+  const jobTargetKg =
+    jobRow.data?.quantity != null
+      ? Number(jobRow.data.quantity)
+      : base.targetFinishedKg;
+
   return {
     enabled: true,
     percentByMaterialId,
-    percentByItemId: {}
+    percentByItemId: {},
+    targetFinishedKg: jobTargetKg,
+    expectedYieldPercent: base.expectedYieldPercent
   };
 }
 
@@ -142,7 +158,9 @@ export async function loadSkuuBomExplorerQuantityOverlay(
   return {
     enabled: true,
     percentByMaterialId: Object.fromEntries(percents),
-    percentByItemId
+    percentByItemId,
+    targetFinishedKg: profile.batchBasisKg,
+    expectedYieldPercent: profile.expectedYieldPercent
   };
 }
 

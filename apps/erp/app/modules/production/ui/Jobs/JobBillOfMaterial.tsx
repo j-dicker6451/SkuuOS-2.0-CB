@@ -34,7 +34,7 @@ import { getItemReadableId, INPUT_FORMAT } from "@carbon/utils";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { motion } from "motion/react";
 import { nanoid } from "nanoid";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef, useState } from "react";
 import {
   LuArrowLeft,
@@ -91,6 +91,8 @@ import type { MethodItemType, MethodType } from "~/modules/shared/types";
 import type { action as updateMaterialAction } from "~/routes/x+/job+/methods+/$jobId.material.$id";
 import type { action as createMaterialAction } from "~/routes/x+/job+/methods+/$jobId.material.new";
 import { itemTradeDisplayName } from "~/modules/items/material-line-label";
+import { formatSkuuBulkBomLineQuantityLabel } from "~/modules/skuu/skuu-bom-quantity-display";
+import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import type { Item as ItemType } from "~/stores";
 import { useItems } from "~/stores";
 import { path } from "~/utils/path";
@@ -144,7 +146,8 @@ function makeItems(
   materials: Material[],
   orderState: OrderState,
   checkedState: CheckedState,
-  missingPullFrom?: (material: Material) => boolean
+  missingPullFrom?: (material: Material) => boolean,
+  skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null
 ): ItemWithData[] {
   return materials.map((material) => {
     const order = material.id
@@ -156,7 +159,8 @@ function makeItems(
       material,
       order,
       checked,
-      missingPullFrom?.(material) ?? false
+      missingPullFrom?.(material) ?? false,
+      skuuBomQuantity
     );
   });
 }
@@ -166,9 +170,24 @@ function makeItem(
   material: Material,
   order: number,
   checked: boolean,
-  missingPullFrom = false
+  missingPullFrom = false,
+  skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null
 ): ItemWithData {
   const itemReadableId = getItemReadableId(items, material.itemId);
+  let quantityLabel: ReactNode = material.quantity;
+  if (
+    skuuBomQuantity?.enabled &&
+    material.id &&
+    skuuBomQuantity.percentByMaterialId[material.id] != null
+  ) {
+    const pct = Number(skuuBomQuantity.percentByMaterialId[material.id]);
+    quantityLabel = formatSkuuBulkBomLineQuantityLabel(
+      pct,
+      skuuBomQuantity.targetFinishedKg,
+      skuuBomQuantity.expectedYieldPercent
+    );
+  }
+
   return {
     id: material.id!,
     title: (
@@ -199,7 +218,7 @@ function makeItem(
         }
         methodType={material.methodType}
         isKit={material.kit}
-        quantity={material.quantity}
+        quantity={quantityLabel}
         itemType={material.itemType}
       />
     ),
@@ -305,7 +324,10 @@ const JobBillOfMaterial = ({
   });
 
   const [storeItems] = useItems();
-  const jobData = useRouteData<{ job: Job }>(path.to.job(jobId));
+  const jobData = useRouteData<{
+    job: Job;
+    skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
+  }>(path.to.job(jobId));
   const pullFromLocationIds = usePullFromLocationIds();
   const jobLocationId = jobData?.job?.locationId;
   const missingPullFrom = (material: Material) =>
@@ -323,7 +345,8 @@ const JobBillOfMaterial = ({
     Array.from(materialsById.values()),
     orderState,
     checkedState,
-    missingPullFrom
+    missingPullFrom,
+    jobData?.skuuBomQuantity
   ).sort((a, b) => a.data.order - b.data.order);
   const isDisabled = ["Completed", "Cancelled"].includes(
     jobData?.job?.status ?? ""
