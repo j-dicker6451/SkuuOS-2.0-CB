@@ -1,0 +1,28 @@
+{
+  "name": "@skuu/readonly",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./trace": "./src/trace-lineage.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome lint --write"
+  },
+  "dependencies": {
+    "@carbon/database": "workspace:*",
+    "kysely": "catalog:",
+    "pg": "8.20.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@carbon/config": "workspace:*",
+    "@types/pg": "8.15.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

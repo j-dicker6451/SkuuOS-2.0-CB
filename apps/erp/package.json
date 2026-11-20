@@ -37,6 +37,7 @@
     "@carbon/stripe": "workspace:*",
     "@carbon/utils": "workspace:*",
     "@skuu/formula": "workspace:*",
+    "@skuu/readonly": "workspace:*",
     "@carbon/viewer": "workspace:*",
     "@dagrejs/dagre": "^1.1.4",
     "@dnd-kit/core": "catalog:",

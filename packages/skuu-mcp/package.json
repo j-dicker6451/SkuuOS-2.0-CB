@@ -1,0 +1,37 @@
+{
+  "name": "@skuu/mcp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "skuu-mcp": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/server.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts --stdio",
+    "start:http": "tsx src/cli.ts --http",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome lint --write"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@skuu/formula": "workspace:*",
+    "@skuu/readonly": "workspace:*",
+    "kysely": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@carbon/config": "workspace:*",
+    "@carbon/database": "workspace:*",
+    "@types/pg": "8.15.6",
+    "@types/node": "catalog:",
+    "pg": "8.20.0",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "vite": "catalog:"
+  }
+}

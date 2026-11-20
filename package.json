@@ -92,7 +92,9 @@
     "typegen": "turbo run typegen",
     "generate:oss-stubs": "python3 scripts/generate-oss-stubs.py",
     "verify:oss-stubs-runtime": "node scripts/verify-stub-chain.mjs && node scripts/verify-server-import.mjs",
-    "skuu:spike": "pnpm --filter erp exec vitest run --config vitest.spike.config.ts --no-file-parallelism"
+    "skuu:spike": "pnpm --filter erp exec vitest run --config vitest.spike.config.ts --no-file-parallelism",
+    "skuu:mcp": "pnpm --filter @skuu/mcp start",
+    "skuu:mcp:http": "pnpm --filter @skuu/mcp start:http"
   },
   "workspaces": [
     "apps/*",
