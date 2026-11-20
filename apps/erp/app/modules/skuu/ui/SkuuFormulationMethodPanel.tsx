@@ -107,6 +107,7 @@ export function SkuuFormulationMethodPanel({
           phaseNumber: m.phaseNumber
         }))}
         readOnly={readOnly}
+        hideMaterialLines
       />
 
       <Card>
@@ -179,18 +180,13 @@ export function SkuuFormulationMethodPanel({
                     <Th>
                       <Trans>kg / batch</Trans>
                     </Th>
-                    {!readOnly && (
-                      <Th>
-                        <Trans>Save</Trans>
-                      </Th>
-                    )}
                   </Tr>
                 </Thead>
                 <Tbody>
                   {(grouped.find(([n]) => n === phase.phaseNumber)?.[1] ?? [])
                     .length === 0 ? (
                     <Tr>
-                      <Td colSpan={readOnly ? 4 : 5}>
+                      <Td colSpan={4}>
                         <Trans>No materials in this phase on the BOM.</Trans>
                       </Td>
                     </Tr>
@@ -202,23 +198,7 @@ export function SkuuFormulationMethodPanel({
                         <Td>{m.itemReadableId}</Td>
                         <Td>{m.itemName}</Td>
                         <Td>
-                          {m.percentWw != null
-                            ? formatPercentWw(Number(m.percentWw))
-                            : "—"}
-                        </Td>
-                        <Td>
-                          {m.percentWw != null
-                            ? formatMassQuantityKg(
-                                lineKgFromPercent(
-                                  Number(m.percentWw),
-                                  grossBasis
-                                ),
-                                { forceUnit: "kg" }
-                              )
-                            : "—"}
-                        </Td>
-                        {!readOnly && (
-                          <Td>
+                          {!readOnly && enabled ? (
                             <ValidatedForm
                               method="post"
                               action={path.to.skuuBulkFormulaMaterial}
@@ -226,7 +206,8 @@ export function SkuuFormulationMethodPanel({
                               defaultValues={{
                                 methodMaterialId: m.methodMaterialId,
                                 percentWw: m.percentWw ?? undefined,
-                                phaseNumber: m.phaseNumber ?? phase.phaseNumber
+                                phaseNumber:
+                                  m.phaseNumber ?? phase.phaseNumber
                               }}
                               className="flex gap-2 items-end"
                             >
@@ -243,8 +224,23 @@ export function SkuuFormulationMethodPanel({
                                 <Trans>Save</Trans>
                               </Submit>
                             </ValidatedForm>
-                          </Td>
-                        )}
+                          ) : m.percentWw != null ? (
+                            formatPercentWw(Number(m.percentWw))
+                          ) : (
+                            "—"
+                          )}
+                        </Td>
+                        <Td>
+                          {m.percentWw != null
+                            ? formatMassQuantityKg(
+                                lineKgFromPercent(
+                                  Number(m.percentWw),
+                                  grossBasis
+                                ),
+                                { forceUnit: "kg" }
+                              )
+                            : "—"}
+                        </Td>
                       </Tr>
                     ))
                   )}

@@ -27,6 +27,7 @@ import {
   VStack
 } from "@carbon/react";
 import { Trans, useLingui } from "@lingui/react/macro";
+import { formatPercentWw } from "@skuu/formula";
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import {
@@ -44,6 +45,7 @@ import { useOptimisticLocation, useQuantityFormatter } from "~/hooks";
 import { useCompanySettings } from "~/hooks/useCompanySettings";
 import { useIntegrations } from "~/hooks/useIntegrations";
 import { getLinkToItemDetails } from "~/modules/items/ui/Item/ItemForm";
+import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import { generateBomIds } from "~/utils/bom";
 import {
   MethodIcon,
@@ -97,6 +99,7 @@ type BoMExplorerContextValue = {
   getNodePath: (node: BoMNode) => string;
   getRootVersion: (node: BoMNode) => string | number | null | undefined;
   onNodeClick: (node: BoMNode) => void;
+  skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
 };
 
 const BoMExplorerContext = createContext<BoMExplorerContextValue | null>(null);
@@ -124,6 +127,8 @@ type BoMExplorerProviderProps<T extends BoMExplorerNodeData> = {
   filterText?: string;
   /** Nodes collapsed on the first render (default: every node expanded). */
   collapsedIds?: string[];
+  /** Skuu % w/w formula: component badge shows percent instead of kg multiplier. */
+  skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
   children: ReactNode;
 };
 
@@ -133,6 +138,7 @@ export function BoMExplorerProvider<T extends BoMExplorerNodeData>({
   getRootVersion: getRootVersionProp,
   filterText: filterTextProp,
   collapsedIds,
+  skuuBomQuantity,
   children
 }: BoMExplorerProviderProps<T>) {
   const tree = treeProp as FlatTree<BoMExplorerNodeData>;
@@ -233,7 +239,8 @@ export function BoMExplorerProvider<T extends BoMExplorerNodeData>({
         bomIdMap,
         getNodePath,
         getRootVersion,
-        onNodeClick
+        onNodeClick,
+        skuuBomQuantity
       }}
     >
       {children}
@@ -618,6 +625,7 @@ function BoMNodeText({ node }: { node: BoMNode }) {
 
 function BoMNodeData({ node }: { node: BoMNode }) {
   const integrations = useIntegrations();
+  const { skuuBomQuantity } = useBoMExplorer();
   const onShapeState = getOnshapeState(
     node,
     hasOnshapeIntegration(integrations)
@@ -625,6 +633,17 @@ function BoMNodeData({ node }: { node: BoMNode }) {
   // Display only — the exact quantity is unchanged everywhere else, and the
   // node's preview card still shows it at full precision.
   const formatQuantity = useQuantityFormatter();
+
+  const skuuPct =
+    skuuBomQuantity?.enabled &&
+    node.data.methodMaterialId &&
+    skuuBomQuantity.percentByMaterialId[node.data.methodMaterialId] != null
+      ? formatPercentWw(
+          Number(
+            skuuBomQuantity.percentByMaterialId[node.data.methodMaterialId]
+          )
+        )
+      : null;
 
   return (
     <HStack spacing={1}>
@@ -634,7 +653,7 @@ function BoMNodeData({ node }: { node: BoMNode }) {
           isKit={node.data.kit ?? undefined}
           className="mr-2"
         />
-        {formatQuantity(node.data.quantity)}
+        {skuuPct ?? formatQuantity(node.data.quantity)}
       </Badge>
       {onShapeState && <OnshapeStatus status={onShapeState} />}
     </HStack>

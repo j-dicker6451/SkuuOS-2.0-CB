@@ -76,7 +76,7 @@ export function SkuuBulkFormulaSection({
     <Card>
       <CardHeader>
         <CardTitle>
-          <Trans>Bulk formula (% w/w) — SkuuOS</Trans>
+          <Trans>Bulk formula (% w/w) SkuuOS</Trans>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

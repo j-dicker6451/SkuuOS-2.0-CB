@@ -321,6 +321,149 @@ export async function issueTrackedMaterialsMes(
 }
 
 /** MES complete.tsx batch path: production quantity + produceBatchOutput (Reserved → Available). */
+/**
+ * Flip a bulk job output lot Reserved → Available (Carbon MES batch complete).
+ * Idempotent when already Available. Uses jobOperationBatchOutput when production
+ * was recorded but the entity flip was skipped (e.g. reused spike job).
+ */
+export async function ensureBulkOutputLotAvailable(
+  ctx: SpikeContext,
+  jobId: string,
+  bulkItemId: string,
+  batchKg: number
+) {
+  const output = await resolveJobOutputTrackedEntity(
+    ctx.db,
+    ctx.companyId,
+    jobId,
+    bulkItemId
+  );
+  if (!output) {
+    throw new Error(
+      `ensureBulkOutputLotAvailable: no output lot for job ${jobId} item ${bulkItemId}`
+    );
+  }
+  if (output.status === "Available") {
+    return output;
+  }
+  if (output.status !== "Reserved") {
+    throw new Error(
+      `Bulk output lot ${output.id} is ${output.status}; expected Reserved or Available`
+    );
+  }
+
+  const operation = await ctx.db
+    .selectFrom("jobOperation")
+    .select("id")
+    .where("jobId", "=", jobId)
+    .where("companyId", "=", ctx.companyId)
+    .orderBy("createdAt", "asc")
+    .limit(1)
+    .executeTakeFirst();
+  if (!operation) {
+    throw new Error(`ensureBulkOutputLotAvailable: no jobOperation for ${jobId}`);
+  }
+
+  const handles = handlesOf({
+    db: ctx.db,
+    companyId: ctx.companyId,
+    userId: ctx.userId
+  });
+
+  const existingProduction = await ctx.db
+    .selectFrom("productionQuantity")
+    .select("id")
+    .where("jobOperationId", "=", operation.id)
+    .where("companyId", "=", ctx.companyId)
+    .where("type", "=", "Production")
+    .limit(1)
+    .executeTakeFirst();
+
+  if (!existingProduction) {
+    await reportBatchOperationCompleteMes(
+      ctx,
+      operation.id,
+      output.id,
+      batchKg
+    );
+  } else {
+    const result = await invokePosting(
+      handles,
+      "issue",
+      {
+        type: "jobOperationBatchOutput",
+        jobOperationId: operation.id,
+        trackedEntityId: output.id,
+        quantity: batchKg,
+        companyId: ctx.companyId,
+        userId: ctx.userId
+      },
+      issueMaterial
+    );
+    if (result.error) {
+      throw new Error(
+        `jobOperationBatchOutput for bulk lot ${output.id}: ${result.error.message}`
+      );
+    }
+  }
+
+  return (
+    (await resolveJobOutputTrackedEntity(
+      ctx.db,
+      ctx.companyId,
+      jobId,
+      bulkItemId
+    )) ?? output
+  );
+}
+
+/** Before fill issue: accept Reserved bulk lots produced on an incomplete spike run. */
+export async function ensureTrackedLotAvailableForIssue(
+  ctx: SpikeContext,
+  trackedEntityId: string
+) {
+  const row = await ctx.db
+    .selectFrom("trackedEntity")
+    .select(["id", "status", "itemId", "quantity"])
+    .where("id", "=", trackedEntityId)
+    .where("companyId", "=", ctx.companyId)
+    .executeTakeFirst();
+  if (!row) {
+    throw new Error(`Tracked lot ${trackedEntityId} not found`);
+  }
+  if (row.status === "Available") return row;
+
+  const ledger = await ctx.db
+    .selectFrom("itemLedger")
+    .select("documentId")
+    .where("trackedEntityId", "=", trackedEntityId)
+    .where("companyId", "=", ctx.companyId)
+    .where("entryType", "=", "Assembly Output")
+    .orderBy("createdAt", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  if (!ledger?.documentId) {
+    throw new Error(
+      `Tracked lot ${trackedEntityId} is ${row.status} and has no assembly-output job`
+    );
+  }
+
+  const job = await ctx.db
+    .selectFrom("job")
+    .select("quantity")
+    .where("id", "=", ledger.documentId)
+    .where("companyId", "=", ctx.companyId)
+    .executeTakeFirst();
+
+  const batchKg = Number(job?.quantity ?? row.quantity);
+  return ensureBulkOutputLotAvailable(
+    ctx,
+    ledger.documentId,
+    row.itemId,
+    batchKg
+  );
+}
+
 export async function reportBatchOperationCompleteMes(
   ctx: SpikeContext,
   jobOperationId: string,

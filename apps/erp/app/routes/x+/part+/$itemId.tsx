@@ -55,6 +55,7 @@ import {
 } from "~/modules/items/ui/Item/UsedIn";
 import { PartHeader, PartProperties } from "~/modules/items/ui/Parts";
 import { getTagsList } from "~/modules/shared/shared.service";
+import { loadSkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import { detailBreadcrumb, type Handle } from "~/utils/handle";
 import { recordMeta } from "~/utils/meta";
 import { path } from "~/utils/path";
@@ -158,9 +159,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const methods =
       tree.data.length > 0 ? flattenTree<Method>(tree.data[0]) : [];
 
+    const skuuBomQuantity = await loadSkuuBomExplorerQuantityOverlay(
+      client,
+      fullMethod.data.id,
+      companyId
+    );
+
     return {
       makeMethod: fullMethod.data,
-      methods
+      methods,
+      skuuBomQuantity
     };
   });
 
@@ -270,6 +278,7 @@ export default function PartRoute() {
                                     methodId={resolved.makeMethod.id}
                                     filterText={filterText}
                                     hideSearch
+                                    skuuBomQuantity={resolved.skuuBomQuantity}
                                   />
                                 </div>
                               ) : null

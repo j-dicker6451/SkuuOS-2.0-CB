@@ -100,7 +100,7 @@ import type { action as createMaterialAction } from "~/routes/x+/items+/methods+
 import type { action as updateItemsAction } from "~/routes/x+/items+/update";
 import {
   formatMassQuantityKg,
-  formatPercentWw4,
+  formatPercentWw,
   grossInputKg,
   lineKgFromPercent
 } from "@skuu/formula";
@@ -967,7 +967,7 @@ function MaterialForm({
                     skuuBomQuantity.batchBasisKg,
                     skuuBomQuantity.expectedYieldPercent
                   );
-                  return `${formatPercentWw4(pct)} · ${formatMassQuantityKg(
+                  return `${formatPercentWw(pct)} · ${formatMassQuantityKg(
                     lineKgFromPercent(pct, gross)
                   )} per standard batch`;
                 })()
@@ -1426,7 +1426,7 @@ function makeItem(
       skuuBomQuantity.expectedYieldPercent
     );
     const kgBatch = lineKgFromPercent(pct, gross);
-    quantityLabel = `${formatPercentWw4(pct)} · ${formatMassQuantityKg(
+    quantityLabel = `${formatPercentWw(pct)} · ${formatMassQuantityKg(
       kgBatch
     )} / batch`;
   }

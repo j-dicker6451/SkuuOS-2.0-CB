@@ -32,6 +32,8 @@ import {
   assertJobConsumptionTrace,
   assertJobMaterialsGross,
   issueTrackedMaterialsMes,
+  ensureBulkOutputLotAvailable,
+  ensureTrackedLotAvailableForIssue,
   listAvailableInputLots,
   reportBatchOperationCompleteMes,
   resolveJobOutputTrackedEntity,
@@ -490,45 +492,57 @@ async function createAndRunBulkJob(
     createdBy: ctx.userId
   });
   const jobId = ensured.primaryId;
+  const grossKgFromYield = manufactureFromExpectedYield(
+    input.batchKg,
+    input.expectedYieldPercent
+  );
   if (ensured.reused) {
     const jobRow = await ctx.db
       .selectFrom("job")
       .select(["id", "status", "quantity"])
       .where("id", "=", jobId)
       .executeTakeFirstOrThrow();
-    const grossKg = manufactureFromExpectedYield(
-      input.batchKg,
-      input.expectedYieldPercent
-    );
-    const bulkLot =
+    let bulkLot =
       (await resolveJobOutputTrackedEntity(
         ctx.db,
         ctx.companyId,
         jobId,
         bulkItemId
       )) ?? null;
-    const operation = await ctx.db
-      .selectFrom("jobOperation")
-      .select("id")
-      .where("jobId", "=", jobId)
-      .orderBy("createdAt", "asc")
-      .limit(1)
-      .executeTakeFirst();
-    return {
-      jobId,
-      jobRow,
-      materialChecks: [`Reused bulk job ${ensured.humanJobId}`],
-      bulkLot: bulkLot
-        ? {
-            id: bulkLot.id,
-            readableId: bulkLot.readableId,
-            quantity: bulkLot.quantity
-          }
-        : null,
-      grossKg,
-      operationId: operation?.id ?? "",
-      outputStatus: bulkLot?.status ?? jobRow.status
-    };
+    const complete =
+      jobRow.status === "Done" ||
+      jobRow.status === "Closed" ||
+      jobRow.status === "Complete";
+    if (complete && bulkLot?.status === "Reserved") {
+      bulkLot = await ensureBulkOutputLotAvailable(
+        ctx,
+        jobId,
+        bulkItemId,
+        input.batchKg
+      );
+    }
+    if (complete && bulkLot?.status === "Available") {
+      const operation = await ctx.db
+        .selectFrom("jobOperation")
+        .select("id")
+        .where("jobId", "=", jobId)
+        .orderBy("createdAt", "asc")
+        .limit(1)
+        .executeTakeFirst();
+      return {
+        jobId,
+        jobRow,
+        materialChecks: [`Reused bulk job ${ensured.humanJobId}`],
+        bulkLot: {
+          id: bulkLot.id,
+          readableId: bulkLot.readableId,
+          quantity: bulkLot.quantity
+        },
+        grossKg: grossKgFromYield,
+        operationId: operation?.id ?? "",
+        outputStatus: bulkLot.status
+      };
+    }
   }
   await stampJobBatchLotNumber(ctx, jobId, bulkItemId);
   await recalculateJobRequirements(client, ctx.db, {
@@ -687,13 +701,22 @@ async function createAndRunBulkJob(
   await completeJobSpike(ctx, jobId, input.batchKg);
   await assertJobConsumptionTrace(ctx.db, ctx.companyId, jobId);
 
+  const releasedOutput = await ensureBulkOutputLotAvailable(
+    ctx,
+    jobId,
+    bulkItemId,
+    input.batchKg
+  );
+
   const bulkLot =
+    releasedOutput ??
     (await resolveJobOutputTrackedEntity(
       ctx.db,
       ctx.companyId,
       jobId,
       bulkItemId
-    )) ?? null;
+    )) ??
+    null;
 
   return {
     jobId,
@@ -827,6 +850,7 @@ async function runFillJob(
     userId: ctx.userId
   });
   const bulkQty = kgPerUnit * units;
+  await ensureTrackedLotAvailableForIssue(ctx, bulkLotId);
   const issueResult = await invokePosting(
     handles,
     "issue",

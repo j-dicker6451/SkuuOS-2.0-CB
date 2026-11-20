@@ -32,6 +32,7 @@ import type { FlatTreeItem } from "~/components/TreeView";
 import { useIntegrations } from "~/hooks/useIntegrations";
 import type { ItemType } from "~/modules/shared/types";
 import { path } from "~/utils/path";
+import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import type { MakeMethod, Method } from "../../types";
 
 type BoMExplorerProps = {
@@ -41,6 +42,7 @@ type BoMExplorerProps = {
   methodId?: string;
   filterText?: string;
   hideSearch?: boolean;
+  skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
 };
 
 const BoMExplorer = ({
@@ -49,7 +51,8 @@ const BoMExplorer = ({
   methods,
   methodId: methodIdProp,
   filterText,
-  hideSearch
+  hideSearch,
+  skuuBomQuantity
 }: BoMExplorerProps) => {
   const params = useParams();
 
@@ -82,6 +85,7 @@ const BoMExplorer = ({
       getNodePath={getNodePath}
       getRootVersion={() => makeMethodVersion}
       filterText={filterText}
+      skuuBomQuantity={skuuBomQuantity}
     >
       <ItemBoMExplorerContent
         methods={methods}
