@@ -2,6 +2,7 @@
 
 import type { Database } from "@carbon/database";
 import {
+  formatSkuuBulkBatchTicketBatchHeader,
   grossInputKg,
   lineKgFromPercent,
   sumPercentWw,
@@ -22,7 +23,6 @@ export type BulkBatchTicketLine = {
   name: string;
   percentWw: number;
   kg: number;
-  grams: number;
   batchLots: Array<{
     trackedEntityReadableId: string | null;
     supplierBatchNumber: string | null;
@@ -42,6 +42,7 @@ export type BulkBatchTicket = {
   batchNumber: string;
   batchSizeKg: number;
   batchSizeL: number | null;
+  batchHeaderLabel: string;
   densityGPerMl: number | null;
   expectedYieldPercent: number;
   targetFinishedKg: number;
@@ -107,10 +108,8 @@ export async function buildBulkBatchTicket(
         partCode: code,
         name: line.itemName ?? "",
         percentWw: Number(line.percentWw),
-        kg: line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg),
-        grams:
-          (line.kgPerBatch ??
-            lineKgFromPercent(Number(line.percentWw), grossKg)) * 1000,
+        kg:
+          line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg),
         batchLots: lotsByMethodMaterial.get(line.methodMaterialId) ?? []
       };
     })
@@ -145,6 +144,11 @@ export async function buildBulkBatchTicket(
     batchNumber: job.jobId ?? job.id,
     batchSizeKg,
     batchSizeL,
+    batchHeaderLabel: formatSkuuBulkBatchTicketBatchHeader({
+      targetFinishedKg: batchSizeKg,
+      grossKg,
+      productDensityGPerMl: density
+    }),
     densityGPerMl: density,
     expectedYieldPercent: yieldPct,
     targetFinishedKg: batchSizeKg,

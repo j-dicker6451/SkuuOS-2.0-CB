@@ -19,6 +19,7 @@ import {
 import type { FlatTree, FlatTreeItem } from "~/components/TreeView";
 import { useOptimisticLocation } from "~/hooks";
 import { path } from "~/utils/path";
+import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import type { JobMethod } from "../../production.utils";
 import type { ItemOrderStatus } from "../../types";
 import { JobOrderStatusBadge } from "./JobOrderStatus";
@@ -33,9 +34,14 @@ const logger = getLogger("erp", "production", "job-bom-explorer");
 type JobBoMExplorerProps = {
   method: FlatTree<JobMethod>;
   orderStatus?: Promise<JobOrderStatusData>;
+  skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
 };
 
-const JobBoMExplorer = ({ method, orderStatus }: JobBoMExplorerProps) => {
+const JobBoMExplorer = ({
+  method,
+  orderStatus,
+  skuuBomQuantity
+}: JobBoMExplorerProps) => {
   const [orderStatusData, setOrderStatusData] =
     useState<JobOrderStatusData | null>(null);
 
@@ -61,7 +67,11 @@ const JobBoMExplorer = ({ method, orderStatus }: JobBoMExplorerProps) => {
 
   return (
     <OrderStatusContext.Provider value={orderStatusData ?? {}}>
-      <BoMExplorerProvider tree={method} getNodePath={getNodePath}>
+      <BoMExplorerProvider
+        tree={method}
+        getNodePath={getNodePath}
+        skuuBomQuantity={skuuBomQuantity}
+      >
         <JobBoMExplorerContent method={method} />
       </BoMExplorerProvider>
     </OrderStatusContext.Provider>

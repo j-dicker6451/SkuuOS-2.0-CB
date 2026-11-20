@@ -38,6 +38,7 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
         ctx = await buildSpikeContext(input, tag);
         note("seed", `Company ${ctx.companyId} prefix ${ctx.prefix}`);
         await runSpikeFlow(ctx, input, note, { skipTeardown: true });
+        await runSpikeFlow(ctx, input, note, { skipTeardown: true });
         const bulkHumanId = `${ctx.prefix}-JOB-BULK`;
         const bulkJobRow = await ctx.db
           .selectFrom("job")

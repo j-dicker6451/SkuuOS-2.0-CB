@@ -10,6 +10,11 @@ import {
 } from "./skuu-phased-formula";
 import { loadSkuuFormulationView } from "./skuu-formulation.service";
 import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
+import {
+  loadSkuuJobMaterialLots,
+  loadSkuuJobMaterialLotsFromConsumption,
+  type SkuuJobMaterialLotRef
+} from "./skuu-job-material-lots";
 
 type Client = SupabaseClient<Database>;
 
@@ -43,6 +48,8 @@ export type SkuuBatchRecordLine = {
   plannedKg: number;
   percentWw: number;
   dispenses: SkuuDispenseRow[];
+  /** First issued raw lot label when materials were consumed via MES. */
+  issuedLotHint: string | null;
   lineComplete: boolean;
 };
 
@@ -140,6 +147,27 @@ export async function loadSkuuBatchRecordView(
     }
   }
 
+  const jobMaterialIds = (jobMaterials ?? []).map((jm) => jm.id);
+  const dispenseLots = await loadSkuuJobMaterialLots(
+    client,
+    args.companyId,
+    jobMaterialIds
+  );
+  const consumedLots = await loadSkuuJobMaterialLotsFromConsumption(
+    client,
+    args.companyId,
+    args.jobId,
+    jobMaterialIds
+  );
+  const issuedLotsByJm = new Map<string, SkuuJobMaterialLotRef[]>();
+  for (const id of jobMaterialIds) {
+    const lots =
+      dispenseLots.get(id)?.length > 0
+        ? dispenseLots.get(id)!
+        : (consumedLots.get(id) ?? []);
+    if (lots.length) issuedLotsByJm.set(id, lots);
+  }
+
   const dispenseByJm = new Map<string, SkuuDispenseRow[]>();
   for (const row of dispenseRows ?? []) {
     const list = dispenseByJm.get(row.jobMaterialId) ?? [];
@@ -191,6 +219,11 @@ export async function loadSkuuBatchRecordView(
           ? lineKgFromPercent(Number(formula.percentWw), grossKg)
           : Number(jm?.estimatedQuantity ?? 0);
       const dispenses = jm ? (dispenseByJm.get(jm.id) ?? []) : [];
+      const issuedLots = jm ? (issuedLotsByJm.get(jm.id) ?? []) : [];
+      const issuedLotHint =
+        issuedLots[0]?.trackedEntityReadableId ??
+        issuedLots[0]?.supplierBatchNumber ??
+        null;
       const addedKg = dispenses
         .filter((d) => d.markedAdded)
         .reduce((s, d) => s + d.quantityKg, 0);
@@ -202,6 +235,7 @@ export async function loadSkuuBatchRecordView(
         plannedKg,
         percentWw: pct,
         dispenses,
+        issuedLotHint,
         lineComplete: dispenses.some((d) => d.markedAdded) && addedKg > 0
       });
     }

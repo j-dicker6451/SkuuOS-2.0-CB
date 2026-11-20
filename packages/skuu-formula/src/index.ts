@@ -23,5 +23,6 @@ export {
   formatMassQuantityKg,
   formatPercentWw,
   formatPercentWw4,
-  formatSkuuGrossBatchLabel
+  formatSkuuGrossBatchLabel,
+  formatSkuuBulkBatchTicketBatchHeader
 } from "./quantity-display";

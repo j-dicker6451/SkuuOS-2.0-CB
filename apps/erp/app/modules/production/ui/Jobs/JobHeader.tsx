@@ -395,7 +395,14 @@ const JobHeader = () => {
   return (
     <>
       <RecordHeader
-        title={routeData?.job?.jobId}
+        title={
+          <span
+            className="truncate max-w-[min(28rem,55vw)] block"
+            title={routeData?.job?.jobId ?? undefined}
+          >
+            {routeData?.job?.jobId}
+          </span>
+        }
         titleTo={path.to.jobDetails(jobId)}
         copyValue={routeData?.job?.jobId ?? ""}
         menu={menuItems}

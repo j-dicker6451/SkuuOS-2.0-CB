@@ -613,8 +613,8 @@ function BoMNodeText({ node }: { node: BoMNode }) {
     useCompanySettings()?.showBomExplorerReadableId === true;
 
   return (
-    <div className="flex min-w-0 items-center gap-1">
-      <span className="font-medium text-sm truncate">
+    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+      <span className="font-medium text-sm truncate min-w-0">
         {showReadableId
           ? node.data.itemReadableId || node.data.description
           : node.data.description || node.data.itemReadableId}

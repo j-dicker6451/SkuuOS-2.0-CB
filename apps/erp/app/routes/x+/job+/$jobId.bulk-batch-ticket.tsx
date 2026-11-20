@@ -3,6 +3,7 @@
 import { requirePermissions } from "@carbon/auth/auth.server";
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
+import { formatMassQuantityKg, formatPercentWw } from "@skuu/formula";
 import { formatSkuuMaterialLotCodes } from "~/modules/items/material-line-label";
 import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
 
@@ -39,7 +40,7 @@ export default function BulkBatchTicketPrint() {
         Print batch ticket
       </button>
       <header className="mb-6">
-        <h1 className="text-xl font-bold">SkuuOS — Bulk batch ticket</h1>
+        <h1 className="text-xl font-bold">SkuuOS bulk batch ticket</h1>
         <p>
           <strong>Product:</strong> {ticket.productCode} — {ticket.productName}
         </p>
@@ -47,10 +48,7 @@ export default function BulkBatchTicketPrint() {
           <strong>Batch no.:</strong> {ticket.batchNumber}
         </p>
         <p>
-          <strong>Batch size:</strong> {ticket.batchSizeKg.toFixed(4)} kg target
-          {ticket.batchSizeL != null
-            ? ` (${ticket.batchSizeL.toFixed(4)} L gross @ ${ticket.densityGPerMl} g/mL)`
-            : ""}
+          <strong>Batch size:</strong> {ticket.batchHeaderLabel}
         </p>
         <p>
           <strong>Expected yield:</strong> {ticket.expectedYieldPercent}% ·
@@ -73,7 +71,6 @@ export default function BulkBatchTicketPrint() {
                     <th>Name</th>
                     <th>% w/w</th>
                     <th>kg</th>
-                    <th>g</th>
                     <th>Supplier batch</th>
                     <th>Lot / location</th>
                   </tr>
@@ -83,9 +80,10 @@ export default function BulkBatchTicketPrint() {
                     <tr key={`${phase.phaseNumber}-${line.partCode}`}>
                       <td>{line.partCode}</td>
                       <td>{line.name}</td>
-                      <td>{line.percentWw.toFixed(4)}</td>
-                      <td>{line.kg.toFixed(4)}</td>
-                      <td>{line.grams.toFixed(2)}</td>
+                      <td>{formatPercentWw(line.percentWw)}</td>
+                      <td>
+                        {formatMassQuantityKg(line.kg, { forceUnit: "kg" })}
+                      </td>
                       <td>
                         {line.batchLots
                           .map((l) => l.supplierBatchNumber)

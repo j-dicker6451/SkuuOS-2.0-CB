@@ -23,6 +23,8 @@ const ticketFixture: BulkBatchTicket = {
   batchNumber: "skuu-spike-SKUU1991-JOB-BULK",
   batchSizeKg: 100,
   batchSizeL: 102.04,
+  batchHeaderLabel:
+    "100.000 kg target (102.041 L finished @ 0.98 g/mL); gross to dispense 102.041 kg (104.124 L)",
   densityGPerMl: 0.98,
   expectedYieldPercent: 98,
   targetFinishedKg: 100,
@@ -38,7 +40,6 @@ const ticketFixture: BulkBatchTicket = {
           name: "Carbopol Ultrez 21",
           percentWw: 0.15,
           kg: 0.1531,
-          grams: 153.06,
           batchLots: [
             {
               trackedEntityReadableId: "RAW-LOT-1",

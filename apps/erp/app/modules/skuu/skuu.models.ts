@@ -28,10 +28,14 @@ export const skuuFormulaPhaseValidator = z.object({
   methodOperationId: z.string().optional()
 });
 
+const roundKg3 = (n: number) => Math.round(n * 1000) / 1000;
+
 export const skuuDispenseRowValidator = z.object({
   jobId: z.string().min(1),
   jobMaterialId: z.string().min(1),
-  quantityKg: zfd.numeric(z.number().positive()),
+  quantityKg: zfd
+    .numeric(z.number().positive())
+    .transform((n) => roundKg3(n)),
   supplierBatchNumber: z.string().optional(),
   trackedEntityId: z.string().optional()
 });

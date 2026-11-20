@@ -131,8 +131,7 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
                     defaultValues={{
                       jobId,
                       jobMaterialId: line.jobMaterialId,
-                      quantityKg: line.plannedKg,
-                      supplierBatchNumber: ""
+                      supplierBatchNumber: line.issuedLotHint ?? ""
                     }}
                     className="mt-2 flex flex-wrap gap-2 items-end"
                   >
@@ -142,6 +141,10 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
                       name="quantityKg"
                       label={t`Actual kg`}
                       type="number"
+                      step="0.001"
+                      placeholder={`${formatMassQuantityKg(line.plannedKg, {
+                        forceUnit: "kg"
+                      })} planned`}
                     />
                     <Input
                       name="supplierBatchNumber"

@@ -78,3 +78,22 @@ export function formatSkuuGrossBatchLabel(args: {
   const grossL = grossKg / args.productDensityGPerMl;
   return `${kgLabel} (${formatLiters(grossL, 1)})`;
 }
+
+/** Print batch ticket header: finished target vs gross material to dispense. */
+export function formatSkuuBulkBatchTicketBatchHeader(args: {
+  targetFinishedKg: number;
+  grossKg: number;
+  productDensityGPerMl: number | null;
+}): string {
+  const targetKg = formatMassQuantityKg(args.targetFinishedKg, {
+    forceUnit: "kg"
+  });
+  const grossKg = formatMassQuantityKg(args.grossKg, { forceUnit: "kg" });
+  const density = args.productDensityGPerMl;
+  if (density != null && density > 0) {
+    const targetL = formatLiters(args.targetFinishedKg / density);
+    const grossL = formatLiters(args.grossKg / density);
+    return `${targetKg} target (${targetL} finished @ ${density} g/mL); gross to dispense ${grossKg} (${grossL})`;
+  }
+  return `${targetKg} target; gross to dispense ${grossKg}`;
+}

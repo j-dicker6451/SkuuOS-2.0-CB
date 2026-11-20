@@ -231,6 +231,50 @@ export function buildTrackedIssueChildren(
   return allocateTrackedIssueDraws(lots, toIssue);
 }
 
+const JOB_DONE_STATUSES = new Set(["Done", "Closed", "Complete"]);
+
+export async function bulkJobManufacturingAlreadyComplete(
+  ctx: SpikeContext,
+  jobId: string,
+  bulkItemId: string
+): Promise<{
+  jobRow: { id: string; status: string | null; quantity: number | string | null };
+  bulkLot: NonNullable<Awaited<ReturnType<typeof resolveJobOutputTrackedEntity>>>;
+} | null> {
+  const jobRow = await ctx.db
+    .selectFrom("job")
+    .select(["id", "status", "quantity"])
+    .where("id", "=", jobId)
+    .where("companyId", "=", ctx.companyId)
+    .executeTakeFirst();
+  if (!jobRow?.status || !JOB_DONE_STATUSES.has(jobRow.status)) {
+    return null;
+  }
+
+  const bulkLot = await resolveJobOutputTrackedEntity(
+    ctx.db,
+    ctx.companyId,
+    jobId,
+    bulkItemId
+  );
+  if (!bulkLot || bulkLot.status !== "Available") {
+    return null;
+  }
+
+  const issued = await ctx.db
+    .selectFrom("jobMaterial")
+    .select((eb) => eb.fn.sum<number>("quantityIssued").as("s"))
+    .where("jobId", "=", jobId)
+    .where("companyId", "=", ctx.companyId)
+    .where("methodType", "=", "Pull from Inventory")
+    .executeTakeFirst();
+  if (Number(issued?.s ?? 0) <= QTY_EPS) {
+    return null;
+  }
+
+  return { jobRow, bulkLot };
+}
+
 /** Input lots still Available (re-read after each jobMaterial issue). */
 export async function listAvailableInputLots(
   db: Db,
@@ -271,6 +315,7 @@ export async function issueTrackedMaterialsMes(
       "quantity",
       "estimatedQuantity",
       "quantityToIssue",
+      "quantityIssued",
       "requiresBatchTracking"
     ])
     .where("jobId", "=", jobId)
@@ -282,15 +327,17 @@ export async function issueTrackedMaterialsMes(
     if (!jm.requiresBatchTracking) {
       continue;
     }
-    const toIssue = Number(
+    const planned = Number(
       jm.quantityToIssue ?? jm.quantity ?? jm.estimatedQuantity ?? 0
     );
-    if (toIssue <= 0) continue;
+    const alreadyIssued = Number(jm.quantityIssued ?? 0);
+    const toIssue = Math.max(0, planned - alreadyIssued);
+    if (toIssue <= QTY_EPS) continue;
 
     const lots = await listAvailableInputLots(ctx.db, ctx.companyId, jm.itemId);
     if (lots.length === 0) {
       throw new Error(
-        `No Available input lots for item ${jm.itemId} (job material ${jm.id})`
+        `No Available input lots for item ${jm.itemId} (job material ${jm.id}, need ${toIssue.toFixed(3)} kg more)`
       );
     }
 
@@ -299,6 +346,11 @@ export async function issueTrackedMaterialsMes(
       toIssue,
       multiLotItemId != null && jm.itemId === multiLotItemId
     );
+    if (children.length === 0) {
+      throw new Error(
+        `trackedEntitiesToOperation (${jm.itemId}): no drawable lots for ${toIssue.toFixed(3)} kg`
+      );
+    }
     const result = await invokePosting(
       handles,
       "issue",

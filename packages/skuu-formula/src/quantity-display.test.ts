@@ -8,6 +8,7 @@ import {
   formatMassQuantityKg,
   formatPercentWw,
   formatPercentWw4,
+  formatSkuuBulkBatchTicketBatchHeader,
   formatSkuuGrossBatchLabel
 } from "./quantity-display";
 
@@ -50,5 +51,17 @@ describe("quantity-display", () => {
         productDensityGPerMl: 1.04
       })
     ).toBe("254.694 kg (244.9 L)");
+  });
+
+  it("formatSkuuBulkBatchTicketBatchHeader", () => {
+    expect(
+      formatSkuuBulkBatchTicketBatchHeader({
+        targetFinishedKg: 249.6,
+        grossKg: 254.694,
+        productDensityGPerMl: 1.04
+      })
+    ).toBe(
+      "249.600 kg target (240.000 L finished @ 1.04 g/mL); gross to dispense 254.694 kg (244.898 L)"
+    );
   });
 });

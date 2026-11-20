@@ -2,6 +2,7 @@
 
 import type { Database } from "@carbon/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
 
 type Client = SupabaseClient<Database>;
 
@@ -60,6 +61,109 @@ export async function loadSkuuJobMaterialLots(
   return out;
 }
 
+/** MES issue / consumption rows when manual dispense rows were not created. */
+export async function loadSkuuJobMaterialLotsFromConsumption(
+  client: Client,
+  companyId: string,
+  jobId: string,
+  jobMaterialIds: string[]
+): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
+  const out = new Map<string, SkuuJobMaterialLotRef[]>();
+  if (!jobMaterialIds.length) return out;
+
+  const { data: materials } = await client
+    .from("jobMaterial")
+    .select("id, itemId, quantityIssued")
+    .eq("companyId", companyId)
+    .in("id", jobMaterialIds);
+  const issuedByItem = new Map<string, string[]>();
+  for (const jm of materials ?? []) {
+    if (Number(jm.quantityIssued ?? 0) <= 0) continue;
+    const list = issuedByItem.get(jm.itemId) ?? [];
+    list.push(jm.id);
+    issuedByItem.set(jm.itemId, list);
+  }
+  if (issuedByItem.size === 0) return out;
+
+  const { data: ledger, error: ledgerErr } = await client
+    .from("itemLedger")
+    .select("itemId, trackedEntityId, quantity")
+    .eq("companyId", companyId)
+    .eq("documentId", jobId)
+    .eq("documentType", "Job Consumption")
+    .not("trackedEntityId", "is", null);
+  if (ledgerErr) throw new Error(ledgerErr.message);
+
+  const teIds = [
+    ...new Set(
+      (ledger ?? [])
+        .map((r) => r.trackedEntityId)
+        .filter((id): id is string => !!id)
+    )
+  ];
+  const teMeta = new Map<
+    string,
+    { readableId: string; supplierBatch: string | null }
+  >();
+  if (teIds.length) {
+    const { data: tes } = await client
+      .from("trackedEntity")
+      .select("id, readableId, sourceDocumentReadableId")
+      .in("id", teIds);
+    for (const te of tes ?? []) {
+      teMeta.set(te.id, {
+        readableId: te.readableId ?? te.id,
+        supplierBatch: te.sourceDocumentReadableId ?? te.readableId ?? null
+      });
+    }
+  }
+
+  const qtyByItemTe = new Map<string, Map<string, number>>();
+  for (const row of ledger ?? []) {
+    if (!row.trackedEntityId || !row.itemId) continue;
+    const qty = Math.max(0, -Number(row.quantity ?? 0));
+    if (qty <= 0) continue;
+    const byTe = qtyByItemTe.get(row.itemId) ?? new Map<string, number>();
+    byTe.set(
+      row.trackedEntityId,
+      (byTe.get(row.trackedEntityId) ?? 0) + qty
+    );
+    qtyByItemTe.set(row.itemId, byTe);
+  }
+
+  for (const [itemId, jmIds] of issuedByItem) {
+    const byTe = qtyByItemTe.get(itemId);
+    if (!byTe?.size) continue;
+    const lots: SkuuJobMaterialLotRef[] = [...byTe.entries()].map(
+      ([teId, quantityKg]) => {
+        const meta = teMeta.get(teId);
+        return {
+          trackedEntityReadableId: meta?.readableId ?? teId,
+          supplierBatchNumber: meta?.supplierBatch ?? null,
+          quantityKg
+        };
+      }
+    );
+    for (const jmId of jmIds) {
+      out.set(jmId, lots);
+    }
+  }
+  return out;
+}
+
+function mergeLotMaps(
+  primary: Map<string, SkuuJobMaterialLotRef[]>,
+  fallback: Map<string, SkuuJobMaterialLotRef[]>
+): Map<string, SkuuJobMaterialLotRef[]> {
+  const merged = new Map(primary);
+  for (const [key, lots] of fallback) {
+    if (!merged.get(key)?.length) {
+      merged.set(key, lots);
+    }
+  }
+  return merged;
+}
+
 export async function loadSkuuJobMaterialLotsByMethodMaterial(
   client: Client,
   companyId: string,
@@ -67,22 +171,48 @@ export async function loadSkuuJobMaterialLotsByMethodMaterial(
 ): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
   const { data: jm } = await client
     .from("jobMaterial")
-    .select("id, jobMakeMethod(parentMaterialId)")
+    .select("id, itemId, jobMakeMethod(parentMaterialId)")
     .eq("jobId", jobId)
     .eq("companyId", companyId);
   if (!jm?.length) return new Map();
 
-  const byJm = await loadSkuuJobMaterialLots(
-    client,
-    companyId,
-    jm.map((r) => r.id)
+  const jobMaterialIds = jm.map((r) => r.id);
+  const byJm = mergeLotMaps(
+    await loadSkuuJobMaterialLots(client, companyId, jobMaterialIds),
+    await loadSkuuJobMaterialLotsFromConsumption(
+      client,
+      companyId,
+      jobId,
+      jobMaterialIds
+    )
   );
+
+  const methodMaterialByItemId = new Map<string, string>();
+  const resolved = await resolveSkuuBulkMakeMethodForJob(client, {
+    jobId,
+    companyId
+  });
+  if (resolved) {
+    const { data: methodMaterials } = await client
+      .from("methodMaterial")
+      .select("id, itemId")
+      .eq("companyId", companyId)
+      .eq("makeMethodId", resolved.makeMethodId);
+    for (const m of methodMaterials ?? []) {
+      methodMaterialByItemId.set(m.itemId, m.id);
+    }
+  }
+
   const byMethodMaterial = new Map<string, SkuuJobMaterialLotRef[]>();
   for (const row of jm) {
-    const mmId = row.jobMakeMethod?.parentMaterialId;
-    if (!mmId) continue;
     const lots = byJm.get(row.id);
-    if (lots?.length) byMethodMaterial.set(mmId, lots);
+    if (!lots?.length) continue;
+    const mmId =
+      row.jobMakeMethod?.parentMaterialId ??
+      methodMaterialByItemId.get(row.itemId);
+    if (!mmId) continue;
+    const prev = byMethodMaterial.get(mmId) ?? [];
+    byMethodMaterial.set(mmId, [...prev, ...lots]);
   }
   return byMethodMaterial;
 }
@@ -112,10 +242,14 @@ export async function loadSkuuJobMaterialLotsByItemReadable(
     (items ?? []).map((i) => [i.id, i.readableId ?? i.id])
   );
 
-  const byJm = await loadSkuuJobMaterialLots(
-    client,
-    companyId,
-    jm.map((r) => r.id)
+  const byJm = mergeLotMaps(
+    await loadSkuuJobMaterialLots(client, companyId, jm.map((r) => r.id)),
+    await loadSkuuJobMaterialLotsFromConsumption(
+      client,
+      companyId,
+      jobId,
+      jm.map((r) => r.id)
+    )
   );
   const byReadable = new Map<string, SkuuJobMaterialLotRef[]>();
   for (const row of jm) {
