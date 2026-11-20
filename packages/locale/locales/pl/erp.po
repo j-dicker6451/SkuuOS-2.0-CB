@@ -2715,6 +2715,9 @@ msgstr "Rzeczywisty koniec"
 msgid "Actual Failure Mode"
 msgstr "Rzeczywisty tryb awarii"
 
+msgid "Actual kg"
+msgstr ""
+
 msgid "Actual of budget"
 msgstr "Rzeczywisty z budżetu"
 
@@ -2828,6 +2831,9 @@ msgstr "Dodaj korektę"
 msgid "Add Affected Item"
 msgstr "Dodaj element dotknięty zmianą"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr ""
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "Dodaj dodatkową warstwę bezpieczeństwa, wymagając kodu z aplikacji uwierzytelniającej podczas logowania."
 
@@ -2872,6 +2878,12 @@ msgstr "Dodaj aplikację Authenticator"
 
 msgid "Add Back to Report"
 msgstr "Dodaj powrót do raportu"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr ""
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr ""
 
 msgid "Add Calibration Record"
 msgstr "Dodaj Zapis wzorcowania"
@@ -2960,6 +2972,9 @@ msgstr "Dodaj grupę"
 msgid "Add header"
 msgstr "Dodaj nagłówek"
 
+msgid "Add ingredient line"
+msgstr ""
+
 msgid "Add Invoice"
 msgstr "Dodaj Fakturę"
 
@@ -3001,6 +3016,9 @@ msgstr "Dodaj wiersze z dokumentu"
 
 msgid "Add link"
 msgstr "Dodaj odnośnik"
+
+msgid "Add lot row"
+msgstr ""
 
 msgid "Add manually"
 msgstr "Dodaj ręcznie"
@@ -3055,6 +3073,9 @@ msgstr "Dodaj w innym przypadku"
 msgid "Add overtime"
 msgstr "Dodaj nadgodziny"
 
+msgid "Add pack size"
+msgstr ""
+
 msgid "Add Pair"
 msgstr "Dodaj parę"
 
@@ -3075,6 +3096,9 @@ msgstr "Dodaj ścieżkę"
 
 msgid "Add Payment"
 msgstr "Dodaj płatność"
+
+msgid "Add phase"
+msgstr ""
 
 msgid "Add Predecessor"
 msgstr "Dodaj poprzednika"
@@ -3252,6 +3276,9 @@ msgstr "Dodano {name} · {quantity} × {rate}"
 
 msgid "Added for this customer"
 msgstr "Dodane dla tego klienta"
+
+msgid "Added to tank"
+msgstr ""
 
 msgid "Added to the change request"
 msgstr "Dodano do żądania zmian"
@@ -5290,6 +5317,9 @@ msgstr "Ilości partii"
 msgid "Batch Size"
 msgstr "Rozmiar partii"
 
+msgid "Batch ticket"
+msgstr ""
+
 msgid "Batch tracking"
 msgstr "Śledzenie partii"
 
@@ -5774,6 +5804,12 @@ msgstr "Zbudowany i wyceniony jako własna metoda"
 msgid "Built-in"
 msgstr "Wbudowany"
 
+msgid "Bulk"
+msgstr ""
+
+msgid "Bulk batch record"
+msgstr ""
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr ""
 
@@ -5782,6 +5818,12 @@ msgstr "Import zbiorczy"
 
 msgid "Bulk Jobs"
 msgstr "Zbiorcze Zlecenia produkcyjne"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr ""
+
+msgid "Bulk settings"
+msgstr ""
 
 msgid "Burden"
 msgstr "Obciążenie"
@@ -6756,6 +6798,9 @@ msgstr "Wyczyść: {fieldLabel}"
 msgid "Clear {fieldName}"
 msgstr "Wyczyść {fieldName}"
 
+msgid "Clear draft"
+msgstr ""
+
 msgid "Clear due date"
 msgstr "Wyczyść datę terminu"
 
@@ -6809,6 +6854,15 @@ msgstr "Kliknij lub przeciągnij aby zastąpić"
 
 msgid "Click to rename"
 msgstr "Kliknij, aby zmienić nazwę"
+
+msgid "Client"
+msgstr ""
+
+msgid "Client & product"
+msgstr ""
+
+msgid "Client SKU / formula ref"
+msgstr ""
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "Korekta"
 msgid "Correction {correctionNumber}"
 msgstr "Korekta {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr ""
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "Korekta: {0}"
@@ -8203,6 +8260,9 @@ msgstr "Nie można sprawdzić jednostek magazynowych materiałów tego zlecenia 
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "Nie można rozwiązać {0}: {1} — produkcja już zapisana"
+
+msgid "Could not load formulation data for this method."
+msgstr ""
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "Nie udało się wczytać jednostek magazynowych nieuwzględnianych w MRP. Może brakować oznaczeń."
@@ -8456,6 +8516,9 @@ msgstr "Utwórz pozycję ZZ"
 
 msgid "Create PO Revision"
 msgstr "Utwórz rewizję zamówienia zakupu"
+
+msgid "Create product"
+msgstr ""
 
 msgid "Create Production Event"
 msgstr "Utwórz Zdarzenie Produkcji"
@@ -12981,6 +13044,10 @@ msgstr "Pliki dołączone tutaj są wysyłane wraz z każdym emailem zamówienia
 msgid "Fill"
 msgstr "Uzupełnij"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr ""
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "Wypełnij tę firmę realistyczną historią branżową, aby każdy ekran zawierał coś interesującego. Możesz przywrócić to, co tu było wcześniej."
 
@@ -13326,6 +13393,18 @@ msgstr "Format"
 
 msgid "Formula"
 msgstr "Formuła"
+
+msgid "Formula (% w/w)"
+msgstr ""
+
+msgid "Formula by phase"
+msgstr ""
+
+msgid "Formulation & method"
+msgstr ""
+
+msgid "Formulation & method of manufacture"
+msgstr ""
 
 msgid "Forward deployed engineer"
 msgstr "Inżynier wdrażający"
@@ -14773,6 +14852,9 @@ msgstr "Stawki pośrednie"
 msgid "Infrastructure"
 msgstr "Infrastruktura"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr ""
+
 msgid "Inherit"
 msgstr "Odziedzicz"
 
@@ -15783,6 +15865,9 @@ msgstr "Klucz"
 msgid "Keyboard shortcuts"
 msgstr "Skróty klawiaturowe"
 
+msgid "kg / batch"
+msgstr ""
+
 msgid "Kit"
 msgstr "Zestaw"
 
@@ -16661,6 +16746,9 @@ msgstr "Zaloguj czas"
 msgid "Log time (the open element)"
 msgstr "Zaloguj czas (otwarty element)"
 
+msgid "Logged"
+msgstr ""
+
 msgid "Login or create a new account"
 msgstr "Zaloguj się lub utwórz nowe konto"
 
@@ -17070,6 +17158,9 @@ msgstr "Oznacz jako niegotowe"
 msgid "Mark Partial"
 msgstr "Oznacz jako częściową"
 
+msgid "Mark phase complete"
+msgstr ""
+
 msgid "Mark reviewed"
 msgstr "Oznacz jako przejrzane"
 
@@ -17153,6 +17244,9 @@ msgstr "Materiał"
 
 msgid "Material"
 msgstr "Materiał"
+
+msgid "Material code"
+msgstr ""
 
 msgid "Material Cost"
 msgstr "Koszt Materiału"
@@ -17420,8 +17514,14 @@ msgstr "Metoda"
 msgid "Method Id"
 msgstr "Identyfikator metody"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr ""
+
 msgid "Method Materials"
 msgstr "Materiały metody"
+
+msgid "Method of manufacture"
+msgstr ""
 
 msgid "method operations"
 msgstr "operacje metody"
@@ -18316,6 +18416,9 @@ msgstr "Nowa Procedura"
 msgid "New Process"
 msgstr "Nowy proces"
 
+msgid "New product (SkuuOS)"
+msgstr ""
+
 msgid "New Project"
 msgstr "Nowy projekt"
 
@@ -19009,6 +19112,9 @@ msgstr "Brak zgrupowanych powiadomień"
 msgid "No image"
 msgstr "Brak obrazu"
 
+msgid "No ingredients in this phase."
+msgstr ""
+
 msgid "No inspection plans"
 msgstr "Brak planów kontroli"
 
@@ -19119,6 +19225,9 @@ msgstr "Brak pasującej godziny"
 
 msgid "No materials"
 msgstr "Brak materiałów"
+
+msgid "No materials in this phase on the BOM."
+msgstr ""
 
 msgid "No materials yet"
 msgstr "Brak materiałów na razie"
@@ -21035,6 +21144,15 @@ msgstr "Prawo własności przechodzi do Ciebie na koniec okresu"
 msgid "Owns: {0}"
 msgstr "Odpowiada za: {0}"
 
+msgid "Pack size (mL)"
+msgstr ""
+
+msgid "Pack sizes"
+msgstr ""
+
+msgid "Packaging"
+msgstr ""
+
 msgid "Packing Slip"
 msgstr "Dokument wysyłki"
 
@@ -21534,8 +21652,25 @@ msgstr "Grupy uprawnień do przyznawania dostępu zbiorczo"
 msgid "Permissions"
 msgstr "Uprawnienia"
 
+msgid "Phase"
+msgstr ""
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr ""
+
+msgid "Phase complete"
+msgstr ""
+
 msgid "Phase durations"
 msgstr "Czasy trwania faz"
+
+msgid "Phase notes"
+msgstr ""
+
+msgid "phases complete"
+msgstr ""
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "Wycofywanie artykułu na rzecz następnika, dzięki czemu planowanie przekierowuje zapotrzebowanie starego artykułu — pomnożone przez współczynnik przeliczeniowy — do nowego."
@@ -21614,6 +21749,9 @@ msgstr "Wybierz rachunek"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "Wybierz istniejącą regułę z biblioteki lub utwórz nową, aby rozpocząć wymuszanie kontroli na tym elemencie."
+
+msgid "Pick existing"
+msgstr ""
 
 msgid "Pick List"
 msgstr "Lista pobrania"
@@ -22026,6 +22164,9 @@ msgstr "Wstępnie wypełnione dla nowego artykułu, gdy termin ważności to Sta
 msgid "Pre-select material"
 msgstr "Wstępnie wybierz materiał"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr ""
+
 msgid "Precedes"
 msgstr "Poprzedza"
 
@@ -22364,8 +22505,14 @@ msgstr "Artykuł wyprodukowany"
 msgid "Product"
 msgstr "Produkt"
 
+msgid "Product build"
+msgstr ""
+
 msgid "Product issues during hypercare"
 msgstr "Problemy z produktem podczas hypercare"
+
+msgid "Product name"
+msgstr ""
 
 msgid "Product support"
 msgstr "Wsparcie produktu"
@@ -22920,8 +23067,14 @@ msgstr "Ilość {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "Ilość {quantity}"
 
+msgid "Qty / unit"
+msgstr ""
+
 msgid "Qty On Hand"
 msgstr "Ilość na magazynie"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr ""
 
 msgid "Qty. Complete"
 msgstr "Ilość ukończona"
@@ -25524,6 +25677,9 @@ msgstr "Zapisz wersję roboczą"
 msgid "Save Method"
 msgstr "Zapisz metodę"
 
+msgid "Save phase instructions"
+msgstr ""
+
 msgid "Save signature"
 msgstr "Zapisz podpis"
 
@@ -25810,6 +25966,9 @@ msgstr "Szukaj kosztów"
 msgid "Search country..."
 msgstr "Szukaj kraju..."
 
+msgid "Search customers"
+msgstr ""
+
 msgid "Search customers and types..."
 msgstr "Wyszukaj klientów i typy..."
 
@@ -25866,6 +26025,9 @@ msgstr "Szukaj zmiennych listy…"
 
 msgid "Search maintenance dispatches"
 msgstr "Szukaj zleceń utrzymania ruchu"
+
+msgid "Search materials"
+msgstr ""
 
 msgid "Search operations…"
 msgstr "Wyszukaj operacje…"
@@ -26597,6 +26759,9 @@ msgstr "Ustawione na projekcie decyduje, gdzie kosztuje się projekt: Statystycz
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "Ustaw na projekcie, mówi, do czego służy jego koszt: Bezpośredni (umowa rządowa), Komercyjny, Pośredni, IR&D lub B&P. Tryb DCAA wymaga jednego na każdym projekcie."
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr ""
 
 msgid "Set Pricing"
 msgstr "Ustaw ceny"
@@ -27573,6 +27738,16 @@ msgstr "Skonfiguruj hosting (chmura lub self-hosted)"
 msgid "Standard"
 msgstr "Standardowy"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr ""
+
+msgid "Standard batch size (kg)"
+msgstr ""
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "Standardowy Carbon w chmurze pasuje do sposobu, w jaki prowadzi się Twoją firmę"
 
@@ -28240,6 +28415,9 @@ msgstr "Adres dostawcy"
 msgid "Supplier Address Line 2"
 msgstr "Linia adresu 2 dostawcy"
 
+msgid "Supplier batch / lot"
+msgstr ""
+
 msgid "Supplier City"
 msgstr "Miasto dostawcy"
 
@@ -28672,6 +28850,11 @@ msgstr "Data docelowa"
 
 msgid "Target disposition row"
 msgstr "Docelowy wiersz dyspozycji"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr ""
 
 msgid "Target go-live"
 msgstr "Docelowa data wdrożenia"
@@ -31372,6 +31555,10 @@ msgstr "Suma (niezgodna)"
 msgid "Total {0}"
 msgstr "Suma {0}"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr ""
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "Suma {formattedTotal}, {chartChange} względem poprzedniego okresu"
 
@@ -31536,6 +31723,9 @@ msgstr "Typ śledzenia"
 
 msgid "Tracking URL"
 msgstr "Adres URL śledzenia"
+
+msgid "Trade name"
+msgstr ""
 
 msgid "Trailing zeros are hidden"
 msgstr "Zera końcowe są ukryte"

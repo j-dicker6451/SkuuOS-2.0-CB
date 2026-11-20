@@ -2715,6 +2715,9 @@ msgstr "Gerçek Bitiş"
 msgid "Actual Failure Mode"
 msgstr "Gerçekleşen Arıza Modu"
 
+msgid "Actual kg"
+msgstr ""
+
 msgid "Actual of budget"
 msgstr "Bütçenin gerçeği"
 
@@ -2828,6 +2831,9 @@ msgstr "Düzeltme Ekle"
 msgid "Add Affected Item"
 msgstr "Etkilenen Öğe Ekle"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr ""
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "Oturum açarken bir kimlik doğrulayıcı uygulamadan kod isteyerek güvenliğe ekstra bir katman ekle."
 
@@ -2872,6 +2878,12 @@ msgstr "Kimlik Doğrulayıcı Uygulaması Ekle"
 
 msgid "Add Back to Report"
 msgstr "Raporda Geri Ekle"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr ""
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr ""
 
 msgid "Add Calibration Record"
 msgstr "Kalibrasyon Kaydı Ekle"
@@ -2960,6 +2972,9 @@ msgstr "Grup Ekle"
 msgid "Add header"
 msgstr "Başlık ekle"
 
+msgid "Add ingredient line"
+msgstr ""
+
 msgid "Add Invoice"
 msgstr "Fatura Ekle"
 
@@ -3001,6 +3016,9 @@ msgstr "Belgeden satır ekle"
 
 msgid "Add link"
 msgstr "Bağlantı Ekle"
+
+msgid "Add lot row"
+msgstr ""
 
 msgid "Add manually"
 msgstr "Manuel olarak ekle"
@@ -3055,6 +3073,9 @@ msgstr "Aksi takdirde ekle"
 msgid "Add overtime"
 msgstr "Fazla mesai ekle"
 
+msgid "Add pack size"
+msgstr ""
+
 msgid "Add Pair"
 msgstr "Ekle"
 
@@ -3075,6 +3096,9 @@ msgstr "Yol ekle"
 
 msgid "Add Payment"
 msgstr "Ödeme Ekle"
+
+msgid "Add phase"
+msgstr ""
 
 msgid "Add Predecessor"
 msgstr "Öncülü Ekle"
@@ -3252,6 +3276,9 @@ msgstr "Eklendi {name} · {quantity} × {rate}"
 
 msgid "Added for this customer"
 msgstr "Bu müşteri için eklendi"
+
+msgid "Added to tank"
+msgstr ""
 
 msgid "Added to the change request"
 msgstr "Değişim isteğine eklendi"
@@ -5290,6 +5317,9 @@ msgstr "Parti Miktarları"
 msgid "Batch Size"
 msgstr "Lot Boyutu"
 
+msgid "Batch ticket"
+msgstr ""
+
 msgid "Batch tracking"
 msgstr "Batch takibi"
 
@@ -5774,6 +5804,12 @@ msgstr "Kendi yöntemi olarak oluşturulmuş ve maliyetlendirilmiş"
 msgid "Built-in"
 msgstr "Yerleşik"
 
+msgid "Bulk"
+msgstr ""
+
+msgid "Bulk batch record"
+msgstr ""
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr ""
 
@@ -5782,6 +5818,12 @@ msgstr "Toplu İçe Aktarma"
 
 msgid "Bulk Jobs"
 msgstr "Toplu İş Emirleri"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr ""
+
+msgid "Bulk settings"
+msgstr ""
 
 msgid "Burden"
 msgstr "Yükle"
@@ -6756,6 +6798,9 @@ msgstr "{fieldLabel} alanını temizle"
 msgid "Clear {fieldName}"
 msgstr "{fieldName} temizle"
 
+msgid "Clear draft"
+msgstr ""
+
 msgid "Clear due date"
 msgstr "Son tarihi temizle"
 
@@ -6809,6 +6854,15 @@ msgstr "Değiştirmek için tıklayın veya sürükleyin"
 
 msgid "Click to rename"
 msgstr "Yeniden adlandırmak için tıklayın"
+
+msgid "Client"
+msgstr ""
+
+msgid "Client & product"
+msgstr ""
+
+msgid "Client SKU / formula ref"
+msgstr ""
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "Düzeltme"
 msgid "Correction {correctionNumber}"
 msgstr "Düzeltme {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr ""
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "Düzeltme: {0}"
@@ -8203,6 +8260,9 @@ msgstr "Bu İş emrinin malzemelerin Depolama birimleri kontrol edilemedi. İlet
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "{0} çözülemedi: {1} — üretim zaten kaydedildi"
+
+msgid "Could not load formulation data for this method."
+msgstr ""
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "MRP dışı depolama birimleri yüklenemedi. Bazı işaretler eksik olabilir."
@@ -8456,6 +8516,9 @@ msgstr "Satın alma siparişi satırı oluştur"
 
 msgid "Create PO Revision"
 msgstr "PO Revizyonu Oluştur"
+
+msgid "Create product"
+msgstr ""
 
 msgid "Create Production Event"
 msgstr "Üretim olayı oluştur"
@@ -12981,6 +13044,10 @@ msgstr "Buraya eklenen dosyalar, bu tedarikçiye gönderilen her satın alma sip
 msgid "Fill"
 msgstr "Doldur"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr ""
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "Bu şirketi gerçekçi bir endüstri hikayesiyle doldurun, böylece her ekran bir şey içerir. Önceki durumu geri getirebilirsiniz."
 
@@ -13326,6 +13393,18 @@ msgstr "Biçim"
 
 msgid "Formula"
 msgstr "Formül"
+
+msgid "Formula (% w/w)"
+msgstr ""
+
+msgid "Formula by phase"
+msgstr ""
+
+msgid "Formulation & method"
+msgstr ""
+
+msgid "Formulation & method of manufacture"
+msgstr ""
 
 msgid "Forward deployed engineer"
 msgstr "Sahadaki mühendis"
@@ -14773,6 +14852,9 @@ msgstr "Dolaylı Oranlar"
 msgid "Infrastructure"
 msgstr "Altyapı"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr ""
+
 msgid "Inherit"
 msgstr "Devral"
 
@@ -15783,6 +15865,9 @@ msgstr "Anahtar"
 msgid "Keyboard shortcuts"
 msgstr "Klavye kısayolları"
 
+msgid "kg / batch"
+msgstr ""
+
 msgid "Kit"
 msgstr "Set"
 
@@ -16661,6 +16746,9 @@ msgstr "Zaman Kaydet"
 msgid "Log time (the open element)"
 msgstr "Zaman kaydet (açık öğe)"
 
+msgid "Logged"
+msgstr ""
+
 msgid "Login or create a new account"
 msgstr "Oturum açın veya yeni bir hesap oluşturun"
 
@@ -17070,6 +17158,9 @@ msgstr "Bitmedi olarak işaretle"
 msgid "Mark Partial"
 msgstr "Kısmi İşaretle"
 
+msgid "Mark phase complete"
+msgstr ""
+
 msgid "Mark reviewed"
 msgstr "İncelendi olarak işaretle"
 
@@ -17153,6 +17244,9 @@ msgstr "Malzeme"
 
 msgid "Material"
 msgstr "Malzeme"
+
+msgid "Material code"
+msgstr ""
 
 msgid "Material Cost"
 msgstr "Malzeme Maliyeti"
@@ -17420,8 +17514,14 @@ msgstr "Yöntem"
 msgid "Method Id"
 msgstr "Metot Kimliği"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr ""
+
 msgid "Method Materials"
 msgstr "Metot Malzemeleri"
+
+msgid "Method of manufacture"
+msgstr ""
 
 msgid "method operations"
 msgstr "Yöntem operasyonları"
@@ -18316,6 +18416,9 @@ msgstr "Yeni Prosedür"
 msgid "New Process"
 msgstr "Yeni Süreç"
 
+msgid "New product (SkuuOS)"
+msgstr ""
+
 msgid "New Project"
 msgstr "Yeni Proje"
 
@@ -19009,6 +19112,9 @@ msgstr "Gruplanmış bildirim yok"
 msgid "No image"
 msgstr "Resim yok"
 
+msgid "No ingredients in this phase."
+msgstr ""
+
 msgid "No inspection plans"
 msgstr "Kontrol planı yok"
 
@@ -19119,6 +19225,9 @@ msgstr "Eşleşen saat yok"
 
 msgid "No materials"
 msgstr "Malzeme yok"
+
+msgid "No materials in this phase on the BOM."
+msgstr ""
 
 msgid "No materials yet"
 msgstr "Henüz malzeme yok"
@@ -21035,6 +21144,15 @@ msgstr "Mülkiyet kiralama döneminin sonunda size devredilir"
 msgid "Owns: {0}"
 msgstr "Sahibi: {0}"
 
+msgid "Pack size (mL)"
+msgstr ""
+
+msgid "Pack sizes"
+msgstr ""
+
+msgid "Packaging"
+msgstr ""
+
 msgid "Packing Slip"
 msgstr "Paketleme Fişi"
 
@@ -21534,8 +21652,25 @@ msgstr "Toplu erişim vermek için izin grupları"
 msgid "Permissions"
 msgstr "İzinler"
 
+msgid "Phase"
+msgstr ""
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr ""
+
+msgid "Phase complete"
+msgstr ""
+
 msgid "Phase durations"
 msgstr "Faz süreleri"
+
+msgid "Phase notes"
+msgstr ""
+
+msgid "phases complete"
+msgstr ""
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "Eski stok kartını bir ardıl parça lehine aşamalı olarak devre dışı bırakıp, böylece planlama eski stok kartının talebini — çevrim katsayısı ile çarpılarak — yenisine yönlendirir."
@@ -21614,6 +21749,9 @@ msgstr "Bir hesap seçin"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "Bu öğe üzerinde kontroller uygulamaya başlamak için kitaplıktan mevcut bir kural seçin veya yeni bir kural oluşturun."
+
+msgid "Pick existing"
+msgstr ""
 
 msgid "Pick List"
 msgstr "Seçim Listesi"
@@ -22026,6 +22164,9 @@ msgstr "Son kullanma tarihi Sabit Süre olduğunda yeni bir ürün için öncede
 msgid "Pre-select material"
 msgstr "Malzemeyi önceden seç"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr ""
+
 msgid "Precedes"
 msgstr "Önceler"
 
@@ -22364,8 +22505,14 @@ msgstr "Üretilen stok kartı"
 msgid "Product"
 msgstr "Ürün"
 
+msgid "Product build"
+msgstr ""
+
 msgid "Product issues during hypercare"
 msgstr "Hypercare sırasında ürün sorunları"
+
+msgid "Product name"
+msgstr ""
 
 msgid "Product support"
 msgstr "Ürün desteği"
@@ -22920,8 +23067,14 @@ msgstr "Miktar {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "Miktar {quantity}"
 
+msgid "Qty / unit"
+msgstr ""
+
 msgid "Qty On Hand"
 msgstr "Elde Bulunan Miktar"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr ""
 
 msgid "Qty. Complete"
 msgstr "Tamamlanan Miktar"
@@ -25524,6 +25677,9 @@ msgstr "Taslağı Kaydet"
 msgid "Save Method"
 msgstr "Yöntemi Kaydet"
 
+msgid "Save phase instructions"
+msgstr ""
+
 msgid "Save signature"
 msgstr "İmzayı Kaydet"
 
@@ -25810,6 +25966,9 @@ msgstr "Maliyetleri ara"
 msgid "Search country..."
 msgstr "Ülke ara..."
 
+msgid "Search customers"
+msgstr ""
+
 msgid "Search customers and types..."
 msgstr "Müşterileri ve türleri ara..."
 
@@ -25866,6 +26025,9 @@ msgstr "Liste değişkenlerini ara…"
 
 msgid "Search maintenance dispatches"
 msgstr "Bakım emirlerinde ara"
+
+msgid "Search materials"
+msgstr ""
 
 msgid "Search operations…"
 msgstr "Operasyonları ara…"
@@ -26597,6 +26759,9 @@ msgstr "Bir proje üzerinde ayarlandığında, projenin maliyetinin nereye muhas
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "Bir proje üzerinde ayarlandığında, maliyetinin ne için olduğunu belirtir: Direkt (bir hükümet sözleşmesi), Ticari, Dolaylı, IR&D veya B&P. DCAA modu her projeye biri gerektirir."
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr ""
 
 msgid "Set Pricing"
 msgstr "Fiyatlandırmayı Ayarla"
@@ -27573,6 +27738,16 @@ msgstr "Barındırma hizmetini ayarlayın (bulut veya kendi barındırılan)"
 msgid "Standard"
 msgstr "Standart"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr ""
+
+msgid "Standard batch size (kg)"
+msgstr ""
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "Standart bulut Carbon, şirketinizin nasıl çalıştığına uygun"
 
@@ -28240,6 +28415,9 @@ msgstr "Tedarikçi Adresi"
 msgid "Supplier Address Line 2"
 msgstr "Tedarikçi Adres Satırı 2"
 
+msgid "Supplier batch / lot"
+msgstr ""
+
 msgid "Supplier City"
 msgstr "Tedarikçi Şehri"
 
@@ -28672,6 +28850,11 @@ msgstr "Hedef tarih"
 
 msgid "Target disposition row"
 msgstr "Hedef karar satırı"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr ""
 
 msgid "Target go-live"
 msgstr "Hedef canlı yayın"
@@ -31372,6 +31555,10 @@ msgstr "Toplam (dengesiz)"
 msgid "Total {0}"
 msgstr "Toplam {0}"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr ""
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "Toplam {formattedTotal}, önceki döneme göre {chartChange}"
 
@@ -31536,6 +31723,9 @@ msgstr "İzleme türü"
 
 msgid "Tracking URL"
 msgstr "Takip URL'si"
+
+msgid "Trade name"
+msgstr ""
 
 msgid "Trailing zeros are hidden"
 msgstr "Sondaki sıfırlar gizlendi"

@@ -2715,6 +2715,9 @@ msgstr "वास्तविक अंत"
 msgid "Actual Failure Mode"
 msgstr "वास्तविक विफलता मोड"
 
+msgid "Actual kg"
+msgstr ""
+
 msgid "Actual of budget"
 msgstr "बजट का वास्तविक"
 
@@ -2828,6 +2831,9 @@ msgstr "समायोजन जोड़ें"
 msgid "Add Affected Item"
 msgstr "प्रभावित आइटम जोड़ें"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr ""
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "साइन इन करते समय एक प्रमाणक ऐप से कोड मांगकर सुरक्षा की एक अतिरिक्त परत जोड़ें।"
 
@@ -2872,6 +2878,12 @@ msgstr "ऑथेंटिकेटर ऐप जोड़ें"
 
 msgid "Add Back to Report"
 msgstr "रिपोर्ट में वापस जोड़ें"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr ""
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr ""
 
 msgid "Add Calibration Record"
 msgstr "अंशांकन रिकॉर्ड जोड़ें"
@@ -2960,6 +2972,9 @@ msgstr "समूह जोड़ें"
 msgid "Add header"
 msgstr "शीर्षक जोड़ें"
 
+msgid "Add ingredient line"
+msgstr ""
+
 msgid "Add Invoice"
 msgstr "चालान जोड़ें"
 
@@ -3001,6 +3016,9 @@ msgstr "दस्तावेज़ से लाइनें जोड़ें
 
 msgid "Add link"
 msgstr "लिंक जोड़ें"
+
+msgid "Add lot row"
+msgstr ""
 
 msgid "Add manually"
 msgstr "मैन्युअल रूप से जोड़ें"
@@ -3055,6 +3073,9 @@ msgstr "अन्यथा जोड़ें"
 msgid "Add overtime"
 msgstr "ओवरटाइम जोड़ें"
 
+msgid "Add pack size"
+msgstr ""
+
 msgid "Add Pair"
 msgstr "जोड़ी जोड़ें"
 
@@ -3075,6 +3096,9 @@ msgstr "पथ जोड़ें"
 
 msgid "Add Payment"
 msgstr "भुगतान जोड़ें"
+
+msgid "Add phase"
+msgstr ""
 
 msgid "Add Predecessor"
 msgstr "पूर्ववर्ती जोड़ें"
@@ -3252,6 +3276,9 @@ msgstr "{name} जोड़ा गया · {quantity} × {rate}"
 
 msgid "Added for this customer"
 msgstr "इस ग्राहक के लिए जोड़ा गया"
+
+msgid "Added to tank"
+msgstr ""
 
 msgid "Added to the change request"
 msgstr "परिवर्तन अनुरोध में जोड़ा गया"
@@ -5290,6 +5317,9 @@ msgstr "बैच मात्राएं"
 msgid "Batch Size"
 msgstr "बैच आकार"
 
+msgid "Batch ticket"
+msgstr ""
+
 msgid "Batch tracking"
 msgstr "बैच ट्रैकिंग"
 
@@ -5774,6 +5804,12 @@ msgstr "अपनी स्वयं की विधि के रूप मे
 msgid "Built-in"
 msgstr "अंतर्निहित"
 
+msgid "Bulk"
+msgstr ""
+
+msgid "Bulk batch record"
+msgstr ""
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr ""
 
@@ -5782,6 +5818,12 @@ msgstr "बल्क आयात"
 
 msgid "Bulk Jobs"
 msgstr "बल्क जॉब्स"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr ""
+
+msgid "Bulk settings"
+msgstr ""
 
 msgid "Burden"
 msgstr "बोझ"
@@ -6756,6 +6798,9 @@ msgstr "{fieldLabel} साफ़ करें"
 msgid "Clear {fieldName}"
 msgstr "{fieldName} साफ़ करें"
 
+msgid "Clear draft"
+msgstr ""
+
 msgid "Clear due date"
 msgstr "नियत तिथि साफ करें"
 
@@ -6809,6 +6854,15 @@ msgstr "प्रतिस्थापित करने के लिए क�
 
 msgid "Click to rename"
 msgstr "नाम बदलने के लिए क्लिक करें"
+
+msgid "Client"
+msgstr ""
+
+msgid "Client & product"
+msgstr ""
+
+msgid "Client SKU / formula ref"
+msgstr ""
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "सुधार"
 msgid "Correction {correctionNumber}"
 msgstr "सुधार {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr ""
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "सुधार: {0}"
@@ -8203,6 +8260,9 @@ msgstr "इस जॉब की सामग्री की भंडारण 
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "{0} को भंग नहीं कर सके: {1} — उत्पादन पहले से दर्ज है"
+
+msgid "Could not load formulation data for this method."
+msgstr ""
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "MRP से बाहर स्टोरेज यूनिट लोड नहीं हो सकीं। कुछ मार्कर गायब हो सकते हैं।"
@@ -8456,6 +8516,9 @@ msgstr "PO पंक्ति बनाएँ"
 
 msgid "Create PO Revision"
 msgstr "क्रय आदेश रिवीजन बनाएँ"
+
+msgid "Create product"
+msgstr ""
 
 msgid "Create Production Event"
 msgstr "उत्पादन इवेंट बनाएँ"
@@ -12981,6 +13044,10 @@ msgstr "यहां संलग्न की गई फाइलें इस 
 msgid "Fill"
 msgstr "भरें"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr ""
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "इस कंपनी को एक यथार्थवादी उद्योग की कहानी से भरें ताकि हर स्क्रीन में कुछ न कुछ हो। आप पहले जो यहां था उसे वापस डाल सकते हैं।"
 
@@ -13326,6 +13393,18 @@ msgstr "प्रारूप"
 
 msgid "Formula"
 msgstr "सूत्र"
+
+msgid "Formula (% w/w)"
+msgstr ""
+
+msgid "Formula by phase"
+msgstr ""
+
+msgid "Formulation & method"
+msgstr ""
+
+msgid "Formulation & method of manufacture"
+msgstr ""
 
 msgid "Forward deployed engineer"
 msgstr "अग्रपंक्ति में तैनात इंजीनियर"
@@ -14773,6 +14852,9 @@ msgstr "अप्रत्यक्ष दरें"
 msgid "Infrastructure"
 msgstr "बुनियादी ढांचा"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr ""
+
 msgid "Inherit"
 msgstr "विरासत"
 
@@ -15783,6 +15865,9 @@ msgstr "कुंजी"
 msgid "Keyboard shortcuts"
 msgstr "कीबोर्ड शॉर्टकट"
 
+msgid "kg / batch"
+msgstr ""
+
 msgid "Kit"
 msgstr "किट"
 
@@ -16661,6 +16746,9 @@ msgstr "समय लॉग करें"
 msgid "Log time (the open element)"
 msgstr "समय लॉग करें (खुला तत्व)"
 
+msgid "Logged"
+msgstr ""
+
 msgid "Login or create a new account"
 msgstr "लॉगिन करें या नया खाता बनाएं"
 
@@ -17070,6 +17158,9 @@ msgstr "पूर्ण नहीं किया गया चिह्नि�
 msgid "Mark Partial"
 msgstr "आंशिक चिह्नित करें"
 
+msgid "Mark phase complete"
+msgstr ""
+
 msgid "Mark reviewed"
 msgstr "समीक्षा किए गए को चिह्नित करें"
 
@@ -17153,6 +17244,9 @@ msgstr "सामग्री"
 
 msgid "Material"
 msgstr "सामग्री"
+
+msgid "Material code"
+msgstr ""
 
 msgid "Material Cost"
 msgstr "सामग्री लागत"
@@ -17420,8 +17514,14 @@ msgstr "तरीका"
 msgid "Method Id"
 msgstr "विधि आईडी"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr ""
+
 msgid "Method Materials"
 msgstr "विधि सामग्री"
+
+msgid "Method of manufacture"
+msgstr ""
 
 msgid "method operations"
 msgstr "विधि ऑपरेशन"
@@ -18316,6 +18416,9 @@ msgstr "नई कार्यविधि"
 msgid "New Process"
 msgstr "नई प्रक्रिया"
 
+msgid "New product (SkuuOS)"
+msgstr ""
+
 msgid "New Project"
 msgstr "नई परियोजना"
 
@@ -19009,6 +19112,9 @@ msgstr "कोई समूहीकृत सूचनाएं नहीं"
 msgid "No image"
 msgstr "कोई छवि नहीं"
 
+msgid "No ingredients in this phase."
+msgstr ""
+
 msgid "No inspection plans"
 msgstr "कोई निरीक्षण योजनाएं नहीं"
 
@@ -19119,6 +19225,9 @@ msgstr "कोई मेल खाता समय नहीं"
 
 msgid "No materials"
 msgstr "कोई सामग्री नहीं"
+
+msgid "No materials in this phase on the BOM."
+msgstr ""
 
 msgid "No materials yet"
 msgstr "अभी कोई वस्तुएं नहीं हैं"
@@ -21035,6 +21144,15 @@ msgstr "अवधि के अंत तक आपको स्वामित�
 msgid "Owns: {0}"
 msgstr "स्वामित्व: {0}"
 
+msgid "Pack size (mL)"
+msgstr ""
+
+msgid "Pack sizes"
+msgstr ""
+
+msgid "Packaging"
+msgstr ""
+
 msgid "Packing Slip"
 msgstr "पैकिंग स्लिप"
 
@@ -21534,8 +21652,25 @@ msgstr "बल्क में एक्सेस प्रदान करन�
 msgid "Permissions"
 msgstr "अनुमतियाँ"
 
+msgid "Phase"
+msgstr ""
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr ""
+
+msgid "Phase complete"
+msgstr ""
+
 msgid "Phase durations"
 msgstr "चरण अवधि"
+
+msgid "Phase notes"
+msgstr ""
+
+msgid "phases complete"
+msgstr ""
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "किसी आइटम को एक उत्तराधिकारी भाग के पक्ष में चरणबद्ध तरीके से बंद करना, ताकि योजना पुरानी आइटम की मांग को — एक रूपांतरण कारक के गुणा से — नई आइटम की ओर पुनर्निर्देशित करे।"
@@ -21614,6 +21749,9 @@ msgstr "एक खाता चुनें"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "इस आइटम पर जांच लागू करना शुरू करने के लिए लाइब्रेरी से एक मौजूदा नियम चुनें या एक नया नियम बनाएं।"
+
+msgid "Pick existing"
+msgstr ""
 
 msgid "Pick List"
 msgstr "पिक लिस्ट"
@@ -22026,6 +22164,9 @@ msgstr "समाप्ति Fixed Duration होने पर नई वस�
 msgid "Pre-select material"
 msgstr "सामग्री को पहले से चुनें"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr ""
+
 msgid "Precedes"
 msgstr "पहले आता है"
 
@@ -22364,8 +22505,14 @@ msgstr "उत्पादित आइटम"
 msgid "Product"
 msgstr "उत्पाद"
 
+msgid "Product build"
+msgstr ""
+
 msgid "Product issues during hypercare"
 msgstr "हाइपरकेयर के दौरान उत्पाद समस्याएं"
+
+msgid "Product name"
+msgstr ""
 
 msgid "Product support"
 msgstr "उत्पाद समर्थन"
@@ -22920,8 +23067,14 @@ msgstr "मात्रा {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "मात्रा {quantity}"
 
+msgid "Qty / unit"
+msgstr ""
+
 msgid "Qty On Hand"
 msgstr "हाथ में मात्रा"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr ""
 
 msgid "Qty. Complete"
 msgstr "मात्रा पूर्ण"
@@ -25524,6 +25677,9 @@ msgstr "ड्राफ्ट सहेजें"
 msgid "Save Method"
 msgstr "विधि सहेजें"
 
+msgid "Save phase instructions"
+msgstr ""
+
 msgid "Save signature"
 msgstr "हस्ताक्षर सहेजें"
 
@@ -25810,6 +25966,9 @@ msgstr "लागत खोजें"
 msgid "Search country..."
 msgstr "देश खोजें..."
 
+msgid "Search customers"
+msgstr ""
+
 msgid "Search customers and types..."
 msgstr "ग्राहकों और प्रकारों को खोजें..."
 
@@ -25866,6 +26025,9 @@ msgstr "सूची चर खोजें…"
 
 msgid "Search maintenance dispatches"
 msgstr "रखरखाव कार्य खोजें"
+
+msgid "Search materials"
+msgstr ""
 
 msgid "Search operations…"
 msgstr "ऑपरेशन को खोजें…"
@@ -26597,6 +26759,9 @@ msgstr "एक परियोजना पर सेट किया गया,
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "एक प्रोजेक्ट पर सेट करें, यह कहता है कि इसकी लागत किसके लिए है: Direct (एक सरकारी अनुबंध), Commercial, Indirect, IR&D या B&P। DCAA मोड को हर प्रोजेक्ट पर एक की आवश्यकता है।"
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr ""
 
 msgid "Set Pricing"
 msgstr "मूल्य निर्धारण सेट करें"
@@ -27573,6 +27738,16 @@ msgstr "होस्टिंग सेट अप करें (क्लाउ�
 msgid "Standard"
 msgstr "मानक"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr ""
+
+msgid "Standard batch size (kg)"
+msgstr ""
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "मानक क्लाउड कार्बन आपकी कंपनी के संचालन के तरीके के अनुरूप है"
 
@@ -28240,6 +28415,9 @@ msgstr "आपूर्तिकर्ता का पता"
 msgid "Supplier Address Line 2"
 msgstr "आपूर्तिकर्ता पता लाइन 2"
 
+msgid "Supplier batch / lot"
+msgstr ""
+
 msgid "Supplier City"
 msgstr "आपूर्तिकर्ता का शहर"
 
@@ -28672,6 +28850,11 @@ msgstr "लक्ष्य तारीख"
 
 msgid "Target disposition row"
 msgstr "लक्ष्य निपटान पंक्ति"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr ""
 
 msgid "Target go-live"
 msgstr "लक्ष्य लाइव जाना"
@@ -31372,6 +31555,10 @@ msgstr "कुल (असंतुलित)"
 msgid "Total {0}"
 msgstr "कुल {0}"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr ""
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "कुल {formattedTotal}, पिछली अवधि की तुलना में {chartChange}"
 
@@ -31536,6 +31723,9 @@ msgstr "ट्रैकिंग प्रकार"
 
 msgid "Tracking URL"
 msgstr "ट्रैकिंग URL"
+
+msgid "Trade name"
+msgstr ""
 
 msgid "Trailing zeros are hidden"
 msgstr "पिछली शून्य छिपी हुई हैं"

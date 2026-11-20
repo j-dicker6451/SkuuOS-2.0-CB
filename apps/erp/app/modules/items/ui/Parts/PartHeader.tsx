@@ -4,12 +4,12 @@
 
 import { Trans } from "@lingui/react/macro";
 import { useParams } from "react-router";
-import { useRouteData } from "~/hooks";
 import { path } from "~/utils/path";
 import type { PartSummary } from "../../types";
 import ItemRecordHeader, {
   type ItemSupersession
 } from "../Item/ItemRecordHeader";
+import { usePartLayoutData } from "./usePartLayoutData";
 import { usePartNavigation } from "./usePartNavigation";
 
 const PartHeader = () => {
@@ -17,10 +17,10 @@ const PartHeader = () => {
   const { itemId } = useParams();
   if (!itemId) throw new Error("itemId not found");
 
-  const routeData = useRouteData<{
+  const routeData = usePartLayoutData<{
     partSummary: PartSummary;
     supersession: ItemSupersession;
-  }>(path.to.part(itemId));
+  }>();
 
   return (
     <ItemRecordHeader

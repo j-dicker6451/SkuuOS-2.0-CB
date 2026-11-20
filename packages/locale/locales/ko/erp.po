@@ -2715,6 +2715,9 @@ msgstr "실제 종료"
 msgid "Actual Failure Mode"
 msgstr "실제 고장 모드"
 
+msgid "Actual kg"
+msgstr ""
+
 msgid "Actual of budget"
 msgstr "예산 대비 실제"
 
@@ -2828,6 +2831,9 @@ msgstr "조정 추가"
 msgid "Add Affected Item"
 msgstr "영향받는 항목 추가"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr ""
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "로그인할 때 인증 앱의 코드를 입력하도록 요구하여 추가 보안 계층을 추가합니다."
 
@@ -2872,6 +2878,12 @@ msgstr "인증 앱 추가"
 
 msgid "Add Back to Report"
 msgstr "보고서에 다시 추가"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr ""
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr ""
 
 msgid "Add Calibration Record"
 msgstr "교정 기록 추가"
@@ -2960,6 +2972,9 @@ msgstr "그룹 추가"
 msgid "Add header"
 msgstr "헤더 추가"
 
+msgid "Add ingredient line"
+msgstr ""
+
 msgid "Add Invoice"
 msgstr "송장 추가"
 
@@ -3001,6 +3016,9 @@ msgstr "문서에서 라인 추가"
 
 msgid "Add link"
 msgstr "링크 추가"
+
+msgid "Add lot row"
+msgstr ""
 
 msgid "Add manually"
 msgstr "수동으로 추가"
@@ -3055,6 +3073,9 @@ msgstr "그 외에 추가"
 msgid "Add overtime"
 msgstr "초과 근무 추가"
 
+msgid "Add pack size"
+msgstr ""
+
 msgid "Add Pair"
 msgstr "쌍 추가"
 
@@ -3075,6 +3096,9 @@ msgstr "경로 추가"
 
 msgid "Add Payment"
 msgstr "지불 추가"
+
+msgid "Add phase"
+msgstr ""
 
 msgid "Add Predecessor"
 msgstr "선행 품목 추가"
@@ -3252,6 +3276,9 @@ msgstr "{name} · {quantity} × {rate} 추가됨"
 
 msgid "Added for this customer"
 msgstr "이 고객을 위해 추가됨"
+
+msgid "Added to tank"
+msgstr ""
 
 msgid "Added to the change request"
 msgstr "변경 요청에 추가됨"
@@ -5290,6 +5317,9 @@ msgstr "배치 수량"
 msgid "Batch Size"
 msgstr "배치 크기"
 
+msgid "Batch ticket"
+msgstr ""
+
 msgid "Batch tracking"
 msgstr "배치 추적"
 
@@ -5774,6 +5804,12 @@ msgstr "독립적인 방법으로 구성되고 원가가 산정됨"
 msgid "Built-in"
 msgstr "기본 제공"
 
+msgid "Bulk"
+msgstr ""
+
+msgid "Bulk batch record"
+msgstr ""
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr ""
 
@@ -5782,6 +5818,12 @@ msgstr "일괄 가져오기"
 
 msgid "Bulk Jobs"
 msgstr "대량 작업 지시"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr ""
+
+msgid "Bulk settings"
+msgstr ""
 
 msgid "Burden"
 msgstr "부담금"
@@ -6756,6 +6798,9 @@ msgstr "{fieldLabel} 지우기"
 msgid "Clear {fieldName}"
 msgstr "{fieldName} 지우기"
 
+msgid "Clear draft"
+msgstr ""
+
 msgid "Clear due date"
 msgstr "마감일 지우기"
 
@@ -6809,6 +6854,15 @@ msgstr "클릭하거나 드래그하여 교체"
 
 msgid "Click to rename"
 msgstr "클릭하여 이름 바꾸기"
+
+msgid "Client"
+msgstr ""
+
+msgid "Client & product"
+msgstr ""
+
+msgid "Client SKU / formula ref"
+msgstr ""
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "수정"
 msgid "Correction {correctionNumber}"
 msgstr "수정 {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr ""
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "정정: {0}"
@@ -8203,6 +8260,9 @@ msgstr "이 작업 지시 자재의 보관 단위를 확인할 수 없습니다.
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "{0}을(를) 해제할 수 없습니다: {1} — 생산이 이미 기록됨"
+
+msgid "Could not load formulation data for this method."
+msgstr ""
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "MRP 제외 보관 단위를 불러오지 못했습니다. 일부 표시가 누락될 수 있습니다."
@@ -8456,6 +8516,9 @@ msgstr "발주서 라인 생성"
 
 msgid "Create PO Revision"
 msgstr "구매주문 리비전 생성"
+
+msgid "Create product"
+msgstr ""
 
 msgid "Create Production Event"
 msgstr "생산 이벤트 생성"
@@ -12981,6 +13044,10 @@ msgstr "여기에 첨부된 파일은 이 공급업체로 전송되는 모든 �
 msgid "Fill"
 msgstr "채우기"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr ""
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "이 회사를 현실적인 산업 시나리오로 채워서 모든 화면에 데이터가 표시되도록 합니다. 이전 상태로 복원할 수 있습니다."
 
@@ -13326,6 +13393,18 @@ msgstr "형식"
 
 msgid "Formula"
 msgstr "공식"
+
+msgid "Formula (% w/w)"
+msgstr ""
+
+msgid "Formula by phase"
+msgstr ""
+
+msgid "Formulation & method"
+msgstr ""
+
+msgid "Formulation & method of manufacture"
+msgstr ""
 
 msgid "Forward deployed engineer"
 msgstr "현장 배치 엔지니어"
@@ -14773,6 +14852,9 @@ msgstr "간접 비율"
 msgid "Infrastructure"
 msgstr "인프라"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr ""
+
 msgid "Inherit"
 msgstr "상속"
 
@@ -15783,6 +15865,9 @@ msgstr "키"
 msgid "Keyboard shortcuts"
 msgstr "키보드 단축키"
 
+msgid "kg / batch"
+msgstr ""
+
 msgid "Kit"
 msgstr "키트"
 
@@ -16661,6 +16746,9 @@ msgstr "시간 기록"
 msgid "Log time (the open element)"
 msgstr "시간 기록(열린 요소)"
 
+msgid "Logged"
+msgstr ""
+
 msgid "Login or create a new account"
 msgstr "로그인 또는 새 계정 생성"
 
@@ -17070,6 +17158,9 @@ msgstr "미완료로 표시"
 msgid "Mark Partial"
 msgstr "부분 수락"
 
+msgid "Mark phase complete"
+msgstr ""
+
 msgid "Mark reviewed"
 msgstr "검토로 표시"
 
@@ -17153,6 +17244,9 @@ msgstr "자재"
 
 msgid "Material"
 msgstr "자재"
+
+msgid "Material code"
+msgstr ""
 
 msgid "Material Cost"
 msgstr "자재 원가"
@@ -17420,8 +17514,14 @@ msgstr "제조방법"
 msgid "Method Id"
 msgstr "제조방법 ID"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr ""
+
 msgid "Method Materials"
 msgstr "제조방법 자재"
+
+msgid "Method of manufacture"
+msgstr ""
 
 msgid "method operations"
 msgstr "방법 공정"
@@ -18316,6 +18416,9 @@ msgstr "신규 절차서"
 msgid "New Process"
 msgstr "새 공정"
 
+msgid "New product (SkuuOS)"
+msgstr ""
+
 msgid "New Project"
 msgstr "새 프로젝트"
 
@@ -19009,6 +19112,9 @@ msgstr "그룹화된 알림이 없습니다"
 msgid "No image"
 msgstr "이미지 없음"
 
+msgid "No ingredients in this phase."
+msgstr ""
+
 msgid "No inspection plans"
 msgstr "검사 계획 없음"
 
@@ -19119,6 +19225,9 @@ msgstr "일치하는 시간 없음"
 
 msgid "No materials"
 msgstr "자재 없음"
+
+msgid "No materials in this phase on the BOM."
+msgstr ""
 
 msgid "No materials yet"
 msgstr "아직 자재가 없습니다."
@@ -21035,6 +21144,15 @@ msgstr "임기 종료까지 귀사에 소유권 이전"
 msgid "Owns: {0}"
 msgstr "소유: {0}"
 
+msgid "Pack size (mL)"
+msgstr ""
+
+msgid "Pack sizes"
+msgstr ""
+
+msgid "Packaging"
+msgstr ""
+
 msgid "Packing Slip"
 msgstr "포장명세서"
 
@@ -21534,8 +21652,25 @@ msgstr "일괄 접근 권한 부여를 위한 권한 그룹"
 msgid "Permissions"
 msgstr "권한"
 
+msgid "Phase"
+msgstr ""
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr ""
+
+msgid "Phase complete"
+msgstr ""
+
 msgid "Phase durations"
 msgstr "단계 소요 기간"
+
+msgid "Phase notes"
+msgstr ""
+
+msgid "phases complete"
+msgstr ""
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "품목을 후속 품목으로 단계적으로 폐지하므로 계획에서 구품목의 소요량에 환산 계수를 곱한 값을 신규품목으로 리다이렉트합니다."
@@ -21614,6 +21749,9 @@ msgstr "계정 선택"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "라이브러리에서 기존 규칙을 선택하거나 새 규칙을 만들어 이 항목에 대한 검사를 시작합니다."
+
+msgid "Pick existing"
+msgstr ""
 
 msgid "Pick List"
 msgstr "피킹 목록"
@@ -22026,6 +22164,9 @@ msgstr "유통기한이 고정 기간일 때 새 품목에 대해 미리 입력�
 msgid "Pre-select material"
 msgstr "자재 사전 선택"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr ""
+
 msgid "Precedes"
 msgstr "선행"
 
@@ -22364,8 +22505,14 @@ msgstr "생산된 품목"
 msgid "Product"
 msgstr "제품"
 
+msgid "Product build"
+msgstr ""
+
 msgid "Product issues during hypercare"
 msgstr "하이퍼케어 기간 중 발생한 제품 이슈"
+
+msgid "Product name"
+msgstr ""
 
 msgid "Product support"
 msgstr "제품 지원"
@@ -22920,8 +23067,14 @@ msgstr "수량 {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "수량 {quantity}"
 
+msgid "Qty / unit"
+msgstr ""
+
 msgid "Qty On Hand"
 msgstr "현재고"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr ""
 
 msgid "Qty. Complete"
 msgstr "완료 수량"
@@ -25524,6 +25677,9 @@ msgstr "초안 저장"
 msgid "Save Method"
 msgstr "저장 방법"
 
+msgid "Save phase instructions"
+msgstr ""
+
 msgid "Save signature"
 msgstr "서명 저장"
 
@@ -25810,6 +25966,9 @@ msgstr "원가 검색"
 msgid "Search country..."
 msgstr "국가 검색..."
 
+msgid "Search customers"
+msgstr ""
+
 msgid "Search customers and types..."
 msgstr "고객 및 유형 검색..."
 
@@ -25866,6 +26025,9 @@ msgstr "목록 변수 검색…"
 
 msgid "Search maintenance dispatches"
 msgstr "유지보수 지시 검색"
+
+msgid "Search materials"
+msgstr ""
 
 msgid "Search operations…"
 msgstr "공정 검색…"
@@ -26597,6 +26759,9 @@ msgstr "프로젝트에 설정하면 프로젝트의 원가 전기 위치를 결
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "프로젝트에 설정하면, 원가가 무엇을 위한 것인지 나타냅니다: 직접(정부 계약), 상용, 간접, IR&D 또는 B&P. DCAA 모드는 모든 프로젝트에서 하나를 요구합니다."
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr ""
 
 msgid "Set Pricing"
 msgstr "가격 책정 설정"
@@ -27573,6 +27738,16 @@ msgstr "호스팅 구축(클라우드 또는 자체 호스팅)"
 msgid "Standard"
 msgstr "표준"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr ""
+
+msgid "Standard batch size (kg)"
+msgstr ""
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "표준 클라우드 Carbon은 회사의 운영 방식에 맞습니다"
 
@@ -28240,6 +28415,9 @@ msgstr "공급업체 주소"
 msgid "Supplier Address Line 2"
 msgstr "공급업체 주소 2"
 
+msgid "Supplier batch / lot"
+msgstr ""
+
 msgid "Supplier City"
 msgstr "공급업체 도시"
 
@@ -28672,6 +28850,11 @@ msgstr "목표 날짜"
 
 msgid "Target disposition row"
 msgstr "처분 결정 대상 행"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr ""
 
 msgid "Target go-live"
 msgstr "목표 도입일"
@@ -31372,6 +31555,10 @@ msgstr "총계 (불균형)"
 msgid "Total {0}"
 msgstr "총계 {0}"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr ""
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "총 {formattedTotal}, 이전 기간 대비 {chartChange}"
 
@@ -31536,6 +31723,9 @@ msgstr "추적 유형"
 
 msgid "Tracking URL"
 msgstr "추적 URL"
+
+msgid "Trade name"
+msgstr ""
 
 msgid "Trailing zeros are hidden"
 msgstr "뒤따르는 0이 숨겨졌습니다"

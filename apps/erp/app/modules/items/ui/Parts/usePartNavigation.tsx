@@ -15,11 +15,12 @@ import {
   LuTags
 } from "react-icons/lu";
 import { useParams } from "react-router";
-import { usePermissions, useRouteData } from "~/hooks";
+import { usePermissions } from "~/hooks";
 import { DETAIL_TAB_SHORTCUTS } from "~/shortcuts";
 import type { Role } from "~/types";
 import { path } from "~/utils/path";
 import type { PartSummary } from "../../types";
+import { usePartLayoutData } from "./usePartLayoutData";
 
 export function usePartNavigation() {
   const { t } = useLingui();
@@ -27,18 +28,33 @@ export function usePartNavigation() {
   const { itemId } = useParams();
   if (!itemId) throw new Error("itemId not found");
 
-  const routeData = useRouteData<{ partSummary: PartSummary }>(
-    path.to.part(itemId)
-  );
-  if (!routeData?.partSummary?.replenishmentSystem)
-    throw new Error("Could not find replenishmentSystem in routeData");
-  if (!routeData?.partSummary?.itemTrackingType)
-    throw new Error("Could not find itemTrackingType in routeData");
+  const routeData = usePartLayoutData<{ partSummary: PartSummary }>();
+  const partSummary = routeData?.partSummary;
+  if (!partSummary?.replenishmentSystem) {
+    return [
+      {
+        name: t`Details`,
+        to: path.to.partDetails(itemId),
+        icon: LuFileText,
+        shortcut: DETAIL_TAB_SHORTCUTS.details
+      }
+    ];
+  }
+  if (!partSummary.itemTrackingType) {
+    return [
+      {
+        name: t`Details`,
+        to: path.to.partDetails(itemId),
+        icon: LuFileText,
+        shortcut: DETAIL_TAB_SHORTCUTS.details
+      }
+    ];
+  }
 
-  const replenishment = routeData.partSummary.replenishmentSystem;
-  const itemTrackingType = routeData.partSummary.itemTrackingType;
-  const unitOfMeasure = routeData.partSummary.unitOfMeasureCode ?? "";
-  const readableId = routeData.partSummary.readableId ?? "";
+  const replenishment = partSummary.replenishmentSystem;
+  const itemTrackingType = partSummary.itemTrackingType;
+  const unitOfMeasure = partSummary.unitOfMeasureCode ?? "";
+  const readableId = partSummary.readableId ?? "";
   const isBulkSku =
     replenishment === "Make" &&
     (unitOfMeasure === "kg" || readableId.startsWith("BULK-"));
@@ -58,7 +74,10 @@ export function usePartNavigation() {
           {
             name: t`Formulation & method`,
             to: path.to.partFormulation(itemId),
-            icon: LuBeaker
+            icon: LuBeaker,
+            isActive: (pathname: string) =>
+              pathname === path.to.partFormulation(itemId) ||
+              pathname.startsWith(`${path.to.partFormulation(itemId)}/`)
           }
         ]
       : []),
@@ -67,7 +86,10 @@ export function usePartNavigation() {
           {
             name: t`Product build`,
             to: path.to.partProductBuild(itemId),
-            icon: LuLayers
+            icon: LuLayers,
+            isActive: (pathname: string) =>
+              pathname === path.to.partProductBuild(itemId) ||
+              pathname.startsWith(`${path.to.partProductBuild(itemId)}/`)
           }
         ]
       : []),

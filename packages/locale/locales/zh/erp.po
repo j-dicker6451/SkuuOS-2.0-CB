@@ -2715,6 +2715,9 @@ msgstr "实际结束"
 msgid "Actual Failure Mode"
 msgstr "实际故障模式"
 
+msgid "Actual kg"
+msgstr ""
+
 msgid "Actual of budget"
 msgstr "预算的实际值"
 
@@ -2828,6 +2831,9 @@ msgstr "添加调整"
 msgid "Add Affected Item"
 msgstr "添加受影响项目"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr ""
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "通过在登录时要求身份验证器应用的代码来添加额外的安全层级。"
 
@@ -2872,6 +2878,12 @@ msgstr "添加身份验证器应用"
 
 msgid "Add Back to Report"
 msgstr "添加回报告"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr ""
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr ""
 
 msgid "Add Calibration Record"
 msgstr "添加校准记录"
@@ -2960,6 +2972,9 @@ msgstr "添加组"
 msgid "Add header"
 msgstr "添加标题"
 
+msgid "Add ingredient line"
+msgstr ""
+
 msgid "Add Invoice"
 msgstr "添加发票"
 
@@ -3001,6 +3016,9 @@ msgstr "从文档添加行"
 
 msgid "Add link"
 msgstr "添加链接"
+
+msgid "Add lot row"
+msgstr ""
 
 msgid "Add manually"
 msgstr "手动添加"
@@ -3055,6 +3073,9 @@ msgstr "添加其他情况"
 msgid "Add overtime"
 msgstr "添加加班"
 
+msgid "Add pack size"
+msgstr ""
+
 msgid "Add Pair"
 msgstr "添加配对"
 
@@ -3075,6 +3096,9 @@ msgstr "添加路径"
 
 msgid "Add Payment"
 msgstr "添加付款"
+
+msgid "Add phase"
+msgstr ""
 
 msgid "Add Predecessor"
 msgstr "添加前驱物料"
@@ -3252,6 +3276,9 @@ msgstr "已添加 {name} · {quantity} × {rate}"
 
 msgid "Added for this customer"
 msgstr "为此客户添加"
+
+msgid "Added to tank"
+msgstr ""
 
 msgid "Added to the change request"
 msgstr "已添加到变更请求"
@@ -5290,6 +5317,9 @@ msgstr "批次数量"
 msgid "Batch Size"
 msgstr "批量大小"
 
+msgid "Batch ticket"
+msgstr ""
+
 msgid "Batch tracking"
 msgstr "批次追踪"
 
@@ -5774,6 +5804,12 @@ msgstr "作为独立方法构建和计算成本"
 msgid "Built-in"
 msgstr "内置"
 
+msgid "Bulk"
+msgstr ""
+
+msgid "Bulk batch record"
+msgstr ""
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr ""
 
@@ -5782,6 +5818,12 @@ msgstr "批量导入"
 
 msgid "Bulk Jobs"
 msgstr "批量工单"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr ""
+
+msgid "Bulk settings"
+msgstr ""
 
 msgid "Burden"
 msgstr "分摊"
@@ -6756,6 +6798,9 @@ msgstr "清除{fieldLabel}"
 msgid "Clear {fieldName}"
 msgstr "清除{fieldName}"
 
+msgid "Clear draft"
+msgstr ""
+
 msgid "Clear due date"
 msgstr "清除到期日"
 
@@ -6809,6 +6854,15 @@ msgstr "点击或拖动以替换"
 
 msgid "Click to rename"
 msgstr "单击以重命名"
+
+msgid "Client"
+msgstr ""
+
+msgid "Client & product"
+msgstr ""
+
+msgid "Client SKU / formula ref"
+msgstr ""
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "纠正"
 msgid "Correction {correctionNumber}"
 msgstr "修正 {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr ""
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "修正：{0}"
@@ -8203,6 +8260,9 @@ msgstr "无法检查此工单物料的存储单元。关闭此对话框并重新
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "无法解散 {0}: {1} — 生产已记录"
+
+msgid "Could not load formulation data for this method."
+msgstr ""
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "无法加载不计入MRP的存储单元。部分标记可能缺失。"
@@ -8456,6 +8516,9 @@ msgstr "创建采购订单行"
 
 msgid "Create PO Revision"
 msgstr "创建采购订单修订版本"
+
+msgid "Create product"
+msgstr ""
 
 msgid "Create Production Event"
 msgstr "创建生产事件"
@@ -12981,6 +13044,10 @@ msgstr "此处附加的文件将随附在发送给此供应商的每份采购订
 msgid "Fill"
 msgstr "填充"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr ""
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "用逼真的行业故事填充此公司，使每个屏幕都有内容。您可以恢复之前的内容。"
 
@@ -13326,6 +13393,18 @@ msgstr "格式"
 
 msgid "Formula"
 msgstr "公式"
+
+msgid "Formula (% w/w)"
+msgstr ""
+
+msgid "Formula by phase"
+msgstr ""
+
+msgid "Formulation & method"
+msgstr ""
+
+msgid "Formulation & method of manufacture"
+msgstr ""
 
 msgid "Forward deployed engineer"
 msgstr "驻场工程师"
@@ -14773,6 +14852,9 @@ msgstr "间接费率"
 msgid "Infrastructure"
 msgstr "基础设施"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr ""
+
 msgid "Inherit"
 msgstr "继承"
 
@@ -15783,6 +15865,9 @@ msgstr "钥匙"
 msgid "Keyboard shortcuts"
 msgstr "键盘快捷键"
 
+msgid "kg / batch"
+msgstr ""
+
 msgid "Kit"
 msgstr "套件"
 
@@ -16661,6 +16746,9 @@ msgstr "记录时间"
 msgid "Log time (the open element)"
 msgstr "记录时间（未结元素）"
 
+msgid "Logged"
+msgstr ""
+
 msgid "Login or create a new account"
 msgstr "登录或创建新账户"
 
@@ -17070,6 +17158,9 @@ msgstr "标记为未完成"
 msgid "Mark Partial"
 msgstr "标记为部分"
 
+msgid "Mark phase complete"
+msgstr ""
+
 msgid "Mark reviewed"
 msgstr "标记为已审查"
 
@@ -17153,6 +17244,9 @@ msgstr "原材料"
 
 msgid "Material"
 msgstr "原材料"
+
+msgid "Material code"
+msgstr ""
 
 msgid "Material Cost"
 msgstr "材料成本"
@@ -17420,8 +17514,14 @@ msgstr "方法"
 msgid "Method Id"
 msgstr "方法 ID"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr ""
+
 msgid "Method Materials"
 msgstr "方法原材料"
+
+msgid "Method of manufacture"
+msgstr ""
 
 msgid "method operations"
 msgstr "方法工序"
@@ -18316,6 +18416,9 @@ msgstr "新建程序文件"
 msgid "New Process"
 msgstr "新流程"
 
+msgid "New product (SkuuOS)"
+msgstr ""
+
 msgid "New Project"
 msgstr "新项目"
 
@@ -19009,6 +19112,9 @@ msgstr "没有分组通知"
 msgid "No image"
 msgstr "没有图像"
 
+msgid "No ingredients in this phase."
+msgstr ""
+
 msgid "No inspection plans"
 msgstr "无检验计划"
 
@@ -19119,6 +19225,9 @@ msgstr "没有匹配的时间"
 
 msgid "No materials"
 msgstr "无物料"
+
+msgid "No materials in this phase on the BOM."
+msgstr ""
 
 msgid "No materials yet"
 msgstr "暂无原材料"
@@ -21035,6 +21144,15 @@ msgstr "所有权在租赁期末转移给您"
 msgid "Owns: {0}"
 msgstr "拥有：{0}"
 
+msgid "Pack size (mL)"
+msgstr ""
+
+msgid "Pack sizes"
+msgstr ""
+
+msgid "Packaging"
+msgstr ""
+
 msgid "Packing Slip"
 msgstr "装箱单"
 
@@ -21534,8 +21652,25 @@ msgstr "用于批量授予访问权限的权限组"
 msgid "Permissions"
 msgstr "权限"
 
+msgid "Phase"
+msgstr ""
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr ""
+
+msgid "Phase complete"
+msgstr ""
+
 msgid "Phase durations"
 msgstr "阶段时长"
+
+msgid "Phase notes"
+msgstr ""
+
+msgid "phases complete"
+msgstr ""
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "逐步淘汰一个物料以支持后继零件，以便计划将旧物料的需求 — 乘以换算系数 — 重定向到新的。"
@@ -21614,6 +21749,9 @@ msgstr "选择账户"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "从库中选择现有规则或创建新规则以开始对此项目强制执行检查。"
+
+msgid "Pick existing"
+msgstr ""
 
 msgid "Pick List"
 msgstr "拣货单"
@@ -22026,6 +22164,9 @@ msgstr "当有效期为固定期间时，为新物料预填充。"
 msgid "Pre-select material"
 msgstr "预选原材料"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr ""
+
 msgid "Precedes"
 msgstr "前驱"
 
@@ -22364,8 +22505,14 @@ msgstr "生产物料"
 msgid "Product"
 msgstr "产品"
 
+msgid "Product build"
+msgstr ""
+
 msgid "Product issues during hypercare"
 msgstr "超级护理期间的产品问题"
+
+msgid "Product name"
+msgstr ""
 
 msgid "Product support"
 msgstr "产品支持"
@@ -22920,8 +23067,14 @@ msgstr "数量 {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "数量 {quantity}"
 
+msgid "Qty / unit"
+msgstr ""
+
 msgid "Qty On Hand"
 msgstr "现有数量"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr ""
 
 msgid "Qty. Complete"
 msgstr "数量. 完成"
@@ -25524,6 +25677,9 @@ msgstr "保存草稿"
 msgid "Save Method"
 msgstr "保存方法"
 
+msgid "Save phase instructions"
+msgstr ""
+
 msgid "Save signature"
 msgstr "保存签名"
 
@@ -25810,6 +25966,9 @@ msgstr "搜索成本"
 msgid "Search country..."
 msgstr "搜索国家..."
 
+msgid "Search customers"
+msgstr ""
+
 msgid "Search customers and types..."
 msgstr "搜索客户和类型..."
 
@@ -25866,6 +26025,9 @@ msgstr "搜索列表变量…"
 
 msgid "Search maintenance dispatches"
 msgstr "搜索维护工单"
+
+msgid "Search materials"
+msgstr ""
 
 msgid "Search operations…"
 msgstr "搜索工序…"
@@ -26597,6 +26759,9 @@ msgstr "在项目上设置，它决定项目成本过账的位置：统计保留
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "在项目上设置，它说明其成本用于什么：直接（政府合同）、商业、间接、IR&D或B&P。DCAA模式要求每个项目上都有一个。"
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr ""
 
 msgid "Set Pricing"
 msgstr "设置定价"
@@ -27573,6 +27738,16 @@ msgstr "建立托管（云端或自托管）"
 msgid "Standard"
 msgstr "正常检验"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr ""
+
+msgid "Standard batch size (kg)"
+msgstr ""
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "标准云 Carbon 适合你的公司运营方式"
 
@@ -28240,6 +28415,9 @@ msgstr "供应商地址"
 msgid "Supplier Address Line 2"
 msgstr "供应商地址第2行"
 
+msgid "Supplier batch / lot"
+msgstr ""
+
 msgid "Supplier City"
 msgstr "供应商城市"
 
@@ -28672,6 +28850,11 @@ msgstr "目标日期"
 
 msgid "Target disposition row"
 msgstr "目标处置行"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr ""
 
 msgid "Target go-live"
 msgstr "目标上线日期"
@@ -31372,6 +31555,10 @@ msgstr "总计（未平衡）"
 msgid "Total {0}"
 msgstr "总计 {0}"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr ""
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "总计 {formattedTotal}，较上一期 {chartChange}"
 
@@ -31536,6 +31723,9 @@ msgstr "追踪类型"
 
 msgid "Tracking URL"
 msgstr "跟踪URL"
+
+msgid "Trade name"
+msgstr ""
 
 msgid "Trailing zeros are hidden"
 msgstr "尾随零已隐藏"

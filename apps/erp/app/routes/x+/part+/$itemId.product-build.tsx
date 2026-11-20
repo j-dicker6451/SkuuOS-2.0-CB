@@ -4,15 +4,14 @@ import { requirePermissions } from "@carbon/auth/auth.server";
 import { VStack } from "@carbon/react";
 import { useLingui } from "@lingui/react/macro";
 import type { LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useParams } from "react-router";
-import { useRouteData } from "~/hooks";
+import { useLoaderData } from "react-router";
 import {
   getMakeMethodsOnce,
   getMethodMaterialsByMakeMethod
 } from "~/modules/items/items.service";
 import type { PartSummary } from "~/modules/items/types";
+import { usePartLayoutData } from "~/modules/items/ui/Parts/usePartLayoutData";
 import { SkuuProductBuildPanel } from "~/modules/skuu/ui/SkuuProductBuildPanel";
-import { path } from "~/utils/path";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { client, companyId } = await requirePermissions(request, {
@@ -60,11 +59,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
 export default function PartProductBuildRoute() {
   const { t } = useLingui();
-  const { itemId } = useParams();
   const data = useLoaderData<typeof loader>();
-  const routeData = useRouteData<{ partSummary: PartSummary }>(
-    path.to.part(itemId!)
-  );
+  const routeData = usePartLayoutData<{ partSummary: PartSummary }>();
 
   return (
     <VStack className="gap-4 p-4">

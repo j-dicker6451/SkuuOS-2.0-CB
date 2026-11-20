@@ -15,8 +15,7 @@ import {
   Tabs,
   TabsContent,
   TabsList,
-  TabsTrigger,
-  useRouteData
+  TabsTrigger
 } from "@carbon/react";
 import { redirect } from "@carbon/utils";
 import { msg } from "@lingui/core/macro";
@@ -42,7 +41,7 @@ import {
   getUnreleasedChangeOrderForItem,
   streamItemSupersession
 } from "~/modules/items/items.service";
-import type { ItemFile, Method, PartSummary } from "~/modules/items/types";
+import type { Method } from "~/modules/items/types";
 import {
   BoMActions,
   BoMExplorer,
@@ -194,16 +193,11 @@ export default function PartRoute() {
   const { itemId } = useParams();
   if (!itemId) throw new Error("Could not find itemId");
 
-  const partData = useRouteData<{
-    partSummary: PartSummary;
-    files: Promise<ItemFile[]>;
-  }>(path.to.part(itemId));
+  const { partSummary, files, usedIn, methodTree, changeNotices } =
+    useLoaderData<typeof loader>();
+  const partData = { partSummary, files };
 
-  if (!partData) throw new Error("Could not find part data");
-
-  const { usedIn, methodTree, changeNotices } = useLoaderData<typeof loader>();
-
-  const isManufactured = partData.partSummary?.replenishmentSystem !== "Buy";
+  const isManufactured = partSummary?.replenishmentSystem !== "Buy";
 
   const [filterText, setFilterText] = useState("");
 

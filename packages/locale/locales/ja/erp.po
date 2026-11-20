@@ -2715,6 +2715,9 @@ msgstr "実際の終了"
 msgid "Actual Failure Mode"
 msgstr "実際の故障モード"
 
+msgid "Actual kg"
+msgstr ""
+
 msgid "Actual of budget"
 msgstr "予算に対する実績"
 
@@ -2828,6 +2831,9 @@ msgstr "調整を追加"
 msgid "Add Affected Item"
 msgstr "影響を受けるアイテムを追加"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr ""
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "認証器アプリからのコードを要求することで、サインイン時のセキュリティレイヤーを追加します。"
 
@@ -2872,6 +2878,12 @@ msgstr "認証器アプリを追加"
 
 msgid "Add Back to Report"
 msgstr "レポートに戻す"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr ""
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr ""
 
 msgid "Add Calibration Record"
 msgstr "校正記録を追加"
@@ -2960,6 +2972,9 @@ msgstr "グループを追加"
 msgid "Add header"
 msgstr "ヘッダーを追加"
 
+msgid "Add ingredient line"
+msgstr ""
+
 msgid "Add Invoice"
 msgstr "請求書を追加"
 
@@ -3001,6 +3016,9 @@ msgstr "文書から明細を追加"
 
 msgid "Add link"
 msgstr "リンクを追加"
+
+msgid "Add lot row"
+msgstr ""
 
 msgid "Add manually"
 msgstr "手動で追加"
@@ -3055,6 +3073,9 @@ msgstr "デフォルトを追加"
 msgid "Add overtime"
 msgstr "残業を追加"
 
+msgid "Add pack size"
+msgstr ""
+
 msgid "Add Pair"
 msgstr "ペアを追加"
 
@@ -3075,6 +3096,9 @@ msgstr "パスを追加"
 
 msgid "Add Payment"
 msgstr "支払を追加"
+
+msgid "Add phase"
+msgstr ""
 
 msgid "Add Predecessor"
 msgstr "前任品目を追加"
@@ -3252,6 +3276,9 @@ msgstr "{name} を追加しました · {quantity} × {rate}"
 
 msgid "Added for this customer"
 msgstr "この得意先に追加済み"
+
+msgid "Added to tank"
+msgstr ""
 
 msgid "Added to the change request"
 msgstr "変更要求に追加されました"
@@ -5290,6 +5317,9 @@ msgstr "バッチ数量"
 msgid "Batch Size"
 msgstr "バッチサイズ"
 
+msgid "Batch ticket"
+msgstr ""
+
 msgid "Batch tracking"
 msgstr "バッチ追跡"
 
@@ -5774,6 +5804,12 @@ msgstr "独自の方法として構築および原価計算"
 msgid "Built-in"
 msgstr "組み込み"
 
+msgid "Bulk"
+msgstr ""
+
+msgid "Bulk batch record"
+msgstr ""
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr ""
 
@@ -5782,6 +5818,12 @@ msgstr "一括インポート"
 
 msgid "Bulk Jobs"
 msgstr "一括製造指図"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr ""
+
+msgid "Bulk settings"
+msgstr ""
 
 msgid "Burden"
 msgstr "負担"
@@ -6756,6 +6798,9 @@ msgstr "{fieldLabel}をクリア"
 msgid "Clear {fieldName}"
 msgstr "{fieldName}をクリア"
 
+msgid "Clear draft"
+msgstr ""
+
 msgid "Clear due date"
 msgstr "期日をクリア"
 
@@ -6809,6 +6854,15 @@ msgstr "クリックまたはドラッグして置き換え"
 
 msgid "Click to rename"
 msgstr "クリックして名前を変更"
+
+msgid "Client"
+msgstr ""
+
+msgid "Client & product"
+msgstr ""
+
+msgid "Client SKU / formula ref"
+msgstr ""
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "修正"
 msgid "Correction {correctionNumber}"
 msgstr "訂正 {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr ""
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "修正: {0}"
@@ -8203,6 +8260,9 @@ msgstr "この製造指図の材料の保管ユニットを確認できません
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "{0}を解除できません: {1} — 生産がすでに記録されています"
+
+msgid "Could not load formulation data for this method."
+msgstr ""
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "MRP対象外の保管場所を読み込めませんでした。表示が欠けている可能性があります。"
@@ -8456,6 +8516,9 @@ msgstr "発注書明細を作成"
 
 msgid "Create PO Revision"
 msgstr "発注書リビジョンを作成"
+
+msgid "Create product"
+msgstr ""
 
 msgid "Create Production Event"
 msgstr "生産イベントを作成"
@@ -12981,6 +13044,10 @@ msgstr "ここに添付されたファイルは、この仕入先に送信され
 msgid "Fill"
 msgstr "補充"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr ""
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "この会社に現実的な業界ストーリーを入れて、すべての画面に何かが表示されるようにします。以前ここにあったものを戻すことができます。"
 
@@ -13326,6 +13393,18 @@ msgstr "フォーマット"
 
 msgid "Formula"
 msgstr "公式"
+
+msgid "Formula (% w/w)"
+msgstr ""
+
+msgid "Formula by phase"
+msgstr ""
+
+msgid "Formulation & method"
+msgstr ""
+
+msgid "Formulation & method of manufacture"
+msgstr ""
 
 msgid "Forward deployed engineer"
 msgstr "現地配置エンジニア"
@@ -14773,6 +14852,9 @@ msgstr "間接レート"
 msgid "Infrastructure"
 msgstr "インフラストラクチャ"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr ""
+
 msgid "Inherit"
 msgstr "継承"
 
@@ -15783,6 +15865,9 @@ msgstr "キー"
 msgid "Keyboard shortcuts"
 msgstr "キーボードショートカット"
 
+msgid "kg / batch"
+msgstr ""
+
 msgid "Kit"
 msgstr "キット"
 
@@ -16661,6 +16746,9 @@ msgstr "時間をログ"
 msgid "Log time (the open element)"
 msgstr "時間をログ（オープン要素）"
 
+msgid "Logged"
+msgstr ""
+
 msgid "Login or create a new account"
 msgstr "ログインするか新しいアカウントを作成してください"
 
@@ -17070,6 +17158,9 @@ msgstr "完了を取り消す"
 msgid "Mark Partial"
 msgstr "一部承諾"
 
+msgid "Mark phase complete"
+msgstr ""
+
 msgid "Mark reviewed"
 msgstr "確認済みにマーク"
 
@@ -17153,6 +17244,9 @@ msgstr "材料"
 
 msgid "Material"
 msgstr "材料"
+
+msgid "Material code"
+msgstr ""
 
 msgid "Material Cost"
 msgstr "材料費"
@@ -17420,8 +17514,14 @@ msgstr "方法"
 msgid "Method Id"
 msgstr "メソッドID"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr ""
+
 msgid "Method Materials"
 msgstr "方法材料"
+
+msgid "Method of manufacture"
+msgstr ""
 
 msgid "method operations"
 msgstr "製法工程"
@@ -18316,6 +18416,9 @@ msgstr "新規手順書"
 msgid "New Process"
 msgstr "新しいプロセス"
 
+msgid "New product (SkuuOS)"
+msgstr ""
+
 msgid "New Project"
 msgstr "新規プロジェクト"
 
@@ -19009,6 +19112,9 @@ msgstr "グループ化された通知がありません"
 msgid "No image"
 msgstr "画像なし"
 
+msgid "No ingredients in this phase."
+msgstr ""
+
 msgid "No inspection plans"
 msgstr "検査計画がありません"
 
@@ -19119,6 +19225,9 @@ msgstr "一致する時刻がありません"
 
 msgid "No materials"
 msgstr "物料がありません"
+
+msgid "No materials in this phase on the BOM."
+msgstr ""
 
 msgid "No materials yet"
 msgstr "品目はまだありません"
@@ -21035,6 +21144,15 @@ msgstr "リース期間終了までに所有権があなたに移転する"
 msgid "Owns: {0}"
 msgstr "所有者: {0}"
 
+msgid "Pack size (mL)"
+msgstr ""
+
+msgid "Pack sizes"
+msgstr ""
+
+msgid "Packaging"
+msgstr ""
+
 msgid "Packing Slip"
 msgstr "梱包明細書"
 
@@ -21534,8 +21652,25 @@ msgstr "アクセスを一括付与するための権限グループ"
 msgid "Permissions"
 msgstr "権限"
 
+msgid "Phase"
+msgstr ""
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr ""
+
+msgid "Phase complete"
+msgstr ""
+
 msgid "Phase durations"
 msgstr "フェーズ期間"
+
+msgid "Phase notes"
+msgstr ""
+
+msgid "phases complete"
+msgstr ""
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "品目を後継品目に切り替える。計画は旧品目の所要量に換算係数を乗じて新品目にリダイレクトします。"
@@ -21614,6 +21749,9 @@ msgstr "アカウントを選択"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "ライブラリから既存のルールを選択するか、新しいルールを作成してこのアイテムのチェックを実行し始めます。"
+
+msgid "Pick existing"
+msgstr ""
 
 msgid "Pick List"
 msgstr "ピッキングリスト"
@@ -22026,6 +22164,9 @@ msgstr "使用期限が固定期間の場合、新規品目に対して事前入
 msgid "Pre-select material"
 msgstr "材料を事前選択"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr ""
+
 msgid "Precedes"
 msgstr "先行する"
 
@@ -22364,8 +22505,14 @@ msgstr "製造品目"
 msgid "Product"
 msgstr "製品"
 
+msgid "Product build"
+msgstr ""
+
 msgid "Product issues during hypercare"
 msgstr "ハイパーケア中の製品の問題"
+
+msgid "Product name"
+msgstr ""
 
 msgid "Product support"
 msgstr "製品サポート"
@@ -22920,8 +23067,14 @@ msgstr "数量 {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "数量 {quantity}"
 
+msgid "Qty / unit"
+msgstr ""
+
 msgid "Qty On Hand"
 msgstr "手持数量"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr ""
 
 msgid "Qty. Complete"
 msgstr "数量完了"
@@ -25524,6 +25677,9 @@ msgstr "下書きを保存"
 msgid "Save Method"
 msgstr "メソッドを保存"
 
+msgid "Save phase instructions"
+msgstr ""
+
 msgid "Save signature"
 msgstr "署名を保存"
 
@@ -25810,6 +25966,9 @@ msgstr "原価を検索"
 msgid "Search country..."
 msgstr "国を検索..."
 
+msgid "Search customers"
+msgstr ""
+
 msgid "Search customers and types..."
 msgstr "得意先とタイプを検索..."
 
@@ -25866,6 +26025,9 @@ msgstr "リスト変数を検索…"
 
 msgid "Search maintenance dispatches"
 msgstr "保全指示を検索"
+
+msgid "Search materials"
+msgstr ""
 
 msgid "Search operations…"
 msgstr "工程を検索…"
@@ -26597,6 +26759,9 @@ msgstr "プロジェクトに設定すると、プロジェクトの原価がど
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "プロジェクトに設定するとそのコストが何のためかを示します：直接（政府契約）、商業、間接、IR&D または B&P。DCAA モードはすべてのプロジェクトで必要です。"
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr ""
 
 msgid "Set Pricing"
 msgstr "価格設定"
@@ -27573,6 +27738,16 @@ msgstr "ホスティングをセットアップする（クラウドまたはセ
 msgid "Standard"
 msgstr "標準"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr ""
+
+msgid "Standard batch size (kg)"
+msgstr ""
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "標準クラウドCarbonはあなたの会社の運営方法に適合します"
 
@@ -28240,6 +28415,9 @@ msgstr "仕入先住所"
 msgid "Supplier Address Line 2"
 msgstr "仕入先住所2行目"
 
+msgid "Supplier batch / lot"
+msgstr ""
+
 msgid "Supplier City"
 msgstr "仕入先市区町村"
 
@@ -28672,6 +28850,11 @@ msgstr "目標日"
 
 msgid "Target disposition row"
 msgstr "対象の処置行"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr ""
 
 msgid "Target go-live"
 msgstr "目標ゴーライブ"
@@ -31372,6 +31555,10 @@ msgstr "合計(残高不一致)"
 msgid "Total {0}"
 msgstr "{0}合計"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr ""
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "合計 {formattedTotal}、前期比 {chartChange}"
 
@@ -31536,6 +31723,9 @@ msgstr "追跡タイプ"
 
 msgid "Tracking URL"
 msgstr "トラッキングURL"
+
+msgid "Trade name"
+msgstr ""
 
 msgid "Trailing zeros are hidden"
 msgstr "末尾の0は非表示です"

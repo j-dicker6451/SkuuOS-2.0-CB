@@ -5,13 +5,11 @@ import { VStack } from "@carbon/react";
 import { useLingui } from "@lingui/react/macro";
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useParams } from "react-router";
-import { useRouteData } from "~/hooks";
 import { getMakeMethodsOnce } from "~/modules/items/items.service";
 import type { PartSummary } from "~/modules/items/types";
+import { usePartLayoutData } from "~/modules/items/ui/Parts/usePartLayoutData";
 import { loadSkuuFormulationView } from "~/modules/skuu/skuu-formulation.service";
 import { SkuuFormulationMethodPanel } from "~/modules/skuu/ui/SkuuFormulationMethodPanel";
-import { path } from "~/utils/path";
-
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { client, companyId } = await requirePermissions(request, {
     view: "parts"
@@ -34,31 +32,49 @@ export default function PartFormulationRoute() {
   const { t } = useLingui();
   const { itemId } = useParams();
   const data = useLoaderData<typeof loader>();
-  const routeData = useRouteData<{ partSummary: PartSummary }>(
-    path.to.part(itemId!)
-  );
+  const layout = usePartLayoutData<{ partSummary: PartSummary }>();
+  const readableId = layout?.partSummary?.readableId ?? itemId ?? "";
 
-  if (!data.makeMethodId || !data.view) {
+  if (!data.makeMethodId) {
     return (
-      <p>
-        {t`Add an active method of manufacture on the Details tab first, then enable the bulk formula here.`}
-      </p>
+      <VStack className="gap-2 p-4">
+        <h1 className="text-lg font-semibold">
+          {t`Formulation & method`} — {readableId}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {t`Add an active method of manufacture on the Details tab first, then enable the bulk formula here.`}
+        </p>
+      </VStack>
+    );
+  }
+
+  const view = data.view;
+  if (!view) {
+    return (
+      <VStack className="gap-2 p-4">
+        <h1 className="text-lg font-semibold">
+          {t`Formulation & method`} — {readableId}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {t`Could not load formulation data for this method.`}
+        </p>
+      </VStack>
     );
   }
 
   return (
     <VStack className="gap-4 p-4">
       <h1 className="text-lg font-semibold">
-        {t`Formulation & method`} — {routeData?.partSummary.readableId}
+        {t`Formulation & method`} — {readableId}
       </h1>
       <SkuuFormulationMethodPanel
         makeMethodId={data.makeMethodId}
-        profile={data.view.profile}
-        phases={data.view.phases.map((p) => ({
+        profile={view.profile}
+        phases={view.phases.map((p) => ({
           phaseNumber: p.phaseNumber,
           instructions: p.instructions
         }))}
-        materials={data.view.materials}
+        materials={view.materials}
       />
     </VStack>
   );

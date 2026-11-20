@@ -2715,6 +2715,9 @@ msgstr "Actual End"
 msgid "Actual Failure Mode"
 msgstr "Actual Failure Mode"
 
+msgid "Actual kg"
+msgstr "Actual kg"
+
 msgid "Actual of budget"
 msgstr "Actual of budget"
 
@@ -2828,6 +2831,9 @@ msgstr "Add Adjustment"
 msgid "Add Affected Item"
 msgstr "Add Affected Item"
 
+msgid "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+msgstr "Add an active method of manufacture on the Details tab first, then enable the bulk formula here."
+
 msgid "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 msgstr "Add an extra layer of security by requiring a code from an authenticator app when signing in."
 
@@ -2872,6 +2878,12 @@ msgstr "Add Authenticator App"
 
 msgid "Add Back to Report"
 msgstr "Add Back to Report"
+
+msgid "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+msgstr "Add bottles, pumps, labels and cartons on each finished good Product build screen after create."
+
+msgid "Add buy Parts (bottle, pump, label, carton) on the method BOM."
+msgstr "Add buy Parts (bottle, pump, label, carton) on the method BOM."
 
 msgid "Add Calibration Record"
 msgstr "Add Calibration Record"
@@ -2960,6 +2972,9 @@ msgstr "Add Group"
 msgid "Add header"
 msgstr "Add header"
 
+msgid "Add ingredient line"
+msgstr "Add ingredient line"
+
 msgid "Add Invoice"
 msgstr "Add Invoice"
 
@@ -3001,6 +3016,9 @@ msgstr "Add lines from document"
 
 msgid "Add link"
 msgstr "Add link"
+
+msgid "Add lot row"
+msgstr "Add lot row"
 
 msgid "Add manually"
 msgstr "Add manually"
@@ -3055,6 +3073,9 @@ msgstr "Add otherwise"
 msgid "Add overtime"
 msgstr "Add overtime"
 
+msgid "Add pack size"
+msgstr "Add pack size"
+
 msgid "Add Pair"
 msgstr "Add Pair"
 
@@ -3075,6 +3096,9 @@ msgstr "Add path"
 
 msgid "Add Payment"
 msgstr "Add Payment"
+
+msgid "Add phase"
+msgstr "Add phase"
 
 msgid "Add Predecessor"
 msgstr "Add Predecessor"
@@ -3252,6 +3276,9 @@ msgstr "Added {name} · {quantity} × {rate}"
 
 msgid "Added for this customer"
 msgstr "Added for this customer"
+
+msgid "Added to tank"
+msgstr "Added to tank"
 
 msgid "Added to the change request"
 msgstr "Added to the change request"
@@ -5290,6 +5317,9 @@ msgstr "Batch Quantities"
 msgid "Batch Size"
 msgstr "Batch Size"
 
+msgid "Batch ticket"
+msgstr "Batch ticket"
+
 msgid "Batch tracking"
 msgstr "Batch tracking"
 
@@ -5774,6 +5804,12 @@ msgstr "Built and costed as its own method"
 msgid "Built-in"
 msgstr "Built-in"
 
+msgid "Bulk"
+msgstr "Bulk"
+
+msgid "Bulk batch record"
+msgstr "Bulk batch record"
+
 msgid "Bulk formula (% w/w) — SkuuOS"
 msgstr "Bulk formula (% w/w) — SkuuOS"
 
@@ -5782,6 +5818,12 @@ msgstr "Bulk Import"
 
 msgid "Bulk Jobs"
 msgstr "Bulk Jobs"
+
+msgid "Bulk manufacturing — formula by phase"
+msgstr "Bulk manufacturing — formula by phase"
+
+msgid "Bulk settings"
+msgstr "Bulk settings"
 
 msgid "Burden"
 msgstr "Burden"
@@ -6756,6 +6798,9 @@ msgstr "Clear {fieldLabel}"
 msgid "Clear {fieldName}"
 msgstr "Clear {fieldName}"
 
+msgid "Clear draft"
+msgstr "Clear draft"
+
 msgid "Clear due date"
 msgstr "Clear due date"
 
@@ -6809,6 +6854,15 @@ msgstr "Click or drop to replace"
 
 msgid "Click to rename"
 msgstr "Click to rename"
+
+msgid "Client"
+msgstr "Client"
+
+msgid "Client & product"
+msgstr "Client & product"
+
+msgid "Client SKU / formula ref"
+msgstr "Client SKU / formula ref"
 
 msgid "CLIN"
 msgstr "CLIN"
@@ -8050,6 +8104,9 @@ msgstr "Correction"
 msgid "Correction {correctionNumber}"
 msgstr "Correction {correctionNumber}"
 
+msgid "Correction reason (required to edit locked phase)"
+msgstr "Correction reason (required to edit locked phase)"
+
 #. placeholder {0}: entry.correctionReason
 msgid "Correction: {0}"
 msgstr "Correction: {0}"
@@ -8203,6 +8260,9 @@ msgstr "Could not check the storage units of this job's materials. Close this di
 #. placeholder {1}: d.failed .map((f) => f.readableId) .join(", ")
 msgid "Could not dissolve {0}: {1} — production already recorded"
 msgstr "Could not dissolve {0}: {1} — production already recorded"
+
+msgid "Could not load formulation data for this method."
+msgstr "Could not load formulation data for this method."
 
 msgid "Could not load the non-nettable storage units. Non-nettable markers may be missing."
 msgstr "Could not load the non-nettable storage units. Non-nettable markers may be missing."
@@ -8456,6 +8516,9 @@ msgstr "Create PO Line"
 
 msgid "Create PO Revision"
 msgstr "Create PO Revision"
+
+msgid "Create product"
+msgstr "Create product"
 
 msgid "Create Production Event"
 msgstr "Create Production Event"
@@ -12981,6 +13044,10 @@ msgstr "Files attached here ride along on every purchase order email sent to thi
 msgid "Fill"
 msgstr "Fill"
 
+#. placeholder {0}: kgPerUnit != null ? ` · ${kgPerUnit.toFixed(4)} kg bulk per unit @ ${densityGPerMl} g/mL` : ""
+msgid "Fill {packSizeMl} mL{0}"
+msgstr "Fill {packSizeMl} mL{0}"
+
 msgid "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 msgstr "Fill this company with a realistic industry story so every screen has something in it. You can put back what was here before."
 
@@ -13326,6 +13393,18 @@ msgstr "Format"
 
 msgid "Formula"
 msgstr "Formula"
+
+msgid "Formula (% w/w)"
+msgstr "Formula (% w/w)"
+
+msgid "Formula by phase"
+msgstr "Formula by phase"
+
+msgid "Formulation & method"
+msgstr "Formulation & method"
+
+msgid "Formulation & method of manufacture"
+msgstr "Formulation & method of manufacture"
 
 msgid "Forward deployed engineer"
 msgstr "Forward deployed engineer"
@@ -14773,6 +14852,9 @@ msgstr "Indirect Rates"
 msgid "Infrastructure"
 msgstr "Infrastructure"
 
+msgid "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+msgstr "Ingredient lines are grouped by phase below (or on the Formulation tab)."
+
 msgid "Inherit"
 msgstr "Inherit"
 
@@ -15783,6 +15865,9 @@ msgstr "Key"
 msgid "Keyboard shortcuts"
 msgstr "Keyboard shortcuts"
 
+msgid "kg / batch"
+msgstr "kg / batch"
+
 msgid "Kit"
 msgstr "Kit"
 
@@ -16661,6 +16746,9 @@ msgstr "Log Time"
 msgid "Log time (the open element)"
 msgstr "Log time (the open element)"
 
+msgid "Logged"
+msgstr "Logged"
+
 msgid "Login or create a new account"
 msgstr "Login or create a new account"
 
@@ -17070,6 +17158,9 @@ msgstr "Mark not done"
 msgid "Mark Partial"
 msgstr "Mark Partial"
 
+msgid "Mark phase complete"
+msgstr "Mark phase complete"
+
 msgid "Mark reviewed"
 msgstr "Mark reviewed"
 
@@ -17153,6 +17244,9 @@ msgstr "material"
 
 msgid "Material"
 msgstr "Material"
+
+msgid "Material code"
+msgstr "Material code"
 
 msgid "Material Cost"
 msgstr "Material Cost"
@@ -17420,8 +17514,14 @@ msgstr "Method"
 msgid "Method Id"
 msgstr "Method Id"
 
+msgid "Method instructions (precautions, planning, protocol)"
+msgstr "Method instructions (precautions, planning, protocol)"
+
 msgid "Method Materials"
 msgstr "Method Materials"
+
+msgid "Method of manufacture"
+msgstr "Method of manufacture"
 
 msgid "method operations"
 msgstr "method operations"
@@ -18316,6 +18416,9 @@ msgstr "New Procedure"
 msgid "New Process"
 msgstr "New Process"
 
+msgid "New product (SkuuOS)"
+msgstr "New product (SkuuOS)"
+
 msgid "New Project"
 msgstr "New Project"
 
@@ -19009,6 +19112,9 @@ msgstr "No grouped notifications"
 msgid "No image"
 msgstr "No image"
 
+msgid "No ingredients in this phase."
+msgstr "No ingredients in this phase."
+
 msgid "No inspection plans"
 msgstr "No inspection plans"
 
@@ -19119,6 +19225,9 @@ msgstr "No matching time"
 
 msgid "No materials"
 msgstr "No materials"
+
+msgid "No materials in this phase on the BOM."
+msgstr "No materials in this phase on the BOM."
 
 msgid "No materials yet"
 msgstr "No materials yet"
@@ -21035,6 +21144,15 @@ msgstr "Ownership transfers to you by the end of the term"
 msgid "Owns: {0}"
 msgstr "Owns: {0}"
 
+msgid "Pack size (mL)"
+msgstr "Pack size (mL)"
+
+msgid "Pack sizes"
+msgstr "Pack sizes"
+
+msgid "Packaging"
+msgstr "Packaging"
+
 msgid "Packing Slip"
 msgstr "Packing Slip"
 
@@ -21534,8 +21652,25 @@ msgstr "Permission groups for granting access in bulk"
 msgid "Permissions"
 msgstr "Permissions"
 
+msgid "Phase"
+msgstr "Phase"
+
+#. placeholder {0}: block.phaseNumber
+#. placeholder {0}: phase.phaseNumber
+msgid "Phase {0}"
+msgstr "Phase {0}"
+
+msgid "Phase complete"
+msgstr "Phase complete"
+
 msgid "Phase durations"
 msgstr "Phase durations"
+
+msgid "Phase notes"
+msgstr "Phase notes"
+
+msgid "phases complete"
+msgstr "phases complete"
 
 msgid "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
 msgstr "Phasing out an item in favor of a successor part, so planning redirects the old item's demand — times a conversion factor — to the new one."
@@ -21614,6 +21749,9 @@ msgstr "Pick an account"
 
 msgid "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
 msgstr "Pick an existing rule from the library or create a new one to start enforcing checks on this item."
+
+msgid "Pick existing"
+msgstr "Pick existing"
 
 msgid "Pick List"
 msgstr "Pick List"
@@ -22026,6 +22164,9 @@ msgstr "Pre-filled for a new item when expiry is Fixed Duration."
 msgid "Pre-select material"
 msgstr "Pre-select material"
 
+msgid "Precautions, planning, protocol, past experience…"
+msgstr "Precautions, planning, protocol, past experience…"
+
 msgid "Precedes"
 msgstr "Precedes"
 
@@ -22364,8 +22505,14 @@ msgstr "Produced item"
 msgid "Product"
 msgstr "Product"
 
+msgid "Product build"
+msgstr "Product build"
+
 msgid "Product issues during hypercare"
 msgstr "Product issues during hypercare"
+
+msgid "Product name"
+msgstr "Product name"
 
 msgid "Product support"
 msgstr "Product support"
@@ -22920,8 +23067,14 @@ msgstr "Qty {jobQuantity}"
 msgid "Qty {quantity}"
 msgstr "Qty {quantity}"
 
+msgid "Qty / unit"
+msgstr "Qty / unit"
+
 msgid "Qty On Hand"
 msgstr "Qty On Hand"
+
+msgid "Qty per kg bulk (ERP sync)"
+msgstr "Qty per kg bulk (ERP sync)"
 
 msgid "Qty. Complete"
 msgstr "Qty. Complete"
@@ -25524,6 +25677,9 @@ msgstr "Save Draft"
 msgid "Save Method"
 msgstr "Save Method"
 
+msgid "Save phase instructions"
+msgstr "Save phase instructions"
+
 msgid "Save signature"
 msgstr "Save signature"
 
@@ -25810,6 +25966,9 @@ msgstr "Search costs"
 msgid "Search country..."
 msgstr "Search country..."
 
+msgid "Search customers"
+msgstr "Search customers"
+
 msgid "Search customers and types..."
 msgstr "Search customers and types..."
 
@@ -25866,6 +26025,9 @@ msgstr "Search list variables…"
 
 msgid "Search maintenance dispatches"
 msgstr "Search maintenance dispatches"
+
+msgid "Search materials"
+msgstr "Search materials"
 
 msgid "Search operations…"
 msgstr "Search operations…"
@@ -26597,6 +26759,9 @@ msgstr "Set on a project, it decides where the project's cost posts: Statistical
 
 msgid "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
 msgstr "Set on a project, it says what its cost is for: Direct (a government contract), Commercial, Indirect, IR&D or B&P. DCAA mode requires one on every project."
+
+msgid "Set pack size on the make method BOM to see bulk kg per unit."
+msgstr "Set pack size on the make method BOM to see bulk kg per unit."
 
 msgid "Set Pricing"
 msgstr "Set Pricing"
@@ -27573,6 +27738,16 @@ msgstr "Stand up hosting (cloud or self-hosted)"
 msgid "Standard"
 msgstr "Standard"
 
+#. placeholder {0}: grossBasis.toFixed(4)
+#. placeholder {1}: density != null ? ` · density ${density} g/mL` : ""
+#. placeholder {2}: total.toFixed(2)
+#. placeholder {3}: check.ok ? "(OK)" : "— needs 100%"
+msgid "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+msgstr "Standard batch {batchBasisKg} kg · gross {0} kg at {yieldPct}% yield{1}. Formula total {2}% {3}."
+
+msgid "Standard batch size (kg)"
+msgstr "Standard batch size (kg)"
+
 msgid "Standard cloud Carbon fits how your company runs"
 msgstr "Standard cloud Carbon fits how your company runs"
 
@@ -28240,6 +28415,9 @@ msgstr "Supplier Address"
 msgid "Supplier Address Line 2"
 msgstr "Supplier Address Line 2"
 
+msgid "Supplier batch / lot"
+msgstr "Supplier batch / lot"
+
 msgid "Supplier City"
 msgstr "Supplier City"
 
@@ -28672,6 +28850,11 @@ msgstr "Target date"
 
 msgid "Target disposition row"
 msgstr "Target disposition row"
+
+#. placeholder {0}: routeData.skuuJobQuantitySummary.targetFinishedKg
+#. placeholder {1}: routeData.skuuJobQuantitySummary.headerLabel
+msgid "Target finished {0} kg — manufacture {1}"
+msgstr "Target finished {0} kg — manufacture {1}"
 
 msgid "Target go-live"
 msgstr "Target go-live"
@@ -31372,6 +31555,10 @@ msgstr "Total (out of balance)"
 msgid "Total {0}"
 msgstr "Total {0}"
 
+#. placeholder {0}: percentTotal.toFixed(2)
+msgid "Total {0}%"
+msgstr "Total {0}%"
+
 msgid "Total {formattedTotal}, {chartChange} versus the previous period"
 msgstr "Total {formattedTotal}, {chartChange} versus the previous period"
 
@@ -31536,6 +31723,9 @@ msgstr "Tracking Type"
 
 msgid "Tracking URL"
 msgstr "Tracking URL"
+
+msgid "Trade name"
+msgstr "Trade name"
 
 msgid "Trailing zeros are hidden"
 msgstr "Trailing zeros are hidden"

@@ -71,6 +71,7 @@ import {
   SourcingTypeProperty,
   useIsComponentOfBuyAndMake
 } from "../Item";
+import { usePartLayoutData } from "./usePartLayoutData";
 
 export type PartPropertiesData = {
   itemId: string;
@@ -166,22 +167,16 @@ const PartProperties = ({
     // Set while the change notice that minted this item is still open.
     unreleasedChangeOrder?: UnreleasedChangeOrderItem | null;
   }>(path.to.part(itemId));
-  const supersession = useResolved(
-    routeDataFromRoute?.supersession,
-    null,
-    itemId
-  );
-  const supersededBy = useResolved(
-    routeDataFromRoute?.supersededBy,
-    null,
-    itemId
-  );
+  const layoutPartData = usePartLayoutData<typeof routeDataFromRoute>();
+  const partRouteData = routeDataFromRoute ?? layoutPartData;
+  const supersession = useResolved(partRouteData?.supersession, null, itemId);
+  const supersededBy = useResolved(partRouteData?.supersededBy, null, itemId);
   const isComponentOfBuyAndMake = useIsComponentOfBuyAndMake(
-    routeDataFromRoute?.usedIn,
+    partRouteData?.usedIn,
     itemId,
     data?.isComponentOfBuyAndMake
   );
-  const routeData = data ?? routeDataFromRoute;
+  const routeData = data ?? partRouteData;
 
   const locations = data?.locations ?? sharedPartsData?.locations ?? [];
   const supplierParts = routeData?.supplierParts ?? [];
