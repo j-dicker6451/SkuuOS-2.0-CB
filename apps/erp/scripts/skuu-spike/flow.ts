@@ -855,10 +855,16 @@ async function shipFillUnits(
   return { salesOrderId, shipmentId: shipment.id };
 }
 
+export type RunSpikeFlowOptions = {
+  /** When true, do not run tagged teardown — rows stay in ERP (product seed / UI walkthrough). */
+  skipTeardown?: boolean;
+};
+
 export async function runSpikeFlow(
   ctx: SpikeContext,
   input: SpikeInput,
-  note: (section: string, message: string) => void
+  note: (section: string, message: string) => void,
+  options: RunSpikeFlowOptions = {}
 ): Promise<SpikeReportLine[]> {
   const extra: SpikeReportLine[] = [];
   const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
@@ -868,8 +874,12 @@ export async function runSpikeFlow(
     `UoM mass=${ctx.lookups.unitKg} count=${ctx.lookups.unitEa} currency=${ctx.lookups.currencyCode}`
   );
 
-  await teardownTagged(ctx.db, ctx.companyId, ctx.prefix);
-  note("reset", `Cleared prior tagged rows for ${ctx.prefix}`);
+  if (options.skipTeardown) {
+    note("reset", "Teardown skipped — seeded product left in ERP");
+  } else {
+    await teardownTagged(ctx.db, ctx.companyId, ctx.prefix);
+    note("reset", `Cleared prior tagged rows for ${ctx.prefix}`);
+  }
 
   const percentCheck = validatePercentSum(
     input.ingredients.map((i, idx) => ({

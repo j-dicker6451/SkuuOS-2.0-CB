@@ -23,10 +23,13 @@ Part tabs **Formulation & method** (Make, kg) and **Product build** (Make, EA) a
 pnpm db:migrate
 pnpm dev   # PostgREST required
 export SKUU_PRODUCT_INPUT=apps/erp/scripts/skuu-spike/bld-bro-night.local.json
+# Optional: export SKUU_SPIKE_PREFIX=skuu-product-bldbro
 pnpm skuu:product-seed
 ```
 
-Same harness as `pnpm skuu:spike` (raw Materials shared by code, bulk/fill Parts, jobs, trace).
+Runs through Vitest (`vitest.product-seed.config.ts`) like `pnpm skuu:spike` — not `tsx` — so `@carbon/lib` resolves correctly. **Does not tear down**; jobs/parts stay in the DB for click-through. Re-run with a new `SKUU_SPIKE_PREFIX` if tagged rows already exist.
+
+Same harness as spike (raw Materials shared by code, bulk/fill Parts, jobs, trace). Report: `apps/erp/scripts/skuu-spike/report-product-seed.txt`.
 
 ## Migrations
 

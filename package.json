@@ -93,7 +93,7 @@
     "generate:oss-stubs": "python3 scripts/generate-oss-stubs.py",
     "verify:oss-stubs-runtime": "node scripts/verify-stub-chain.mjs && node scripts/verify-server-import.mjs",
     "skuu:spike": "pnpm --filter erp exec vitest run --config vitest.spike.config.ts --no-file-parallelism",
-    "skuu:product-seed": "pnpm --filter erp exec tsx scripts/skuu-product-seed/run.ts"
+    "skuu:product-seed": "pnpm --filter erp exec vitest run --config vitest.product-seed.config.ts --no-file-parallelism"
   },
   "workspaces": [
     "apps/*",
