@@ -14,10 +14,7 @@ import {
   issueMaterial
 } from "~/modules/inventory/inventory.service";
 import { invokeCreate, invokePosting } from "~/modules/shared/shared.service";
-import {
-  insertJob,
-  recalculateJobRequirements
-} from "~/modules/production/production.service";
+import { recalculateJobRequirements } from "~/modules/production/production.service";
 import { handlesOf } from "../../test/database/fixtures/handles";
 import { seedTrx, unwrap } from "./posting-helpers";
 import type { SpikeContext, SpikeInput } from "./context";
@@ -57,6 +54,7 @@ import {
   traceActivityLineage
 } from "./trace-lineage";
 import type { SpikeIngredient } from "./context";
+import { ensureSpikeJobCreated } from "./spike-job-ensure";
 
 type Db = SpikeContext["db"];
 
@@ -437,19 +435,56 @@ async function createAndRunBulkJob(
   jobSuffix = "BULK"
 ) {
   const client = ctx.service.asSystem.supabase;
-  const created = await insertJob(client, ctx.db, {
+  const humanJobIdBase = `${ctx.prefix}-JOB-${jobSuffix}`;
+  const ensured = await ensureSpikeJobCreated(ctx, client, humanJobIdBase, {
     itemId: bulkItemId,
     quantity: input.batchKg,
     unitOfMeasureCode: ctx.lookups.unitKg,
     locationId: ctx.locationId,
     companyId: ctx.companyId,
-    createdBy: ctx.userId,
-    jobId: `${ctx.prefix}-JOB-${jobSuffix}`
-  } as never);
-  if (created.error || !created.data) {
-    throw new Error(`insertJob failed: ${created.error?.message ?? "unknown"}`);
+    createdBy: ctx.userId
+  });
+  const jobId = ensured.primaryId;
+  if (ensured.reused) {
+    const jobRow = await ctx.db
+      .selectFrom("job")
+      .select(["id", "status", "quantity"])
+      .where("id", "=", jobId)
+      .executeTakeFirstOrThrow();
+    const grossKg = manufactureFromExpectedYield(
+      input.batchKg,
+      input.expectedYieldPercent
+    );
+    const bulkLot =
+      (await resolveJobOutputTrackedEntity(
+        ctx.db,
+        ctx.companyId,
+        jobId,
+        bulkItemId
+      )) ?? null;
+    const operation = await ctx.db
+      .selectFrom("jobOperation")
+      .select("id")
+      .where("jobId", "=", jobId)
+      .orderBy("createdAt", "asc")
+      .limit(1)
+      .executeTakeFirst();
+    return {
+      jobId,
+      jobRow,
+      materialChecks: [`Reused bulk job ${ensured.humanJobId}`],
+      bulkLot: bulkLot
+        ? {
+            id: bulkLot.id,
+            readableId: bulkLot.readableId,
+            quantity: bulkLot.quantity
+          }
+        : null,
+      grossKg,
+      operationId: operation?.id ?? "",
+      outputStatus: bulkLot?.status ?? jobRow.status
+    };
   }
-  const jobId = created.data.id;
   await stampJobBatchLotNumber(ctx, jobId, bulkItemId);
   await recalculateJobRequirements(client, ctx.db, {
     id: jobId,
@@ -675,17 +710,25 @@ async function runFillJob(
   label: string
 ) {
   const client = ctx.service.asSystem.supabase;
-  const created = await insertJob(client, ctx.db, {
+  const humanJobIdBase = `${ctx.prefix}-JOB-${label}`;
+  const ensured = await ensureSpikeJobCreated(ctx, client, humanJobIdBase, {
     itemId: fillItemId,
     quantity: units,
     unitOfMeasureCode: ctx.lookups.unitEa,
     locationId: ctx.locationId,
     companyId: ctx.companyId,
-    createdBy: ctx.userId,
-    jobId: `${ctx.prefix}-JOB-${label}`
-  } as never);
-  unwrap({ data: created.data, error: created.error });
-  const jobId = created.data!.id;
+    createdBy: ctx.userId
+  });
+  const jobId = ensured.primaryId;
+  if (ensured.reused) {
+    const outputLot = await resolveJobOutputTrackedEntity(
+      ctx.db,
+      ctx.companyId,
+      jobId,
+      fillItemId
+    );
+    return { jobId, fillLots: outputLot ? [outputLot] : [] };
+  }
   await stampJobBatchLotNumber(ctx, jobId, fillItemId);
   await recalculateJobRequirements(client, ctx.db, {
     id: jobId,

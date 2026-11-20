@@ -20,7 +20,7 @@ UoM and currency codes are read from the seeded company (`kg`, `EA`, `company.ba
 | Finished SKU | Part | Make | Batch | EA | `upsertPart` — readableId `FG-{formulaRef}-{packMl}ML` |
 | Packaging | Part | Buy | Batch | (sku) | not in this spike |
 
-Shared raw materials use real **`partCode`** values from input (Cosmetri codes on Mac `*.local.json`); demo fixture uses `RM-*-DEMO` codes. One material SKU per `partCode`, reused across formulas. **BULK-/FG-** parts, **process** rows (by name), and method BOM lines are also reused across prefixes (`skuu-spike` vs `skuu-product`). Lots and jobs are tagged with the run **`prefix`** (`{SKUU_SPIKE_PREFIX}-{formulaRef}`); teardown does **not** delete shared materials or cross-prefix bulk/fill SKUs.
+Shared raw materials use real **`partCode`** values from input (Cosmetri codes on Mac `*.local.json`); demo fixture uses `RM-*-DEMO` codes. One material SKU per `partCode`, reused across formulas. **BULK-/FG-** parts, **process** rows (by name), and method BOM lines are also reused across prefixes (`skuu-spike` vs `skuu-product`). Lots and jobs are tagged with the run **`prefix`** (`{SKUU_SPIKE_PREFIX}-{formulaRef}`); teardown does **not** delete shared materials or cross-prefix bulk/fill SKUs. Re-running product seed **reuses** jobs when `job.jobId` already exists (or allocates `{id}-0002` … if the base id is taken).
 
 Never raw `item` inserts — `app.sync_in_progress` on Kysely seed transactions skips item interceptors and breaks receipts.
 
