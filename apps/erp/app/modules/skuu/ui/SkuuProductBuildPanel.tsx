@@ -58,7 +58,7 @@ export function SkuuProductBuildPanel({
     <Card>
       <CardHeader>
         <CardTitle>
-          <Trans>Product build</Trans> — {productCode}
+          <Trans>Product build</Trans> · {productCode}
         </CardTitle>
       </CardHeader>
       <CardContent>

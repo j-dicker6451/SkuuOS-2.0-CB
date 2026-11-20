@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { bootstrapSpikeEnv } from "../skuu-spike/env-bootstrap";
 import { buildSpikeContext, loadSpikeInput } from "../skuu-spike/context";
 import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
+import { bulkItemReadableId } from "../skuu-spike/spike-codes";
 import { runSpikeFlow } from "../skuu-spike/flow";
 import { createReporter } from "../skuu-spike/report";
 import { hasLocalDatabase } from "../../test/database/fixtures/local-database";
@@ -38,7 +39,6 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
         ctx = await buildSpikeContext(input, tag);
         note("seed", `Company ${ctx.companyId} prefix ${ctx.prefix}`);
         await runSpikeFlow(ctx, input, note, { skipTeardown: true });
-        await runSpikeFlow(ctx, input, note, { skipTeardown: true });
         const bulkHumanId = `${ctx.prefix}-JOB-BULK`;
         const bulkJobRow = await ctx.db
           .selectFrom("job")
@@ -47,6 +47,68 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
           .where("jobId", "=", bulkHumanId)
           .executeTakeFirst();
         expect(bulkJobRow, `bulk job ${bulkHumanId}`).toBeDefined();
+
+        const bulkItemId = await ctx.db
+          .selectFrom("item")
+          .select("id")
+          .where("companyId", "=", ctx.companyId)
+          .where("readableId", "=", bulkItemReadableId(input.formulaRef))
+          .executeTakeFirst();
+        const bulkLotBefore = bulkItemId
+          ? await ctx.db
+              .selectFrom("trackedEntity")
+              .select(["id", "quantity"])
+              .where("companyId", "=", ctx.companyId)
+              .where("itemId", "=", bulkItemId.id)
+              .where("status", "=", "Available")
+              .orderBy("createdAt", "desc")
+              .limit(1)
+              .executeTakeFirst()
+          : undefined;
+
+        await runSpikeFlow(ctx, input, note, { skipTeardown: true });
+
+        const bulkLotAfter = bulkItemId
+          ? await ctx.db
+              .selectFrom("trackedEntity")
+              .select(["id", "quantity"])
+              .where("companyId", "=", ctx.companyId)
+              .where("itemId", "=", bulkItemId.id)
+              .where("status", "=", "Available")
+              .orderBy("createdAt", "desc")
+              .limit(1)
+              .executeTakeFirst()
+          : undefined;
+        expect(bulkLotAfter?.quantity).toBeDefined();
+        if (bulkLotBefore?.id) {
+          expect(bulkLotAfter?.id).toBe(bulkLotBefore.id);
+          expect(Number(bulkLotAfter?.quantity)).toBeCloseTo(
+            Number(bulkLotBefore.quantity),
+            3
+          );
+        }
+        expect(Number(bulkLotAfter?.quantity)).toBeCloseTo(input.batchKg, 3);
+
+        const fillHumanId = `${ctx.prefix}-JOB-F0`;
+        const fillIssued = await ctx.db
+          .selectFrom("jobMaterial as jm")
+          .innerJoin("job as j", "j.id", "jm.jobId")
+          .select("jm.quantityIssued")
+          .where("j.companyId", "=", ctx.companyId)
+          .where("j.jobId", "=", fillHumanId)
+          .where("jm.methodType", "=", "Pull from Inventory")
+          .executeTakeFirst();
+        const fill = input.fills?.[0];
+        if (fill) {
+          const kgPerUnit =
+            (fill.packSizeMl * input.productDensityGPerMl) / 1000;
+          const expectedBulkKg = kgPerUnit * fill.units;
+          expect(Number(fillIssued?.quantityIssued ?? 0)).toBeCloseTo(
+            expectedBulkKg,
+            2
+          );
+        }
+
         const ticket = await buildBulkBatchTicket(
           ctx.service.asSystem.supabase,
           { jobId: bulkJobRow!.id, companyId: ctx.companyId }

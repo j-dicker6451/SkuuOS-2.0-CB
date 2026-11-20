@@ -42,7 +42,7 @@ export default function BulkBatchTicketPrint() {
       <header className="mb-6">
         <h1 className="text-xl font-bold">SkuuOS bulk batch ticket</h1>
         <p>
-          <strong>Product:</strong> {ticket.productCode} — {ticket.productName}
+          <strong>Product:</strong> {ticket.productCode} · {ticket.productName}
         </p>
         <p>
           <strong>Batch no.:</strong> {ticket.batchNumber}

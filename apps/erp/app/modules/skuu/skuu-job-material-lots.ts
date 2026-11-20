@@ -90,9 +90,11 @@ export async function loadSkuuJobMaterialLotsFromConsumption(
     .select("itemId, trackedEntityId, quantity")
     .eq("companyId", companyId)
     .eq("documentId", jobId)
-    .eq("documentType", "Job Consumption")
+    .eq("entryType", "Consumption")
     .not("trackedEntityId", "is", null);
   if (ledgerErr) throw new Error(ledgerErr.message);
+
+  const ledgerRows = ledger ?? [];
 
   const teIds = [
     ...new Set(
@@ -119,7 +121,7 @@ export async function loadSkuuJobMaterialLotsFromConsumption(
   }
 
   const qtyByItemTe = new Map<string, Map<string, number>>();
-  for (const row of ledger ?? []) {
+  for (const row of ledgerRows) {
     if (!row.trackedEntityId || !row.itemId) continue;
     const qty = Math.max(0, -Number(row.quantity ?? 0));
     if (qty <= 0) continue;
@@ -151,6 +153,82 @@ export async function loadSkuuJobMaterialLotsFromConsumption(
   return out;
 }
 
+/** MES consume activities (itemLedger may be inventory-gated for production viewers). */
+export async function loadSkuuJobMaterialLotsFromTrackedActivity(
+  client: Client,
+  companyId: string,
+  _jobId: string,
+  jobMaterialIds: string[] = []
+): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
+  const out = new Map<string, SkuuJobMaterialLotRef[]>();
+  if (!jobMaterialIds.length) return out;
+
+  let activityQuery = client
+    .from("trackedActivity")
+    .select(
+      "sourceDocumentId, trackedActivityInput(trackedEntityId, quantity)"
+    )
+    .eq("companyId", companyId)
+    .eq("type", "Consume")
+    .eq("sourceDocument", "Job Material")
+    .in("sourceDocumentId", jobMaterialIds);
+  const { data: activities, error } = await activityQuery;
+  if (error) throw new Error(error.message);
+  if (!activities?.length) return out;
+
+  const teIds = [
+    ...new Set(
+      activities.flatMap((a) =>
+        (a.trackedActivityInput ?? [])
+          .map((i) => i.trackedEntityId)
+          .filter((id): id is string => !!id)
+      )
+    )
+  ];
+  const teMeta = new Map<
+    string,
+    { readableId: string; supplierBatch: string | null }
+  >();
+  if (teIds.length) {
+    const { data: tes } = await client
+      .from("trackedEntity")
+      .select("id, readableId, sourceDocumentReadableId")
+      .in("id", teIds);
+    for (const te of tes ?? []) {
+      teMeta.set(te.id, {
+        readableId: te.readableId ?? te.id,
+        supplierBatch: te.sourceDocumentReadableId ?? null
+      });
+    }
+  }
+
+  for (const activity of activities) {
+    const jmId = activity.sourceDocumentId;
+    if (!jmId) continue;
+    const list = out.get(jmId) ?? [];
+    for (const input of activity.trackedActivityInput ?? []) {
+      if (!input.trackedEntityId) continue;
+      const qty = Number(input.quantity);
+      if (!(qty > 0)) continue;
+      const meta = teMeta.get(input.trackedEntityId);
+      const existing = list.find(
+        (l) => l.trackedEntityReadableId === (meta?.readableId ?? input.trackedEntityId)
+      );
+      if (existing) {
+        existing.quantityKg += qty;
+      } else {
+        list.push({
+          trackedEntityReadableId: meta?.readableId ?? input.trackedEntityId,
+          supplierBatchNumber: meta?.supplierBatch ?? meta?.readableId ?? null,
+          quantityKg: qty
+        });
+      }
+    }
+    if (list.length) out.set(jmId, list);
+  }
+  return out;
+}
+
 function mergeLotMaps(
   primary: Map<string, SkuuJobMaterialLotRef[]>,
   fallback: Map<string, SkuuJobMaterialLotRef[]>
@@ -178,8 +256,16 @@ export async function loadSkuuJobMaterialLotsByMethodMaterial(
 
   const jobMaterialIds = jm.map((r) => r.id);
   const byJm = mergeLotMaps(
-    await loadSkuuJobMaterialLots(client, companyId, jobMaterialIds),
-    await loadSkuuJobMaterialLotsFromConsumption(
+    mergeLotMaps(
+      await loadSkuuJobMaterialLots(client, companyId, jobMaterialIds),
+      await loadSkuuJobMaterialLotsFromConsumption(
+        client,
+        companyId,
+        jobId,
+        jobMaterialIds
+      )
+    ),
+    await loadSkuuJobMaterialLotsFromTrackedActivity(
       client,
       companyId,
       jobId,

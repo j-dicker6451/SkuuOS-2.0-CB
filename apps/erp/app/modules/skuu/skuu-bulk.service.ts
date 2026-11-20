@@ -52,6 +52,7 @@ export async function loadSkuuBulkProfile(
 export type SkuuBomExplorerQuantityOverlay = {
   enabled: true;
   percentByMaterialId: Record<string, number>;
+  percentByItemId: Record<string, number>;
 };
 
 /** Manufacturing tree badges: show % w/w instead of ERP kg multipliers. */
@@ -67,9 +68,22 @@ export async function loadSkuuBomExplorerQuantityOverlay(
     makeMethodId,
     companyId
   );
+  const { data: methodMaterials } = await client
+    .from("methodMaterial")
+    .select("id, itemId")
+    .eq("makeMethodId", makeMethodId)
+    .eq("companyId", companyId);
+  const percentByItemId: Record<string, number> = {};
+  for (const mm of methodMaterials ?? []) {
+    const pct = percents.get(mm.id);
+    if (pct != null) {
+      percentByItemId[mm.itemId] = pct;
+    }
+  }
   return {
     enabled: true,
-    percentByMaterialId: Object.fromEntries(percents)
+    percentByMaterialId: Object.fromEntries(percents),
+    percentByItemId
   };
 }
 

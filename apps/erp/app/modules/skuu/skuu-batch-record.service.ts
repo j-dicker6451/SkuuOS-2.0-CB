@@ -13,6 +13,7 @@ import { resolveSkuuBulkMakeMethodForJob } from "./skuu-job-bulk.server";
 import {
   loadSkuuJobMaterialLots,
   loadSkuuJobMaterialLotsFromConsumption,
+  loadSkuuJobMaterialLotsFromTrackedActivity,
   type SkuuJobMaterialLotRef
 } from "./skuu-job-material-lots";
 
@@ -159,12 +160,20 @@ export async function loadSkuuBatchRecordView(
     args.jobId,
     jobMaterialIds
   );
+  const activityLots = await loadSkuuJobMaterialLotsFromTrackedActivity(
+    client,
+    args.companyId,
+    args.jobId,
+    jobMaterialIds
+  );
   const issuedLotsByJm = new Map<string, SkuuJobMaterialLotRef[]>();
   for (const id of jobMaterialIds) {
     const lots =
-      dispenseLots.get(id)?.length > 0
+      (dispenseLots.get(id)?.length ?? 0) > 0
         ? dispenseLots.get(id)!
-        : (consumedLots.get(id) ?? []);
+        : (consumedLots.get(id)?.length
+            ? consumedLots.get(id)!
+            : (activityLots.get(id) ?? []));
     if (lots.length) issuedLotsByJm.set(id, lots);
   }
 

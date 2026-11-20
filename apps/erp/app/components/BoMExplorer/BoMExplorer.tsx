@@ -634,16 +634,22 @@ function BoMNodeData({ node }: { node: BoMNode }) {
   // node's preview card still shows it at full precision.
   const formatQuantity = useQuantityFormatter();
 
+  const skuuPctRaw =
+    skuuBomQuantity?.enabled && node.data.methodMaterialId
+      ? skuuBomQuantity.percentByMaterialId[node.data.methodMaterialId]
+      : undefined;
+  const skuuPctByItem =
+    skuuBomQuantity?.enabled && skuuPctRaw == null && "itemId" in node.data
+      ? skuuBomQuantity.percentByItemId[
+          (node.data as { itemId?: string }).itemId ?? ""
+        ]
+      : undefined;
   const skuuPct =
-    skuuBomQuantity?.enabled &&
-    node.data.methodMaterialId &&
-    skuuBomQuantity.percentByMaterialId[node.data.methodMaterialId] != null
-      ? formatPercentWw(
-          Number(
-            skuuBomQuantity.percentByMaterialId[node.data.methodMaterialId]
-          )
-        )
-      : null;
+    skuuPctRaw != null
+      ? formatPercentWw(Number(skuuPctRaw))
+      : skuuPctByItem != null
+        ? formatPercentWw(Number(skuuPctByItem))
+        : null;
 
   return (
     <HStack spacing={1}>

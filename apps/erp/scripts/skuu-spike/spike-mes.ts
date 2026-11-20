@@ -438,7 +438,7 @@ export async function ensureBulkOutputLotAvailable(
       output.id,
       batchKg
     );
-  } else {
+  } else if (output.status === "Reserved") {
     const result = await invokePosting(
       handles,
       "issue",
@@ -522,6 +522,18 @@ export async function reportBatchOperationCompleteMes(
   parentTrackedEntityId: string,
   quantityProduced: number
 ) {
+  const existing = await ctx.db
+    .selectFrom("productionQuantity")
+    .select("id")
+    .where("jobOperationId", "=", jobOperationId)
+    .where("companyId", "=", ctx.companyId)
+    .where("type", "=", "Production")
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) {
+    return;
+  }
+
   const handles = handlesOf({
     db: ctx.db,
     companyId: ctx.companyId,

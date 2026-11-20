@@ -76,6 +76,51 @@ async function releaseJobSpike(ctx: SpikeContext, jobId: string) {
     .execute();
 }
 
+const SPIKE_QTY_ROUND = (n: number) => Math.round(n * 1e6) / 1e6;
+
+/** One-off local seed repair when batch output was posted twice. */
+async function repairBulkOutputLotOverpost(
+  ctx: SpikeContext,
+  jobId: string,
+  bulkItemId: string,
+  expectedKg: number,
+  note: (section: string, message: string) => void
+) {
+  const output = await resolveJobOutputTrackedEntity(
+    ctx.db,
+    ctx.companyId,
+    jobId,
+    bulkItemId
+  );
+  if (!output) return;
+  const qty = Number(output.quantity);
+  if (qty <= expectedKg + 1e-4) return;
+
+  const handles = handlesOf({
+    db: ctx.db,
+    companyId: ctx.companyId,
+    userId: ctx.userId
+  });
+  const delta = SPIKE_QTY_ROUND(qty - expectedKg);
+  const result = await invokePosting(
+    handles,
+    "post-inventory-adjustment",
+    {
+      adjustmentType: "Negative Adjmt.",
+      itemId: bulkItemId,
+      locationId: ctx.locationId,
+      quantity: delta,
+      trackedEntityId: output.id
+    },
+    postInventoryAdjustment
+  );
+  unwrap(result);
+  note(
+    "repair",
+    `Bulk lot ${output.readableId ?? output.id}: corrected qty ${qty} → ${expectedKg} kg (−${delta} kg overpost)`
+  );
+}
+
 async function completeJobSpike(
   ctx: SpikeContext,
   jobId: string,
@@ -908,19 +953,67 @@ async function runFillJob(
     companyId: ctx.companyId,
     userId: ctx.userId
   });
-  const plannedPerUnit = Number(
-    bulkMaterial.estimatedQuantity ?? bulkMaterial.quantity ?? kgPerUnit
+  const plannedQty = SPIKE_QTY_ROUND(
+    Number(bulkMaterial.estimatedQuantity ?? bulkMaterial.quantity ?? 0)
   );
-  if (Math.abs(plannedPerUnit - kgPerUnit) > 0.001) {
-    throw new Error(
-      `Fill job ${jobId}: bulk BOM kg/unit is ${plannedPerUnit} but expected ${kgPerUnit} (pack mL × density / 1000)`
-    );
+  const expectedPerUnit = SPIKE_QTY_ROUND(kgPerUnit);
+  const expectedTotal = SPIKE_QTY_ROUND(expectedBulkKg);
+  const matchesPerUnit =
+    Math.abs(plannedQty - expectedPerUnit) <= 1e-5;
+  const matchesTotal = Math.abs(plannedQty - expectedTotal) <= 1e-5;
+
+  if (!matchesPerUnit && !matchesTotal) {
+    if (ensured.reused) {
+      await ctx.db
+        .updateTable("jobMaterial")
+        .set({
+          quantity: expectedPerUnit,
+          estimatedQuantity: expectedPerUnit,
+          updatedAt: new Date().toISOString(),
+          updatedBy: ctx.userId
+        })
+        .where("id", "=", bulkMaterial.id)
+        .where("companyId", "=", ctx.companyId)
+        .execute();
+      await recalculateJobRequirements(client, ctx.db, {
+        id: jobId,
+        companyId: ctx.companyId,
+        userId: ctx.userId
+      });
+    } else {
+      throw new Error(
+        `Fill job ${jobId}: bulk BOM kg is ${plannedQty} but expected ${expectedPerUnit} kg/unit or ${expectedTotal} kg total (${units}×${kgPerUnit})`
+      );
+    }
+  } else if (ensured.reused && matchesTotal && !matchesPerUnit) {
+    await ctx.db
+      .updateTable("jobMaterial")
+      .set({
+        quantity: expectedPerUnit,
+        estimatedQuantity: expectedPerUnit,
+        updatedAt: new Date().toISOString(),
+        updatedBy: ctx.userId
+      })
+      .where("id", "=", bulkMaterial.id)
+      .where("companyId", "=", ctx.companyId)
+      .execute();
+    await recalculateJobRequirements(client, ctx.db, {
+      id: jobId,
+      companyId: ctx.companyId,
+      userId: ctx.userId
+    });
   }
-  const alreadyIssued = Number(bulkMaterial.quantityIssued ?? 0);
-  const bulkToIssue = Math.max(0, expectedBulkKg - alreadyIssued);
+
+  const alreadyIssued = SPIKE_QTY_ROUND(
+    Number(bulkMaterial.quantityIssued ?? 0)
+  );
+  const bulkToIssue = SPIKE_QTY_ROUND(expectedTotal - alreadyIssued);
   if (bulkToIssue <= 1e-6) {
+    if (alreadyIssued + 1e-5 >= expectedTotal) {
+      return { jobId, fillLots: [outputEntity] };
+    }
     throw new Error(
-      `Fill job ${jobId}: bulk pull already issued (${alreadyIssued} kg) — expected ${expectedBulkKg} kg from ${units}×${kgPerUnit}`
+      `Fill job ${jobId}: bulk pull already issued (${alreadyIssued} kg) — expected ${expectedTotal} kg from ${units}×${expectedPerUnit}`
     );
   }
   await ensureTrackedLotAvailableForIssue(ctx, bulkLotId);
@@ -1156,6 +1249,23 @@ export async function runSpikeFlow(
     bulkItemId
   );
   note("bulk", `Bulk item ${bulkItemId} with % formula and Skuu header`);
+
+  const bulkHumanId = `${ctx.prefix}-JOB-BULK`;
+  const priorBulkJob = await ctx.db
+    .selectFrom("job")
+    .select("id")
+    .where("companyId", "=", ctx.companyId)
+    .where("jobId", "=", bulkHumanId)
+    .executeTakeFirst();
+  if (priorBulkJob) {
+    await repairBulkOutputLotOverpost(
+      ctx,
+      priorBulkJob.id,
+      bulkItemId,
+      input.batchKg,
+      note
+    );
+  }
 
   let bulkRun: Awaited<ReturnType<typeof createAndRunBulkJob>>;
   try {
