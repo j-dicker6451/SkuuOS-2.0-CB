@@ -38,6 +38,11 @@ import {
   ensureItemBatchSequence,
   stampJobBatchLotNumber
 } from "./spike-tracking";
+import {
+  assertSpikeTrace,
+  formatTraceReport,
+  traceActivityLineage
+} from "./trace-lineage";
 
 type Db = SpikeContext["db"];
 
@@ -721,47 +726,6 @@ async function shipFillUnits(
   return { salesOrderId, shipmentId: shipment.id };
 }
 
-async function traceLineage(
-  db: Db,
-  companyId: string,
-  entityId: string,
-  direction: "forward" | "back"
-) {
-  if (direction === "forward") {
-    const { rows } = await sql<{ id: string; readableId: string | null }>`
-      SELECT DISTINCT te.id, te."readableId"
-      FROM "trackedActivityInput" tai
-      JOIN "trackedActivityOutput" tao
-        ON tao."trackedActivityId" = tai."trackedActivityId"
-        AND tao."companyId" = ${companyId}
-      JOIN "trackedEntity" te
-        ON te.id = tao."trackedEntityId"
-        AND te."companyId" = ${companyId}
-      WHERE tai."trackedEntityId" = ${entityId}
-        AND tai."companyId" = ${companyId}
-    `.execute(db);
-    return rows;
-  }
-  const { rows } = await sql<{ id: string; readableId: string | null }>`
-    WITH RECURSIVE ancestors AS (
-      SELECT ai."trackedEntityId" AS child_id, ao."trackedEntityId" AS parent_id
-      FROM "trackedActivityOutput" ao
-      JOIN "trackedActivityInput" ai ON ai."trackedActivityId" = ao."trackedActivityId"
-      WHERE ao."trackedEntityId" = ${entityId}
-      UNION
-      SELECT ai."trackedEntityId", ao."trackedEntityId"
-      FROM ancestors a
-      JOIN "trackedActivityOutput" ao ON ao."trackedEntityId" = a.parent_id
-      JOIN "trackedActivityInput" ai ON ai."trackedActivityId" = ao."trackedActivityId"
-    )
-    SELECT DISTINCT te.id, te."readableId"
-    FROM ancestors
-    JOIN "trackedEntity" te ON te.id = ancestors.parent_id
-    WHERE te."companyId" = ${companyId}
-  `.execute(db);
-  return rows;
-}
-
 export async function runSpikeFlow(
   ctx: SpikeContext,
   input: SpikeInput,
@@ -939,7 +903,15 @@ export async function runSpikeFlow(
       : `Bulk lot ${bulkLotId} not found`
   );
 
+  const allRawLotIds = [...lotsByItem.values()].flatMap((lots) =>
+    lots.map((l) => l.id)
+  );
+  const fillLotIds = fillResults.flatMap((fr) =>
+    fr.fillLots.map((lot) => lot.id)
+  );
+
   const shippedLot = fillResults[0]?.fillLots[0];
+  let shipmentId: string | undefined;
   if (shippedLot) {
     const fillItemId = await ctx.db
       .selectFrom("item")
@@ -954,13 +926,14 @@ export async function runSpikeFlow(
       .where("companyId", "=", ctx.companyId)
       .where("id", "=", shippedLot.id)
       .executeTakeFirstOrThrow();
-    await shipFillUnits(
+    const ship = await shipFillUnits(
       ctx,
       fillItemId,
       10,
       { id: lotForShip.id, quantity: Number(lotForShip.quantity) },
       "0"
     );
+    shipmentId = ship.shipmentId;
     note(
       "ship",
       `Posted shipment for 10 units of ${lotForShip.readableId ?? fillItemId} (lot ${lotForShip.id})`
@@ -968,29 +941,66 @@ export async function runSpikeFlow(
   }
 
   const rawLot = [...lotsByItem.values()][0]?.[0]?.id;
-  if (rawLot && bulkLotId) {
-    const forward = await traceLineage(
+  if (rawLot && bulkLotId && shippedLot && shipmentId) {
+    const rawMeta = await ctx.db
+      .selectFrom("trackedEntity")
+      .select("readableId")
+      .where("id", "=", rawLot)
+      .executeTakeFirst();
+    const rawStartLabel = rawMeta?.readableId ?? rawLot;
+
+    const forwardNodes = await traceActivityLineage(
       ctx.db,
       ctx.companyId,
       rawLot,
       "forward"
     );
-    note(
-      "trace-forward",
-      `From raw lot ${rawLot}: ${forward.map((r) => r.readableId ?? r.id).join(" → ") || "(none)"}`
-    );
-    if (shippedLot) {
-      const back = await traceLineage(
-        ctx.db,
-        ctx.companyId,
-        shippedLot.id,
-        "back"
-      );
-      note(
-        "trace-reverse",
-        `From fill lot ${shippedLot.readableId ?? shippedLot.id}: ${back.map((r) => r.readableId ?? r.id).join(" ← ") || "(none)"}`
-      );
+    const forwardFmt = formatTraceReport(forwardNodes, {
+      direction: "forward",
+      startLabel: rawStartLabel,
+      shipmentHop: { shipmentId }
+    });
+    note("trace-forward", forwardFmt.summary);
+    for (const layer of forwardFmt.layers) {
+      note("trace-forward", layer);
     }
+
+    const reverseNodes = await traceActivityLineage(
+      ctx.db,
+      ctx.companyId,
+      shippedLot.id,
+      "back"
+    );
+    const shippedLabel =
+      shippedLot.readableId ??
+      (
+        await ctx.db
+          .selectFrom("trackedEntity")
+          .select("readableId")
+          .where("id", "=", shippedLot.id)
+          .executeTakeFirst()
+      )?.readableId ??
+      shippedLot.id;
+    const reverseFmt = formatTraceReport(reverseNodes, {
+      direction: "back",
+      startLabel: shippedLabel
+    });
+    note("trace-reverse", reverseFmt.summary);
+    for (const layer of reverseFmt.layers) {
+      note("trace-reverse", layer);
+    }
+
+    assertSpikeTrace({
+      forwardFromRawId: rawLot,
+      forwardNodes,
+      reverseFromShippedId: shippedLot.id,
+      reverseNodes,
+      bulkLotId,
+      allRawLotIds,
+      fillLotIds,
+      shipmentId
+    });
+    note("trace", "Forward/reverse genealogy assertions passed");
   }
 
   note("done", "Spike flow finished");
