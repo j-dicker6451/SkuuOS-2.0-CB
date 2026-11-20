@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { Database } from "@carbon/database";
+import { formatMassQuantityKg } from "@skuu/formula";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+type Client = SupabaseClient<Database>;
+
+export type SkuuFillBulkPullOverlay = {
+  bulkItemId: string;
+  packSizeMl: number;
+  kgPerUnit: number;
+  totalKg: number;
+};
+
+const FG_PACK_ML_RE = /-(\d+)ML$/i;
+
+export async function loadSkuuFillBulkPullOverlay(
+  client: Client,
+  args: { jobId: string; companyId: string }
+): Promise<SkuuFillBulkPullOverlay | null> {
+  const { data: job } = await client
+    .from("job")
+    .select("id, quantity, itemId, item(readableIdWithRevision)")
+    .eq("id", args.jobId)
+    .eq("companyId", args.companyId)
+    .maybeSingle();
+  if (!job?.itemId) return null;
+
+  const fgReadable = job.item?.readableIdWithRevision ?? "";
+  const packMatch = fgReadable.match(FG_PACK_ML_RE);
+  if (!packMatch) return null;
+
+  const packSizeMl = Number(packMatch[1]);
+  if (!(packSizeMl > 0)) return null;
+
+  const { data: pull } = await client
+    .from("jobMaterial")
+    .select("itemId, quantity, estimatedQuantity")
+    .eq("jobId", args.jobId)
+    .eq("companyId", args.companyId)
+    .eq("methodType", "Pull from Inventory")
+    .limit(1)
+    .maybeSingle();
+  if (!pull?.itemId) return null;
+
+  const units = Number(job.quantity);
+  const kgPerUnit = Number(pull.estimatedQuantity ?? pull.quantity ?? 0);
+  if (!(kgPerUnit > 0) || !(units > 0)) return null;
+
+  return {
+    bulkItemId: pull.itemId,
+    packSizeMl,
+    kgPerUnit,
+    totalKg: Math.round(kgPerUnit * units * 1000) / 1000
+  };
+}
+
+export function formatSkuuFillBulkPullBadge(overlay: SkuuFillBulkPullOverlay): string {
+  return `${overlay.packSizeMl} mL (${formatMassQuantityKg(overlay.kgPerUnit, {
+    forceUnit: "kg"
+  })}) per unit · total ${formatMassQuantityKg(overlay.totalKg, {
+    forceUnit: "kg"
+  })}`;
+}

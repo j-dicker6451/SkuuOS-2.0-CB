@@ -40,6 +40,7 @@ import { detailBreadcrumb, type Handle } from "~/utils/handle";
 import { recordMeta } from "~/utils/meta";
 import { loadSkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
 import { resolveSkuuBulkMakeMethodForJob } from "~/modules/skuu/skuu-job-bulk.server";
+import { loadSkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display.server";
 import { loadSkuuJobQuantitySummary } from "~/modules/skuu/skuu-job-quantity.server";
 import { path } from "~/utils/path";
 
@@ -169,12 +170,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       )
     : null;
 
+  const skuuFillBulkPull =
+    skuuBulkResolved == null
+      ? await loadSkuuFillBulkPullOverlay(client, { jobId, companyId })
+      : null;
+
   return {
     job: job.data,
     projectCharge: projectCharge.data ?? null,
     skuuBulkBatchTicket: skuuJobQuantitySummary != null,
     skuuJobQuantitySummary,
     skuuBomQuantity,
+    skuuFillBulkPull,
     unbatchedBatchableOperations,
     tags: tags.data ?? [],
     trackedEntities: getTrackedEntitiesByJobId(client, jobId),
@@ -200,7 +207,8 @@ export default function JobRoute() {
   const { jobId } = params;
   if (!jobId) throw new Error("Could not find jobId");
 
-  const { method, orderStatus, skuuBomQuantity } = useLoaderData<typeof loader>();
+  const { method, orderStatus, skuuBomQuantity, skuuFillBulkPull } =
+    useLoaderData<typeof loader>();
 
   return (
     <PanelProvider>
@@ -226,6 +234,7 @@ export default function JobRoute() {
                           method={resolvedMethod.data ?? []}
                           orderStatus={orderStatus}
                           skuuBomQuantity={skuuBomQuantity}
+                          skuuFillBulkPull={skuuFillBulkPull}
                         />
                       )}
                     </Await>
@@ -249,13 +258,15 @@ export default function JobRoute() {
 function JobBoMExplorerWrapper({
   method,
   orderStatus,
-  skuuBomQuantity
+  skuuBomQuantity,
+  skuuFillBulkPull
 }: {
   method: JobMethodTreeItem[] | null;
   orderStatus: Promise<JobOrderStatusData>;
   skuuBomQuantity: Awaited<
     ReturnType<typeof loadSkuuBomExplorerQuantityOverlay>
   >;
+  skuuFillBulkPull: Awaited<ReturnType<typeof loadSkuuFillBulkPullOverlay>>;
 }) {
   const memoizedMethod = useMemo(
     () => (method && method.length > 0 ? flattenTree(method[0]) : []),
@@ -266,6 +277,7 @@ function JobBoMExplorerWrapper({
       method={memoizedMethod}
       orderStatus={orderStatus}
       skuuBomQuantity={skuuBomQuantity}
+      skuuFillBulkPull={skuuFillBulkPull}
     />
   );
 }

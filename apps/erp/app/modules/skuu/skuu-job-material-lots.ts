@@ -163,26 +163,36 @@ export async function loadSkuuJobMaterialLotsFromTrackedActivity(
   const out = new Map<string, SkuuJobMaterialLotRef[]>();
   if (!jobMaterialIds.length) return out;
 
-  let activityQuery = client
+  const { data: activities, error } = await client
     .from("trackedActivity")
-    .select(
-      "sourceDocumentId, trackedActivityInput(trackedEntityId, quantity)"
-    )
+    .select("id, sourceDocumentId")
     .eq("companyId", companyId)
     .eq("type", "Consume")
     .eq("sourceDocument", "Job Material")
     .in("sourceDocumentId", jobMaterialIds);
-  const { data: activities, error } = await activityQuery;
   if (error) throw new Error(error.message);
   if (!activities?.length) return out;
 
+  const activityToJm = new Map(
+    activities
+      .map((a) => (a.sourceDocumentId ? [a.id, a.sourceDocumentId] as const : null))
+      .filter((x): x is [string, string] => x != null)
+  );
+  const activityIds = [...activityToJm.keys()];
+  if (!activityIds.length) return out;
+
+  const { data: inputs, error: inputErr } = await client
+    .from("trackedActivityInput")
+    .select("trackedActivityId, trackedEntityId, quantity")
+    .eq("companyId", companyId)
+    .in("trackedActivityId", activityIds);
+  if (inputErr) throw new Error(inputErr.message);
+
   const teIds = [
     ...new Set(
-      activities.flatMap((a) =>
-        (a.trackedActivityInput ?? [])
-          .map((i) => i.trackedEntityId)
-          .filter((id): id is string => !!id)
-      )
+      (inputs ?? [])
+        .map((i) => i.trackedEntityId)
+        .filter((id): id is string => !!id)
     )
   ];
   const teMeta = new Map<
@@ -202,29 +212,110 @@ export async function loadSkuuJobMaterialLotsFromTrackedActivity(
     }
   }
 
-  for (const activity of activities) {
-    const jmId = activity.sourceDocumentId;
-    if (!jmId) continue;
+  for (const input of inputs ?? []) {
+    const jmId = activityToJm.get(input.trackedActivityId);
+    if (!jmId || !input.trackedEntityId) continue;
+    const qty = Number(input.quantity);
+    if (!(qty > 0)) continue;
+    const meta = teMeta.get(input.trackedEntityId);
     const list = out.get(jmId) ?? [];
-    for (const input of activity.trackedActivityInput ?? []) {
-      if (!input.trackedEntityId) continue;
-      const qty = Number(input.quantity);
-      if (!(qty > 0)) continue;
-      const meta = teMeta.get(input.trackedEntityId);
-      const existing = list.find(
-        (l) => l.trackedEntityReadableId === (meta?.readableId ?? input.trackedEntityId)
-      );
-      if (existing) {
-        existing.quantityKg += qty;
-      } else {
-        list.push({
-          trackedEntityReadableId: meta?.readableId ?? input.trackedEntityId,
-          supplierBatchNumber: meta?.supplierBatch ?? meta?.readableId ?? null,
-          quantityKg: qty
-        });
-      }
+    const readable = meta?.readableId ?? input.trackedEntityId;
+    const existing = list.find((l) => l.trackedEntityReadableId === readable);
+    if (existing) {
+      existing.quantityKg += qty;
+    } else {
+      list.push({
+        trackedEntityReadableId: readable,
+        supplierBatchNumber: meta?.supplierBatch ?? readable,
+        quantityKg: qty
+      });
     }
-    if (list.length) out.set(jmId, list);
+    out.set(jmId, list);
+  }
+  return out;
+}
+
+export async function loadSkuuJobMaterialLotsMerged(
+  client: Client,
+  companyId: string,
+  jobId: string,
+  jobMaterialIds: string[]
+): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
+  return mergeLotMaps(
+    mergeLotMaps(
+      await loadSkuuJobMaterialLots(client, companyId, jobMaterialIds),
+      await loadSkuuJobMaterialLotsFromConsumption(
+        client,
+        companyId,
+        jobId,
+        jobMaterialIds
+      )
+    ),
+    await loadSkuuJobMaterialLotsFromTrackedActivity(
+      client,
+      companyId,
+      jobId,
+      jobMaterialIds
+    )
+  );
+}
+
+type FormulaMaterialLineRef = {
+  methodMaterialId: string;
+  itemId: string | null;
+  order: number;
+};
+
+export async function mapSkuuLotsToFormulaMethodMaterials(
+  client: Client,
+  companyId: string,
+  jobId: string,
+  formulaLines: FormulaMaterialLineRef[]
+): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
+  const { data: jm } = await client
+    .from("jobMaterial")
+    .select("id, itemId, order, jobMakeMethod(parentMaterialId)")
+    .eq("jobId", jobId)
+    .eq("companyId", companyId);
+  if (!jm?.length) return new Map();
+
+  const byJm = await loadSkuuJobMaterialLotsMerged(
+    client,
+    companyId,
+    jobId,
+    jm.map((r) => r.id)
+  );
+
+  const out = new Map<string, SkuuJobMaterialLotRef[]>();
+  const usedJm = new Set<string>();
+
+  for (const line of formulaLines) {
+    let match =
+      jm.find(
+        (r) =>
+          !usedJm.has(r.id) &&
+          r.jobMakeMethod?.parentMaterialId === line.methodMaterialId
+      ) ??
+      jm.find(
+        (r) =>
+          !usedJm.has(r.id) &&
+          line.itemId != null &&
+          r.itemId === line.itemId &&
+          Number(r.order) === line.order
+      ) ??
+      jm.find(
+        (r) =>
+          !usedJm.has(r.id) &&
+          line.itemId != null &&
+          r.itemId === line.itemId &&
+          formulaLines.filter((l) => l.itemId === line.itemId).length === 1
+      );
+
+    if (!match) continue;
+    const lots = byJm.get(match.id);
+    if (!lots?.length) continue;
+    usedJm.add(match.id);
+    out.set(line.methodMaterialId, lots);
   }
   return out;
 }
@@ -245,62 +336,40 @@ function mergeLotMaps(
 export async function loadSkuuJobMaterialLotsByMethodMaterial(
   client: Client,
   companyId: string,
-  jobId: string
+  jobId: string,
+  formulaLines: FormulaMaterialLineRef[] = []
 ): Promise<Map<string, SkuuJobMaterialLotRef[]>> {
-  const { data: jm } = await client
-    .from("jobMaterial")
-    .select("id, itemId, jobMakeMethod(parentMaterialId)")
-    .eq("jobId", jobId)
-    .eq("companyId", companyId);
-  if (!jm?.length) return new Map();
-
-  const jobMaterialIds = jm.map((r) => r.id);
-  const byJm = mergeLotMaps(
-    mergeLotMaps(
-      await loadSkuuJobMaterialLots(client, companyId, jobMaterialIds),
-      await loadSkuuJobMaterialLotsFromConsumption(
-        client,
-        companyId,
-        jobId,
-        jobMaterialIds
-      )
-    ),
-    await loadSkuuJobMaterialLotsFromTrackedActivity(
+  if (formulaLines.length > 0) {
+    return mapSkuuLotsToFormulaMethodMaterials(
       client,
       companyId,
       jobId,
-      jobMaterialIds
-    )
-  );
+      formulaLines
+    );
+  }
 
-  const methodMaterialByItemId = new Map<string, string>();
   const resolved = await resolveSkuuBulkMakeMethodForJob(client, {
     jobId,
     companyId
   });
-  if (resolved) {
-    const { data: methodMaterials } = await client
-      .from("methodMaterial")
-      .select("id, itemId")
-      .eq("companyId", companyId)
-      .eq("makeMethodId", resolved.makeMethodId);
-    for (const m of methodMaterials ?? []) {
-      methodMaterialByItemId.set(m.itemId, m.id);
-    }
-  }
+  if (!resolved) return new Map();
 
-  const byMethodMaterial = new Map<string, SkuuJobMaterialLotRef[]>();
-  for (const row of jm) {
-    const lots = byJm.get(row.id);
-    if (!lots?.length) continue;
-    const mmId =
-      row.jobMakeMethod?.parentMaterialId ??
-      methodMaterialByItemId.get(row.itemId);
-    if (!mmId) continue;
-    const prev = byMethodMaterial.get(mmId) ?? [];
-    byMethodMaterial.set(mmId, [...prev, ...lots]);
-  }
-  return byMethodMaterial;
+  const { data: methodMaterials } = await client
+    .from("methodMaterial")
+    .select("id, itemId, order")
+    .eq("companyId", companyId)
+    .eq("makeMethodId", resolved.makeMethodId);
+
+  return mapSkuuLotsToFormulaMethodMaterials(
+    client,
+    companyId,
+    jobId,
+    (methodMaterials ?? []).map((m) => ({
+      methodMaterialId: m.id,
+      itemId: m.itemId,
+      order: Number(m.order)
+    }))
+  );
 }
 
 /** @deprecated Prefer loadSkuuJobMaterialLotsByMethodMaterial when duplicate item lines exist. */

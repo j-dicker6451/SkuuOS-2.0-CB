@@ -28,6 +28,8 @@ import {
 } from "@carbon/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { formatPercentWw } from "@skuu/formula";
+import type { SkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display.server";
+import { formatSkuuFillBulkPullBadge } from "~/modules/skuu/skuu-job-fill-display.server";
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import {
@@ -100,6 +102,7 @@ type BoMExplorerContextValue = {
   getRootVersion: (node: BoMNode) => string | number | null | undefined;
   onNodeClick: (node: BoMNode) => void;
   skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
+  skuuFillBulkPull?: SkuuFillBulkPullOverlay | null;
 };
 
 const BoMExplorerContext = createContext<BoMExplorerContextValue | null>(null);
@@ -129,6 +132,7 @@ type BoMExplorerProviderProps<T extends BoMExplorerNodeData> = {
   collapsedIds?: string[];
   /** Skuu % w/w formula: component badge shows percent instead of kg multiplier. */
   skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
+  skuuFillBulkPull?: SkuuFillBulkPullOverlay | null;
   children: ReactNode;
 };
 
@@ -139,6 +143,7 @@ export function BoMExplorerProvider<T extends BoMExplorerNodeData>({
   filterText: filterTextProp,
   collapsedIds,
   skuuBomQuantity,
+  skuuFillBulkPull,
   children
 }: BoMExplorerProviderProps<T>) {
   const tree = treeProp as FlatTree<BoMExplorerNodeData>;
@@ -240,7 +245,8 @@ export function BoMExplorerProvider<T extends BoMExplorerNodeData>({
         getNodePath,
         getRootVersion,
         onNodeClick,
-        skuuBomQuantity
+        skuuBomQuantity,
+        skuuFillBulkPull
       }}
     >
       {children}
@@ -625,7 +631,7 @@ function BoMNodeText({ node }: { node: BoMNode }) {
 
 function BoMNodeData({ node }: { node: BoMNode }) {
   const integrations = useIntegrations();
-  const { skuuBomQuantity } = useBoMExplorer();
+  const { skuuBomQuantity, skuuFillBulkPull } = useBoMExplorer();
   const onShapeState = getOnshapeState(
     node,
     hasOnshapeIntegration(integrations)
@@ -634,22 +640,30 @@ function BoMNodeData({ node }: { node: BoMNode }) {
   // node's preview card still shows it at full precision.
   const formatQuantity = useQuantityFormatter();
 
+  const fillBulkBadge =
+    skuuFillBulkPull &&
+    node.data.itemId === skuuFillBulkPull.bulkItemId &&
+    node.data.methodType === "Pull from Inventory"
+      ? formatSkuuFillBulkPullBadge(skuuFillBulkPull)
+      : null;
+
   const skuuPctRaw =
     skuuBomQuantity?.enabled && node.data.methodMaterialId
       ? skuuBomQuantity.percentByMaterialId[node.data.methodMaterialId]
       : undefined;
   const skuuPctByItem =
-    skuuBomQuantity?.enabled && skuuPctRaw == null && "itemId" in node.data
-      ? skuuBomQuantity.percentByItemId[
-          (node.data as { itemId?: string }).itemId ?? ""
-        ]
+    skuuBomQuantity?.enabled &&
+    skuuPctRaw == null &&
+    skuuBomQuantity.percentByItemId?.[node.data.itemId] != null
+      ? skuuBomQuantity.percentByItemId[node.data.itemId]
       : undefined;
   const skuuPct =
-    skuuPctRaw != null
+    fillBulkBadge ??
+    (skuuPctRaw != null
       ? formatPercentWw(Number(skuuPctRaw))
       : skuuPctByItem != null
         ? formatPercentWw(Number(skuuPctByItem))
-        : null;
+        : null);
 
   return (
     <HStack spacing={1}>

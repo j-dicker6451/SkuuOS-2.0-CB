@@ -93,10 +93,19 @@ export async function buildBulkBatchTicket(
     view.profile
   );
 
+  const formulaLineRefs = view.materials
+    .filter((m) => m.lineKind !== "bulk_lot_rework")
+    .map((m) => ({
+      methodMaterialId: m.methodMaterialId,
+      itemId: m.itemId,
+      order: m.order
+    }));
+
   const lotsByMethodMaterial = await loadSkuuJobMaterialLotsByMethodMaterial(
     client,
     args.companyId,
-    args.jobId
+    args.jobId,
+    formulaLineRefs
   );
 
   const lines: BulkBatchTicketLine[] = blocks.flatMap((block) =>

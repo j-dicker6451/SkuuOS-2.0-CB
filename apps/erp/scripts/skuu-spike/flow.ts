@@ -38,7 +38,8 @@ import {
   listAvailableInputLots,
   reportBatchOperationCompleteMes,
   resolveJobOutputTrackedEntity,
-  syncSkuuBulkToPostgrest
+  syncSkuuBulkToPostgrest,
+  syncTrackedEntityQuantityFromLedger
 } from "./spike-mes";
 import { teardownTagged } from "./teardown";
 import {
@@ -78,12 +79,11 @@ async function releaseJobSpike(ctx: SpikeContext, jobId: string) {
 
 const SPIKE_QTY_ROUND = (n: number) => Math.round(n * 1e6) / 1e6;
 
-/** One-off local seed repair when batch output was posted twice. */
-async function repairBulkOutputLotOverpost(
+/** Sync bulk output trackedEntity.quantity to itemLedger sum (never inventory adjustments). */
+async function repairBulkOutputQuantityFromLedger(
   ctx: SpikeContext,
   jobId: string,
   bulkItemId: string,
-  expectedKg: number,
   note: (section: string, message: string) => void
 ) {
   const output = await resolveJobOutputTrackedEntity(
@@ -93,32 +93,18 @@ async function repairBulkOutputLotOverpost(
     bulkItemId
   );
   if (!output) return;
-  const qty = Number(output.quantity);
-  if (qty <= expectedKg + 1e-4) return;
-
-  const handles = handlesOf({
-    db: ctx.db,
-    companyId: ctx.companyId,
-    userId: ctx.userId
-  });
-  const delta = SPIKE_QTY_ROUND(qty - expectedKg);
-  const result = await invokePosting(
-    handles,
-    "post-inventory-adjustment",
-    {
-      adjustmentType: "Negative Adjmt.",
-      itemId: bulkItemId,
-      locationId: ctx.locationId,
-      quantity: delta,
-      trackedEntityId: output.id
-    },
-    postInventoryAdjustment
+  const before = Number(output.quantity);
+  const synced = await syncTrackedEntityQuantityFromLedger(
+    ctx.db,
+    ctx.companyId,
+    output.id
   );
-  unwrap(result);
-  note(
-    "repair",
-    `Bulk lot ${output.readableId ?? output.id}: corrected qty ${qty} → ${expectedKg} kg (−${delta} kg overpost)`
-  );
+  if (synced != null && Math.abs(synced - before) > 1e-4) {
+    note(
+      "repair",
+      `Bulk lot ${output.readableId ?? output.id}: synced entity qty ${before} → ${synced} kg from ledger`
+    );
+  }
 }
 
 async function completeJobSpike(
@@ -1258,11 +1244,10 @@ export async function runSpikeFlow(
     .where("jobId", "=", bulkHumanId)
     .executeTakeFirst();
   if (priorBulkJob) {
-    await repairBulkOutputLotOverpost(
+    await repairBulkOutputQuantityFromLedger(
       ctx,
       priorBulkJob.id,
       bulkItemId,
-      input.batchKg,
       note
     );
   }

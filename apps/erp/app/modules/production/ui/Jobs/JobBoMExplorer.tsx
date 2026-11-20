@@ -20,6 +20,7 @@ import type { FlatTree, FlatTreeItem } from "~/components/TreeView";
 import { useOptimisticLocation } from "~/hooks";
 import { path } from "~/utils/path";
 import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
+import type { SkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display.server";
 import type { JobMethod } from "../../production.utils";
 import type { ItemOrderStatus } from "../../types";
 import { JobOrderStatusBadge } from "./JobOrderStatus";
@@ -35,12 +36,14 @@ type JobBoMExplorerProps = {
   method: FlatTree<JobMethod>;
   orderStatus?: Promise<JobOrderStatusData>;
   skuuBomQuantity?: SkuuBomExplorerQuantityOverlay | null;
+  skuuFillBulkPull?: SkuuFillBulkPullOverlay | null;
 };
 
 const JobBoMExplorer = ({
   method,
   orderStatus,
-  skuuBomQuantity
+  skuuBomQuantity,
+  skuuFillBulkPull
 }: JobBoMExplorerProps) => {
   const [orderStatusData, setOrderStatusData] =
     useState<JobOrderStatusData | null>(null);
@@ -71,6 +74,7 @@ const JobBoMExplorer = ({
         tree={method}
         getNodePath={getNodePath}
         skuuBomQuantity={skuuBomQuantity}
+        skuuFillBulkPull={skuuFillBulkPull}
       >
         <JobBoMExplorerContent method={method} />
       </BoMExplorerProvider>

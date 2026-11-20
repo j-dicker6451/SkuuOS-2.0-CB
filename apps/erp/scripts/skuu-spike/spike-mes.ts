@@ -68,13 +68,34 @@ export function allocateTrackedIssueDraws(
   return children;
 }
 
-/** Job output lot seeded on job insert — Reserved until MES batch complete (produceBatchOutput). */
+/** Job output lot — ledger Assembly Output row is canonical (ignores split children). */
 export async function resolveJobOutputTrackedEntity(
   db: Db,
   companyId: string,
   jobId: string,
   itemId: string
 ) {
+  const ledger = await db
+    .selectFrom("itemLedger")
+    .select("trackedEntityId")
+    .where("companyId", "=", companyId)
+    .where("itemId", "=", itemId)
+    .where("documentId", "=", jobId)
+    .where("entryType", "=", "Assembly Output")
+    .where("trackedEntityId", "is not", null)
+    .orderBy("createdAt", "asc")
+    .limit(1)
+    .executeTakeFirst();
+  if (ledger?.trackedEntityId) {
+    const fromLedger = await db
+      .selectFrom("trackedEntity")
+      .select(["id", "readableId", "quantity", "status"])
+      .where("companyId", "=", companyId)
+      .where("id", "=", ledger.trackedEntityId)
+      .executeTakeFirst();
+    if (fromLedger) return fromLedger;
+  }
+
   const rootMakeMethod = await db
     .selectFrom("jobMakeMethod")
     .select("id")
@@ -86,34 +107,53 @@ export async function resolveJobOutputTrackedEntity(
     throw new Error(`Root jobMakeMethod missing for job ${jobId}`);
   }
 
-  const byAttribute = await db
+  return db
     .selectFrom("trackedEntity")
     .select(["id", "readableId", "quantity", "status"])
     .where("companyId", "=", companyId)
     .where("itemId", "=", itemId)
     .where(sql`attributes->>'Job Make Method'`, "=", rootMakeMethod.id)
-    .executeTakeFirst();
-  if (byAttribute) return byAttribute;
-
-  const ledger = await db
-    .selectFrom("itemLedger")
-    .select("trackedEntityId")
-    .where("companyId", "=", companyId)
-    .where("itemId", "=", itemId)
-    .where("documentId", "=", jobId)
-    .where("entryType", "=", "Assembly Output")
-    .where("trackedEntityId", "is not", null)
-    .orderBy("createdAt", "desc")
+    .where(sql`attributes->>'Split Entity ID'`, "is", null)
+    .where(sql`attributes->>'Split From Entity ID'`, "is", null)
+    .where("status", "in", ["Available", "Reserved"])
+    .orderBy("createdAt", "asc")
     .limit(1)
     .executeTakeFirst();
-  if (!ledger?.trackedEntityId) return null;
+}
 
-  return db
-    .selectFrom("trackedEntity")
-    .select(["id", "readableId", "quantity", "status"])
+/** When trackedEntity.quantity disagrees with ledger, sync entity qty (ledger is truth). */
+export async function syncTrackedEntityQuantityFromLedger(
+  db: Db,
+  companyId: string,
+  trackedEntityId: string
+): Promise<number | null> {
+  const sumRow = await db
+    .selectFrom("itemLedger")
+    .select((eb) => eb.fn.sum<number>("quantity").as("sumQty"))
     .where("companyId", "=", companyId)
-    .where("id", "=", ledger.trackedEntityId)
+    .where("trackedEntityId", "=", trackedEntityId)
     .executeTakeFirst();
+  const ledgerQty = Number(sumRow?.sumQty ?? 0);
+  if (!(ledgerQty > 0)) return null;
+
+  const te = await db
+    .selectFrom("trackedEntity")
+    .select(["id", "quantity", "status"])
+    .where("companyId", "=", companyId)
+    .where("id", "=", trackedEntityId)
+    .executeTakeFirst();
+  if (!te) return null;
+
+  const entityQty = Number(te.quantity);
+  if (Math.abs(entityQty - ledgerQty) <= 1e-4) return entityQty;
+
+  await db
+    .updateTable("trackedEntity")
+    .set({ quantity: ledgerQty })
+    .where("companyId", "=", companyId)
+    .where("id", "=", trackedEntityId)
+    .execute();
+  return ledgerQty;
 }
 
 export async function syncSkuuBulkToPostgrest(

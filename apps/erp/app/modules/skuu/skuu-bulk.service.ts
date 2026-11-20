@@ -73,8 +73,13 @@ export async function loadSkuuBomExplorerQuantityOverlay(
     .select("id, itemId")
     .eq("makeMethodId", makeMethodId)
     .eq("companyId", companyId);
+  const itemLineCount = new Map<string, number>();
+  for (const mm of methodMaterials ?? []) {
+    itemLineCount.set(mm.itemId, (itemLineCount.get(mm.itemId) ?? 0) + 1);
+  }
   const percentByItemId: Record<string, number> = {};
   for (const mm of methodMaterials ?? []) {
+    if ((itemLineCount.get(mm.itemId) ?? 0) !== 1) continue;
     const pct = percents.get(mm.id);
     if (pct != null) {
       percentByItemId[mm.itemId] = pct;
