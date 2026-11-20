@@ -378,7 +378,7 @@ async function setupBulkItem(
           methodMaterialId,
           companyId: ctx.companyId,
           percentWw: ing.percentage,
-          phaseNumber: 1,
+          phaseNumber: ing.phaseNumber ?? 1,
           createdBy: ctx.userId,
           updatedBy: ctx.userId
         })
@@ -387,20 +387,30 @@ async function setupBulkItem(
       formulaRows.push({ methodMaterialId, percentWw: ing.percentage });
     }
 
-    await trx
-      .insertInto("skuuFormulaPhase")
-      .values({
-        makeMethodId: resolvedMakeMethodId,
-        phaseNumber: 1,
-        companyId: ctx.companyId,
-        instructions: "Spike demo phase — precautions N/A.",
-        createdBy: ctx.userId,
-        updatedBy: ctx.userId
-      })
-      .onConflict((oc) =>
-        oc.columns(["makeMethodId", "phaseNumber"]).doNothing()
-      )
-      .execute();
+    const phaseRows =
+      input.phases && input.phases.length > 0
+        ? input.phases
+        : [{ phaseNumber: 1, instructions: "Spike demo phase — precautions N/A." }];
+    for (const phase of phaseRows) {
+      await trx
+        .insertInto("skuuFormulaPhase")
+        .values({
+          makeMethodId: resolvedMakeMethodId,
+          phaseNumber: phase.phaseNumber,
+          companyId: ctx.companyId,
+          instructions: phase.instructions ?? "",
+          createdBy: ctx.userId,
+          updatedBy: ctx.userId
+        })
+        .onConflict((oc) =>
+          oc.columns(["makeMethodId", "phaseNumber"]).doUpdateSet({
+            instructions: phase.instructions ?? "",
+            updatedBy: ctx.userId,
+            updatedAt: new Date().toISOString()
+          })
+        )
+        .execute();
+    }
     return resolvedMakeMethodId;
   });
 

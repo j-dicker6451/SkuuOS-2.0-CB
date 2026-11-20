@@ -4,10 +4,12 @@
 
 import { useLingui } from "@lingui/react/macro";
 import {
+  LuBeaker,
   LuBox,
   LuChartLine,
   LuClipboardCheck,
   LuFileText,
+  LuLayers,
   LuReceipt,
   LuShoppingCart,
   LuTags
@@ -35,6 +37,14 @@ export function usePartNavigation() {
 
   const replenishment = routeData.partSummary.replenishmentSystem;
   const itemTrackingType = routeData.partSummary.itemTrackingType;
+  const unitOfMeasure = routeData.partSummary.unitOfMeasureCode ?? "";
+  const readableId = routeData.partSummary.readableId ?? "";
+  const isBulkSku =
+    replenishment === "Make" &&
+    (unitOfMeasure === "kg" || readableId.startsWith("BULK-"));
+  const isFgSku =
+    replenishment === "Make" &&
+    (unitOfMeasure === "EA" || readableId.startsWith("FG-"));
 
   return [
     {
@@ -43,6 +53,24 @@ export function usePartNavigation() {
       icon: LuFileText,
       shortcut: DETAIL_TAB_SHORTCUTS.details
     },
+    ...(isBulkSku
+      ? [
+          {
+            name: t`Formulation & method`,
+            to: path.to.partFormulation(itemId),
+            icon: LuBeaker
+          }
+        ]
+      : []),
+    ...(isFgSku
+      ? [
+          {
+            name: t`Product build`,
+            to: path.to.partProductBuild(itemId),
+            icon: LuLayers
+          }
+        ]
+      : []),
     {
       name: t`Purchasing`,
       to: path.to.partPurchasing(itemId),

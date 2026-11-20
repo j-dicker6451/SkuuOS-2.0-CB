@@ -23,6 +23,13 @@ export type SpikeIngredient = {
   percentage: number;
   /** Real material part code; omitted values derive from the trade name slug. */
   partCode?: string;
+  /** Optional phase number for % line (default 1). */
+  phaseNumber?: number;
+};
+
+export type SpikeFormulaPhase = {
+  phaseNumber: number;
+  instructions?: string;
 };
 
 export type SpikeSecondProduct = {
@@ -42,12 +49,21 @@ export type SpikeInput = {
   productDensityGPerMl: number;
   ingredients: SpikeIngredient[];
   fills: { packSizeMl: number; units: number }[];
+  /** Phase method text (optional; seeded into skuuFormulaPhase). */
+  phases?: SpikeFormulaPhase[];
+  /** Buy packaging parts per FG unit (optional; not in committed example). */
+  packaging?: Array<{
+    partCode: string;
+    name: string;
+    qtyPerUnit: number;
+  }>;
   /** Synthetic second bulk formula reusing shared raw lots (committed fixture only). */
   secondProduct?: SpikeSecondProduct;
 };
 
 export function loadSpikeInput(): SpikeInput {
   const file =
+    process.env.SKUU_PRODUCT_INPUT ??
     process.env.SKUU_SPIKE_INPUT ??
     path.join(__dirname, "example-formula.json");
   return JSON.parse(readFileSync(file, "utf8")) as SpikeInput;
