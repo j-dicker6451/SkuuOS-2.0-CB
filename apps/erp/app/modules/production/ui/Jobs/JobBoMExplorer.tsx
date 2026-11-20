@@ -20,7 +20,7 @@ import type { FlatTree, FlatTreeItem } from "~/components/TreeView";
 import { useOptimisticLocation } from "~/hooks";
 import { path } from "~/utils/path";
 import type { SkuuBomExplorerQuantityOverlay } from "~/modules/skuu/skuu-bulk.service";
-import type { SkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display.server";
+import type { SkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display";
 import type { JobMethod } from "../../production.utils";
 import type { ItemOrderStatus } from "../../types";
 import { JobOrderStatusBadge } from "./JobOrderStatus";

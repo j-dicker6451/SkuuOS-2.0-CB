@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Database } from "@carbon/database";
-import { formatMassQuantityKg } from "@skuu/formula";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SkuuFillBulkPullOverlay } from "./skuu-job-fill-display";
 
 type Client = SupabaseClient<Database>;
-
-export type SkuuFillBulkPullOverlay = {
-  bulkItemId: string;
-  packSizeMl: number;
-  kgPerUnit: number;
-  totalKg: number;
-};
 
 const FG_PACK_ML_RE = /-(\d+)ML$/i;
 
@@ -54,12 +47,4 @@ export async function loadSkuuFillBulkPullOverlay(
     kgPerUnit,
     totalKg: Math.round(kgPerUnit * units * 1000) / 1000
   };
-}
-
-export function formatSkuuFillBulkPullBadge(overlay: SkuuFillBulkPullOverlay): string {
-  return `${overlay.packSizeMl} mL (${formatMassQuantityKg(overlay.kgPerUnit, {
-    forceUnit: "kg"
-  })}) per unit · total ${formatMassQuantityKg(overlay.totalKg, {
-    forceUnit: "kg"
-  })}`;
 }

@@ -13,6 +13,11 @@ describe("SSR module graph smoke", () => {
     expect(mod.skuuBulkProfileValidator.shape.enabled).toBeDefined();
   });
 
+  it("loads client-safe skuu job fill display helpers", async () => {
+    const mod = await import("~/modules/skuu/skuu-job-fill-display");
+    expect(mod.formatSkuuFillBulkPullBadge).toBeDefined();
+  });
+
   it(
     "loads skuu.server (router import graph) without throwing",
     async () => {

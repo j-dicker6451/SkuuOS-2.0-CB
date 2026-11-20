@@ -28,8 +28,8 @@ import {
 } from "@carbon/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { formatPercentWw } from "@skuu/formula";
-import type { SkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display.server";
-import { formatSkuuFillBulkPullBadge } from "~/modules/skuu/skuu-job-fill-display.server";
+import type { SkuuFillBulkPullOverlay } from "~/modules/skuu/skuu-job-fill-display";
+import { formatSkuuFillBulkPullBadge } from "~/modules/skuu/skuu-job-fill-display";
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import {
