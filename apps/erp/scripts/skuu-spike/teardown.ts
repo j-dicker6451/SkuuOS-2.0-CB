@@ -408,6 +408,62 @@ async function collectTrackedEntityIds(
   return [...ids];
 }
 
+function spikeEnvTag(): string {
+  return process.env.SKUU_SPIKE_PREFIX ?? "skuu-spike";
+}
+
+/** `{SKUU_SPIKE_PREFIX}-{formulaRef}` run tag → formula ref segment for BULK-/FG- SKUs. */
+function formulaRefFromRunPrefix(prefix: string): string | null {
+  const tag = spikeEnvTag();
+  const head = `${tag}-`;
+  if (!prefix.startsWith(head)) return null;
+  const ref = prefix.slice(head.length);
+  return ref.length > 0 ? ref : null;
+}
+
+type SpikeItemRow = {
+  id: string;
+  readableId: string | null;
+  type: string;
+};
+
+async function querySpikeOwnedItems(
+  trx: Trx,
+  companyId: string,
+  prefix: string
+): Promise<SpikeItemRow[]> {
+  const likePrefix = `${prefix}%`;
+  const formulaRef = formulaRefFromRunPrefix(prefix);
+  return trx
+    .selectFrom("item")
+    .select(["id", "readableId", "type"])
+    .where("companyId", "=", companyId)
+    .where((eb) => {
+      const parts = [
+        eb("readableId", "like", likePrefix),
+        eb("id", "like", likePrefix)
+      ];
+      if (formulaRef) {
+        parts.push(eb("readableId", "=", `BULK-${formulaRef}`));
+        parts.push(eb("readableId", "like", `FG-${formulaRef}-%`));
+      }
+      return eb.or(parts);
+    })
+    .execute();
+}
+
+function deletableSpikeItemIds(items: SpikeItemRow[]): string[] {
+  return items
+    .filter((row) => row.type !== "Material")
+    .map((row) => row.id);
+}
+
+function spikePartNumbers(items: SpikeItemRow[]): string[] {
+  return items
+    .filter((row) => row.type === "Part" && row.readableId != null)
+    .map((row) => row.readableId as string);
+}
+
 /** Drop every spike artifact for this tag (readableId prefix and legacy id prefix). */
 export async function teardownTagged(
   db: Db,
@@ -416,6 +472,11 @@ export async function teardownTagged(
 ): Promise<void> {
   await runTeardownTrx(db, async (trx) => {
     const likePrefix = `${prefix}%`;
+
+    const seedItemIds = await teardownStep(trx, "discover-items", async () => {
+      const rows = await querySpikeOwnedItems(trx, companyId, prefix);
+      return deletableSpikeItemIds(rows);
+    });
 
     const jobIds = await teardownStep(trx, "discover-jobs", async () => {
       const jobRows = await trx
@@ -426,7 +487,7 @@ export async function teardownTagged(
           eb.or([
             eb("jobId", "like", likePrefix),
             eb("id", "like", likePrefix),
-            ...(itemIds.length > 0 ? [eb("itemId", "in", itemIds)] : [])
+            ...(seedItemIds.length > 0 ? [eb("itemId", "in", seedItemIds)] : [])
           ])
         )
         .execute();
@@ -435,20 +496,9 @@ export async function teardownTagged(
 
     const { itemIds, partNumbers } = await teardownStep(
       trx,
-      "discover-items",
+      "discover-items-with-jobs",
       async () => {
-        const prefixed = await trx
-          .selectFrom("item")
-          .select(["id", "readableId"])
-          .where("companyId", "=", companyId)
-          .where((eb) =>
-            eb.or([
-              eb("readableId", "like", likePrefix),
-              eb("id", "like", likePrefix)
-            ])
-          )
-          .execute();
-        const idSet = new Set(prefixed.map((r) => r.id));
+        const idSet = new Set(seedItemIds);
         if (jobIds.length > 0) {
           const jobItems = await trx
             .selectFrom("job")
@@ -458,17 +508,18 @@ export async function teardownTagged(
             .execute();
           for (const row of jobItems) idSet.add(row.itemId);
         }
-        const spikeItems = await trx
-          .selectFrom("item")
-          .select(["id", "readableId"])
-          .where("companyId", "=", companyId)
-          .where("id", "in", [...idSet])
-          .execute();
+        const byId =
+          idSet.size > 0
+            ? await trx
+                .selectFrom("item")
+                .select(["id", "readableId", "type"])
+                .where("companyId", "=", companyId)
+                .where("id", "in", [...idSet])
+                .execute()
+            : await querySpikeOwnedItems(trx, companyId, prefix);
         return {
-          itemIds: spikeItems.map((r) => r.id),
-          partNumbers: spikeItems
-            .map((r) => r.readableId)
-            .filter((id): id is string => id != null)
+          itemIds: deletableSpikeItemIds(byId),
+          partNumbers: spikePartNumbers(byId)
         };
       }
     );
