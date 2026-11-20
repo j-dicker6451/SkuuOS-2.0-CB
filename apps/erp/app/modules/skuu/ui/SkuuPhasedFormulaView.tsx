@@ -15,6 +15,7 @@ import {
   VStack
 } from "@carbon/react";
 import { Trans } from "@lingui/react/macro";
+import { formatMassQuantityKg, formatPercentWw4 } from "@skuu/formula";
 import type { SkuuPhasedFormulaBlock } from "../skuu-phased-formula";
 
 type Props = {
@@ -68,15 +69,9 @@ export function SkuuPhasedFormulaView({ title, blocks }: Props) {
                     <TableRow key={line.methodMaterialId}>
                       <TableCell>{line.itemReadableId}</TableCell>
                       <TableCell>{line.itemName}</TableCell>
+                      <TableCell>{formatPercentWw4(line.percentWw)}</TableCell>
                       <TableCell>
-                        {line.percentWw != null
-                          ? Number(line.percentWw).toFixed(4)
-                          : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {line.kgPerBatch != null
-                          ? line.kgPerBatch.toFixed(4)
-                          : "—"}
+                        {formatMassQuantityKg(line.kgPerBatch)}
                       </TableCell>
                     </TableRow>
                   ))

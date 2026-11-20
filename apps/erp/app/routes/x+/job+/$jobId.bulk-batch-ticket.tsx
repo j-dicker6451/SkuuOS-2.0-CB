@@ -3,6 +3,7 @@
 import { requirePermissions } from "@carbon/auth/auth.server";
 import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
+import { formatSkuuMaterialLotCodes } from "~/modules/items/material-line-label";
 import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -85,8 +86,13 @@ export default function BulkBatchTicketPrint() {
                       <td>{line.percentWw.toFixed(4)}</td>
                       <td>{line.kg.toFixed(4)}</td>
                       <td>{line.grams.toFixed(2)}</td>
-                      <td />
-                      <td />
+                      <td>
+                        {line.batchLots
+                          .map((l) => l.supplierBatchNumber)
+                          .filter(Boolean)
+                          .join("; ")}
+                      </td>
+                      <td>{formatSkuuMaterialLotCodes(line.batchLots)}</td>
                     </tr>
                   ))}
                 </tbody>

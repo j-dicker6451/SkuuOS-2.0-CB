@@ -120,7 +120,11 @@ export async function syncSkuuBulkToPostgrest(
   ctx: SpikeContext,
   makeMethodId: string,
   input: SpikeInput,
-  methodMaterialIds: { methodMaterialId: string; percentWw: number }[]
+  methodMaterialIds: {
+    methodMaterialId: string;
+    percentWw: number;
+    phaseNumber?: number;
+  }[]
 ) {
   const client = ctx.service.asSystem.supabase;
   const { error: profileErr } = await upsertSkuuBulkProfile(client, {
@@ -129,7 +133,7 @@ export async function syncSkuuBulkToPostgrest(
     userId: ctx.userId,
     profile: {
       enabled: true,
-      batchBasisKg: 1,
+      batchBasisKg: input.batchKg,
       yieldLossPercent: 0,
       productDensityGPerMl: input.productDensityGPerMl,
       expectedYieldPercent: input.expectedYieldPercent
@@ -143,7 +147,8 @@ export async function syncSkuuBulkToPostgrest(
       methodMaterialId: row.methodMaterialId,
       companyId: ctx.companyId,
       userId: ctx.userId,
-      percentWw: row.percentWw
+      percentWw: row.percentWw,
+      phaseNumber: row.phaseNumber ?? 1
     });
     if (error) {
       throw new Error(

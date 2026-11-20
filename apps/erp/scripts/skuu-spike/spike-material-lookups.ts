@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { sql } from "kysely";
-import { upsertMaterialForm, upsertMaterialSubstance } from "~/modules/items/items.service";
 import type { SpikeContext } from "./context";
-import { spikeAuthHint } from "./supabase-local";
-
-/** Idempotent Skuu spike lookups — match ERP Material form substance + shape. */
-export const SKUU_SPIKE_SUBSTANCE_ID = "skuu-cosmetic-raw";
-export const SKUU_SPIKE_FORM_ID = "skuu-cosmetic-bulk";
 
 export type SpikeMaterialLookups = {
   materialGeneratedIds: boolean;
-  materialSubstanceId: string;
-  materialFormId: string;
 };
 
 export async function resolveSpikeMaterialLookups(
@@ -23,59 +14,11 @@ export async function resolveSpikeMaterialLookups(
     .select("materialGeneratedIds")
     .where("id", "=", ctx.companyId)
     .executeTakeFirst();
-  const materialGeneratedIds = settings?.materialGeneratedIds === true;
-
-  const client = ctx.service.asSystem.supabase;
-  if (!client) {
-    throw new Error("PostgREST required for material substance/shape setup.");
-  }
-
-  const existingSubstance = await client
-    .from("materialSubstance")
-    .select("id")
-    .eq("id", SKUU_SPIKE_SUBSTANCE_ID)
-    .eq("companyId", ctx.companyId)
-    .maybeSingle();
-  if (!existingSubstance.data) {
-    const ins = await upsertMaterialSubstance(client, {
-      id: SKUU_SPIKE_SUBSTANCE_ID,
-      name: "Cosmetic raw material",
-      code: "COSRAW",
-      companyId: ctx.companyId,
-      createdBy: ctx.userId
-    });
-    if (ins.error && !ins.error.message.includes("duplicate")) {
-      throw new Error(spikeAuthHint(`materialSubstance: ${ins.error.message}`));
-    }
-  }
-
-  const existingForm = await client
-    .from("materialForm")
-    .select("id")
-    .eq("id", SKUU_SPIKE_FORM_ID)
-    .eq("companyId", ctx.companyId)
-    .maybeSingle();
-  if (!existingForm.data) {
-    const ins = await upsertMaterialForm(client, {
-      id: SKUU_SPIKE_FORM_ID,
-      name: "Bulk",
-      code: "BULK",
-      companyId: ctx.companyId,
-      createdBy: ctx.userId
-    });
-    if (ins.error && !ins.error.message.includes("duplicate")) {
-      throw new Error(spikeAuthHint(`materialForm: ${ins.error.message}`));
-    }
-  }
-
   return {
-    materialGeneratedIds,
-    materialSubstanceId: SKUU_SPIKE_SUBSTANCE_ID,
-    materialFormId: SKUU_SPIKE_FORM_ID
+    materialGeneratedIds: settings?.materialGeneratedIds === true
   };
 }
 
-/** When generated material IDs are on, upsertMaterial assigns a generated code — retarget to Cosmetri partCode. */
 /** Trade name from spike/json — not Carbon's generated substance+shape label. */
 export async function backfillSpikeMaterialTradeName(
   ctx: SpikeContext,
@@ -85,26 +28,31 @@ export async function backfillSpikeMaterialTradeName(
 ): Promise<void> {
   const row = await ctx.db
     .selectFrom("item")
-    .select(["id", "name", "readableId"])
+    .select(["id", "name", "readableId", "description"])
     .where("companyId", "=", ctx.companyId)
     .where("id", "=", itemId)
     .executeTakeFirst();
   if (!row) return;
-  if (row.name === tradeName) return;
 
   const now = new Date().toISOString();
+  const updates: Record<string, string> = {
+    updatedBy: ctx.userId,
+    updatedAt: now
+  };
+  if (row.name !== tradeName) updates.name = tradeName;
+  if (row.description !== tradeName) updates.description = tradeName;
+
+  if (Object.keys(updates).length <= 2) return;
+
   await ctx.db
     .updateTable("item")
-    .set({
-      name: tradeName,
-      updatedBy: ctx.userId,
-      updatedAt: now
-    })
+    .set(updates)
     .where("companyId", "=", ctx.companyId)
     .where("id", "=", itemId)
     .execute();
 }
 
+/** Legacy spike path when materialGeneratedIds was still enabled. */
 export async function retargetMaterialReadableId(
   ctx: SpikeContext,
   generatedReadableId: string,
@@ -152,12 +100,12 @@ export async function retargetMaterialReadableId(
 
   const now = new Date().toISOString();
   await ctx.db.transaction().execute(async (trx) => {
-    await sql`SET LOCAL "app.sync_in_progress" = 'true'`.execute(trx);
     await trx
       .updateTable("item")
       .set({
         readableId: partCode,
         name: tradeName,
+        description: tradeName,
         updatedBy: ctx.userId,
         updatedAt: now
       })
@@ -174,8 +122,8 @@ export async function retargetMaterialReadableId(
       .values({
         id: partCode,
         companyId: ctx.companyId,
-        materialSubstanceId: matRow.materialSubstanceId,
-        materialFormId: matRow.materialFormId,
+        materialSubstanceId: null,
+        materialFormId: null,
         materialTypeId: matRow.materialTypeId,
         finishId: matRow.finishId,
         gradeId: matRow.gradeId,

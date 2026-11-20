@@ -33,11 +33,19 @@ const ticketFixture: BulkBatchTicket = {
       lines: [
         {
           phaseNumber: 1,
+          methodMaterialId: "mm_carbopol",
           partCode: "1A102",
           name: "Carbopol Ultrez 21",
           percentWw: 0.15,
           kg: 0.1531,
-          grams: 153.06
+          grams: 153.06,
+          batchLots: [
+            {
+              trackedEntityReadableId: "RAW-LOT-1",
+              supplierBatchNumber: "SB-99",
+              quantityKg: 0.1531
+            }
+          ]
         }
       ]
     }

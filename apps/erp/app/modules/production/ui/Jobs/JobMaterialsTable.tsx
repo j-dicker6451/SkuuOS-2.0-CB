@@ -46,6 +46,10 @@ import { useFilters } from "~/components/Table/components/Filter/useFilters";
 import { usePermissions, useRouteData, useUrlParams } from "~/hooks";
 import { useNonNettableStorageUnits } from "~/hooks/useNonNettableStorageUnits";
 import type { JobMaterialPick } from "~/modules/inventory/inventory.service";
+import {
+  formatSkuuMaterialLotCodes,
+  itemTradeDisplayName
+} from "~/modules/items/material-line-label";
 import { type Item, useItems } from "~/stores";
 import { path } from "~/utils/path";
 import {
@@ -69,6 +73,14 @@ type JobMaterialsTableProps = {
       successorReadableId: string;
       conversionFactor: number;
     }
+  >;
+  skuuLotsByJobMaterialId?: Record<
+    string,
+    Array<{
+      trackedEntityReadableId: string | null;
+      supplierBatchNumber: string | null;
+      quantityKg: number;
+    }>
   >;
 };
 function HeaderTooltip({ label, hint }: { label: ReactNode; hint: ReactNode }) {
@@ -105,7 +117,8 @@ const JobMaterialsTable = memo(
     jobItemIds,
     orderStatusByMaterialId,
     picksByMaterialId = {},
-    consumeFirstByItemId = {}
+    consumeFirstByItemId = {},
+    skuuLotsByJobMaterialId = {}
   }: JobMaterialsTableProps) => {
     const { jobId } = useParams();
     const { t } = useLingui();
@@ -218,8 +231,22 @@ const JobMaterialsTable = memo(
                       )}
                   </HStack>
                   <div className="w-full truncate text-muted-foreground text-xs">
-                    {row.original.description}
+                    {itemTradeDisplayName(
+                      {
+                        name: row.original.name,
+                        description: row.original.description
+                      },
+                      items,
+                      row.original.jobMaterialItemId
+                    )}
                   </div>
+                  {skuuLotsByJobMaterialId[row.original.id ?? ""]?.length ? (
+                    <div className="w-full truncate text-xs text-muted-foreground">
+                      {formatSkuuMaterialLotCodes(
+                        skuuLotsByJobMaterialId[row.original.id ?? ""] ?? []
+                      )}
+                    </div>
+                  ) : null}
                   {substitutedFrom && (
                     <div className="w-full truncate text-xs text-blue-700 dark:text-blue-300">
                       ↩ <Trans>substituted from</Trans> {substitutedFrom}

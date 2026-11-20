@@ -98,6 +98,7 @@ import type {
 import type { action as updateMaterialAction } from "~/routes/x+/items+/methods+/material.$id";
 import type { action as createMaterialAction } from "~/routes/x+/items+/methods+/material.new";
 import type { action as updateItemsAction } from "~/routes/x+/items+/update";
+import { itemTradeDisplayName } from "../../material-line-label";
 import type { Item as ItemType } from "~/stores";
 import { useItems } from "~/stores";
 import { path } from "~/utils/path";
@@ -1374,7 +1375,14 @@ function makeItem(
     title: (
       <MaterialRowTitle
         readableId={getItemReadableId(items, material.itemId)}
-        description={material?.description}
+        description={itemTradeDisplayName(
+          {
+            name: material.item?.name,
+            description: material.description
+          },
+          items,
+          material.itemId
+        )}
         itemId={material.itemId}
         itemType={material.itemType}
         supersessionMode={

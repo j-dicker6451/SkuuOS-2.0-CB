@@ -86,7 +86,7 @@ async function withSupersession(
 }
 
 export const itemsList: LiveList<Item> = {
-  name: "items",
+  name: "items-v2",
   table: "item",
   async fetchAll(carbon, companyId) {
     const items = await fetchAllFromTable<ItemRow>(

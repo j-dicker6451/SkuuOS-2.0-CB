@@ -18,6 +18,7 @@ export type SkuuDispenseRow = {
   quantityKg: number;
   supplierBatchNumber: string | null;
   trackedEntityId: string | null;
+  trackedEntityReadableId: string | null;
   markedAdded: boolean;
   addedAt: string | null;
   addedBy: string | null;
@@ -106,13 +107,21 @@ export async function loadSkuuBatchRecordView(
 
   const { data: jobMaterials } = await client
     .from("jobMaterial")
-    .select("id, itemId, estimatedQuantity")
+    .select(
+      "id, itemId, estimatedQuantity, order, jobMakeMethod(parentMaterialId)"
+    )
     .eq("jobId", args.jobId)
     .eq("companyId", args.companyId);
 
-  const formulaByItem = new Map(
-    formulation.materials.map((m) => [m.itemId, m])
+  const formulaByMethodMaterial = new Map(
+    formulation.materials.map((m) => [m.methodMaterialId, m])
   );
+
+  const jobMaterialByMethodMaterial = new Map<string, (typeof jobMaterials)[0]>();
+  for (const jm of jobMaterials ?? []) {
+    const parentId = jm.jobMakeMethod?.parentMaterialId;
+    if (parentId) jobMaterialByMethodMaterial.set(parentId, jm);
+  }
 
   const { data: dispenseRows } = await client
     .from("skuuJobMaterialDispense")
@@ -125,6 +134,24 @@ export async function loadSkuuBatchRecordView(
       (jobMaterials ?? []).map((jm) => jm.id)
     );
 
+  const teIds = [
+    ...new Set(
+      (dispenseRows ?? [])
+        .map((r) => r.trackedEntityId)
+        .filter((id): id is string => !!id)
+    )
+  ];
+  const teReadable = new Map<string, string>();
+  if (teIds.length) {
+    const { data: tes } = await client
+      .from("trackedEntity")
+      .select("id, readableId")
+      .in("id", teIds);
+    for (const te of tes ?? []) {
+      teReadable.set(te.id, te.readableId ?? te.id);
+    }
+  }
+
   const dispenseByJm = new Map<string, SkuuDispenseRow[]>();
   for (const row of dispenseRows ?? []) {
     const list = dispenseByJm.get(row.jobMaterialId) ?? [];
@@ -134,6 +161,9 @@ export async function loadSkuuBatchRecordView(
       quantityKg: Number(row.quantityKg),
       supplierBatchNumber: row.supplierBatchNumber,
       trackedEntityId: row.trackedEntityId,
+      trackedEntityReadableId: row.trackedEntityId
+        ? (teReadable.get(row.trackedEntityId) ?? row.trackedEntityId)
+        : null,
       markedAdded: row.markedAdded ?? false,
       addedAt: row.addedAt,
       addedBy: row.addedBy,
@@ -161,20 +191,23 @@ export async function loadSkuuBatchRecordView(
 
   const phases = mergedPhases.map((phase) => {
     const lines: SkuuBatchRecordLine[] = [];
-    for (const jm of jobMaterials ?? []) {
-      const formula = formulaByItem.get(jm.itemId);
-      if (!formula || (formula.phaseNumber ?? 1) !== phase.phaseNumber) continue;
+    const formulaLines = formulation.materials
+      .filter((f) => (f.phaseNumber ?? 1) === phase.phaseNumber)
+      .sort((a, b) => a.order - b.order);
+
+    for (const formula of formulaLines) {
+      const jm = jobMaterialByMethodMaterial.get(formula.methodMaterialId);
       const pct = formula.percentWw ?? 0;
       const plannedKg =
         formula.percentWw != null
           ? lineKgFromPercent(Number(formula.percentWw), grossKg)
-          : Number(jm.estimatedQuantity ?? 0);
-      const dispenses = dispenseByJm.get(jm.id) ?? [];
+          : Number(jm?.estimatedQuantity ?? 0);
+      const dispenses = jm ? (dispenseByJm.get(jm.id) ?? []) : [];
       const addedKg = dispenses
         .filter((d) => d.markedAdded)
         .reduce((s, d) => s + d.quantityKg, 0);
       lines.push({
-        jobMaterialId: jm.id,
+        jobMaterialId: jm?.id ?? formula.methodMaterialId,
         phaseNumber: phase.phaseNumber,
         itemReadableId: formula.itemReadableId,
         itemName: formula.itemName,

@@ -100,14 +100,13 @@ export async function ensureSpikeMethodMaterialId(
   itemId: string,
   preferredId: string
 ): Promise<string> {
-  const existing = await trx
+  const byPreferred = await trx
     .selectFrom("methodMaterial")
     .select("id")
     .where("companyId", "=", ctx.companyId)
-    .where("makeMethodId", "=", makeMethodId)
-    .where("itemId", "=", itemId)
+    .where("id", "=", preferredId)
     .executeTakeFirst();
-  if (existing) return existing.id;
+  if (byPreferred) return byPreferred.id;
 
   await trx
     .insertInto("methodMaterial")
@@ -126,14 +125,7 @@ export async function ensureSpikeMethodMaterialId(
     .onConflict((oc) => oc.column("id").doNothing())
     .execute();
 
-  const row = await trx
-    .selectFrom("methodMaterial")
-    .select("id")
-    .where("companyId", "=", ctx.companyId)
-    .where("makeMethodId", "=", makeMethodId)
-    .where("itemId", "=", itemId)
-    .executeTakeFirstOrThrow();
-  return row.id;
+  return preferredId;
 }
 
 export async function ensureSpikeFillMethodMaterial(

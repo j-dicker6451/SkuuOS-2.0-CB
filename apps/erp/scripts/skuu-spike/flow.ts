@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import {
+  grossMethodQuantityMultiplier,
   lineKgFromPercent,
   manufactureFromExpectedYield,
   validatePercentSum
@@ -55,6 +56,10 @@ import {
 } from "./trace-lineage";
 import type { SpikeIngredient } from "./context";
 import { ensureSpikeJobCreated } from "./spike-job-ensure";
+import {
+  ensureSkuuCompanyMaterialDefaults,
+  unlinkSkuuIngredientsFromMetalworkShape
+} from "./skuu-company-defaults";
 
 type Db = SpikeContext["db"];
 
@@ -168,19 +173,29 @@ async function receiveRawLotsForFormula(
     input.batchKg,
     input.expectedYieldPercent
   );
+  const needByItem = new Map<string, { partCode: string; kg: number }>();
   for (let i = 0; i < ingredients.length; i++) {
     const ing = ingredients[i]!;
     const itemId = ingredientIds[i]!;
     const partCode = resolveIngredientPartCode(ing);
+    const lineNeed = lineKgFromPercent(ing.percentage, grossKg) * 1.05;
+    const prev = needByItem.get(itemId);
+    needByItem.set(itemId, {
+      partCode,
+      kg: (prev?.kg ?? 0) + lineNeed
+    });
+  }
+
+  let multiLotDemoIndex = 0;
+  for (const [itemId, { partCode, kg: need }] of needByItem) {
     const existing = lotsByItem.get(itemId);
     if (existing && existing.length > 0) {
       note(
         "receive",
-        `Ingredient ${partCode}: reusing ${existing.length} existing lot(s) from prior bulk in run`
+        `Ingredient ${partCode}: reusing ${existing.length} existing lot(s) (${need.toFixed(3)} kg total need)`
       );
       continue;
     }
-    const need = lineKgFromPercent(ing.percentage, grossKg) * 1.05;
     const lotA = await receiveLot(
       ctx,
       itemId,
@@ -188,7 +203,7 @@ async function receiveRawLotsForFormula(
       `${ctx.prefix}-${lotTag}-${partCode}-A`
     );
     const lots = [{ id: lotA.id, quantity: Number(lotA.quantity) }];
-    if (i === 0) {
+    if (multiLotDemoIndex === 0) {
       const lotB = await receiveLot(
         ctx,
         itemId,
@@ -198,12 +213,16 @@ async function receiveRawLotsForFormula(
       lots.push({ id: lotB.id, quantity: Number(lotB.quantity) });
       note(
         "receive",
-        `Ingredient ${partCode}: 2 lots (${lotA.readableId}, ${lotB.readableId}) for dispense scaffold`
+        `Ingredient ${partCode}: 2 lots (${lotA.readableId}, ${lotB.readableId}) · ${need.toFixed(3)} kg need`
       );
     } else {
-      note("receive", `Ingredient ${partCode}: lot ${lotA.readableId}`);
+      note(
+        "receive",
+        `Ingredient ${partCode}: lot ${lotA.readableId} · ${need.toFixed(3)} kg need`
+      );
     }
     lotsByItem.set(itemId, lots);
+    multiLotDemoIndex += 1;
   }
 }
 
@@ -324,7 +343,11 @@ async function setupBulkItem(
   const methodKey = input.formulaRef.replace(/[^a-zA-Z0-9-_]/g, "-");
   const mixProcessName = `${input.product} mix`;
   const sharedProcessId = `skuu-process-${methodKey}-mix`;
-  const formulaRows: { methodMaterialId: string; percentWw: number }[] = [];
+  const formulaRows: {
+    methodMaterialId: string;
+    percentWw: number;
+    phaseNumber: number;
+  }[] = [];
 
   const { makeMethodId, processId } = await runTrx(db, async (trx) => {
     const resolvedMakeMethodId = await resolveSpikeMakeMethodId(
@@ -359,6 +382,19 @@ async function setupBulkItem(
         `${ctx.prefix}-mmat-${methodKey}-${i}`
       );
       await trx
+        .updateTable("methodMaterial")
+        .set({
+          quantity: grossMethodQuantityMultiplier(
+            ing.percentage,
+            input.expectedYieldPercent
+          ),
+          order: i + 1,
+          updatedBy: ctx.userId,
+          updatedAt: new Date().toISOString()
+        })
+        .where("id", "=", methodMaterialId)
+        .execute();
+      await trx
         .insertInto("skuuMethodMaterialFormula")
         .values({
           methodMaterialId,
@@ -377,7 +413,11 @@ async function setupBulkItem(
           })
         )
         .execute();
-      formulaRows.push({ methodMaterialId, percentWw: ing.percentage });
+      formulaRows.push({
+        methodMaterialId,
+        percentWw: ing.percentage,
+        phaseNumber: ing.phaseNumber ?? 1
+      });
     }
 
     const phaseNumbers = new Set<number>();
@@ -570,46 +610,53 @@ async function createAndRunBulkJob(
     .limit(1)
     .executeTakeFirstOrThrow();
 
-  const multiLotItemId = [...lotsByItem.entries()].find(
-    ([, lots]) => lots.length > 1
-  )?.[0];
+  const jobMatsForDispense = await ctx.db
+    .selectFrom("jobMaterial")
+    .select(["id", "itemId", "quantity", "estimatedQuantity", "quantityToIssue"])
+    .where("jobId", "=", jobId)
+    .execute();
 
-  const jobMat0 =
-    multiLotItemId != null
-      ? await ctx.db
-          .selectFrom("jobMaterial")
-          .select(["id", "quantity", "estimatedQuantity", "quantityToIssue"])
-          .where("jobId", "=", jobId)
-          .where("itemId", "=", multiLotItemId)
-          .executeTakeFirst()
-      : null;
-  if (jobMat0 && multiLotItemId) {
-    const lots = lotsByItem.get(multiLotItemId) ?? [];
-    if (lots.length >= 2) {
-      const toIssue = Number(
-        jobMat0.quantityToIssue ??
-          jobMat0.estimatedQuantity ??
-          jobMat0.quantity ??
-          0
-      );
-      const draws = allocateTrackedIssueDraws(lots, toIssue);
-      await ctx.db
-        .insertInto("skuuJobMaterialDispense")
-        .values(
-          draws.map((draw, sortOrder) => ({
-            id: nanoid(),
-            jobMaterialId: jobMat0.id,
-            companyId: ctx.companyId,
-            trackedEntityId: draw.trackedEntityId,
-            quantityKg: draw.quantity,
-            supplierBatchNumber: `${draw.trackedEntityId}-lot`,
-            sortOrder,
-            createdBy: ctx.userId
-          }))
-        )
-        .onConflict((oc) => oc.column("id").doNothing())
-        .execute();
-    }
+  for (const jobMat0 of jobMatsForDispense) {
+    const lots = lotsByItem.get(jobMat0.itemId) ?? [];
+    if (!lots.length) continue;
+    const existing = await ctx.db
+      .selectFrom("skuuJobMaterialDispense")
+      .select("id")
+      .where("jobMaterialId", "=", jobMat0.id)
+      .limit(1)
+      .executeTakeFirst();
+    if (existing) continue;
+
+    const toIssue = Number(
+      jobMat0.quantityToIssue ??
+        jobMat0.estimatedQuantity ??
+        jobMat0.quantity ??
+        0
+    );
+    if (toIssue <= 0) continue;
+    const draws =
+      lots.length >= 2
+        ? allocateTrackedIssueDraws(lots, toIssue)
+        : [{ trackedEntityId: lots[0]!.id, quantity: toIssue }];
+    const lotMeta = new Map(lots.map((l) => [l.id, l]));
+    await ctx.db
+      .insertInto("skuuJobMaterialDispense")
+      .values(
+        draws.map((draw, sortOrder) => ({
+          id: nanoid(),
+          jobMaterialId: jobMat0.id,
+          companyId: ctx.companyId,
+          trackedEntityId: draw.trackedEntityId,
+          quantityKg: draw.quantity,
+          supplierBatchNumber:
+            (lotMeta.get(draw.trackedEntityId) as { supplierBatch?: string })
+              ?.supplierBatch ?? `${draw.trackedEntityId.slice(-8)}-lot`,
+          sortOrder,
+          createdBy: ctx.userId
+        }))
+      )
+      .onConflict((oc) => oc.column("id").doNothing())
+      .execute();
   }
 
   await issueTrackedMaterialsMes(
@@ -909,6 +956,15 @@ export async function runSpikeFlow(
     `UoM mass=${ctx.lookups.unitKg} count=${ctx.lookups.unitEa} currency=${ctx.lookups.currencyCode}`
   );
 
+  await ensureSkuuCompanyMaterialDefaults(ctx);
+  await unlinkSkuuIngredientsFromMetalworkShape(ctx, input.ingredients);
+  if (input.secondProduct) {
+    await unlinkSkuuIngredientsFromMetalworkShape(
+      ctx,
+      input.secondProduct.ingredients
+    );
+  }
+
   if (options.skipTeardown) {
     note("reset", "Teardown skipped — seeded product left in ERP");
   } else {
@@ -924,6 +980,23 @@ export async function runSpikeFlow(
   );
   if (!percentCheck.ok) {
     throw new Error(percentCheck.message);
+  }
+
+  if (input.batchTargetLiters != null) {
+    const impliedNetKg =
+      input.batchTargetLiters * input.productDensityGPerMl;
+    const delta = Math.abs(impliedNetKg - input.batchKg);
+    if (delta > 0.05) {
+      note(
+        "batch-basis",
+        `batchTargetLiters ${input.batchTargetLiters} L × density ${input.productDensityGPerMl} g/ml → ${impliedNetKg.toFixed(3)} kg net; batchKg is ${input.batchKg} (Δ ${delta.toFixed(3)} kg)`
+      );
+    } else {
+      note(
+        "batch-basis",
+        `Net batch ${input.batchKg} kg ≈ ${input.batchTargetLiters} L @ ${input.productDensityGPerMl} g/ml; gross input ${manufactureFromExpectedYield(input.batchKg, input.expectedYieldPercent).toFixed(3)} kg @ ${input.expectedYieldPercent}% yield`
+      );
+    }
   }
   note("formula", `Ingredient % total OK (${percentCheck.total})`);
 
@@ -1092,9 +1165,14 @@ export async function runSpikeFlow(
     );
   }
 
+  const fills = input.fills ?? [];
+  if (fills.length === 0) {
+    note("bulk-only", "No fill sizes — bulk SKU only (skipping fill/ship/trace-to-FG)");
+  }
+
   const fillResults: Awaited<ReturnType<typeof runFillJob>>[] = [];
-  for (let f = 0; f < input.fills.length; f++) {
-    const fill = input.fills[f]!;
+  for (let f = 0; f < fills.length; f++) {
+    const fill = fills[f]!;
     const fillSku = fillItemReadableId(input.formulaRef, fill.packSizeMl);
     const fillItemId = await ensureSpikePart(ctx, fillSku, {
       name: `Fill ${fill.packSizeMl}mL`,
@@ -1143,7 +1221,7 @@ export async function runSpikeFlow(
   note(
     "bulk-remaining",
     remainingBulk
-      ? `Bulk lot ${bulkLotLabel} (${bulkLotId}) remaining ${remainingBulk.quantity} kg after ${input.fills.length} fill jobs`
+      ? `Bulk lot ${bulkLotLabel} (${bulkLotId}) remaining ${remainingBulk.quantity} kg after ${fills.length} fill jobs`
       : `Bulk lot ${bulkLotId} not found`
   );
 
@@ -1185,7 +1263,7 @@ export async function runSpikeFlow(
   }
 
   const rawLot = [...lotsByItem.values()][0]?.[0]?.id;
-  if (rawLot && bulkLotId && shippedLot && shipmentId) {
+  if (fills.length > 0 && rawLot && bulkLotId && shippedLot && shipmentId) {
     const rawMeta = await ctx.db
       .selectFrom("trackedEntity")
       .select("readableId")

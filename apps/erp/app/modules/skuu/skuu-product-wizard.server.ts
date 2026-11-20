@@ -34,41 +34,11 @@ export async function searchWizardMaterials(
 }
 
 export async function resolveMaterialSubstanceShape(
-  client: Client,
-  companyId: string,
-  userId: string
+  _client: Client,
+  _companyId: string,
+  _userId: string
 ) {
-  const { data: settings } = await client
-    .from("companySettings")
-    .select("materialGeneratedIds")
-    .eq("id", companyId)
-    .single();
-  if (settings?.materialGeneratedIds !== true) {
-    return {};
-  }
-  const substanceId = "skuu-cosmetic-raw";
-  const formId = "skuu-cosmetic-bulk";
-  await client.from("materialSubstance").upsert(
-    {
-      id: substanceId,
-      name: "Cosmetic raw material",
-      code: "COSRAW",
-      companyId,
-      createdBy: userId
-    },
-    { onConflict: "id" }
-  );
-  await client.from("materialForm").upsert(
-    {
-      id: formId,
-      name: "Bulk",
-      code: "BULK",
-      companyId,
-      createdBy: userId
-    },
-    { onConflict: "id" }
-  );
-  return { materialSubstanceId: substanceId, materialFormId: formId };
+  return {};
 }
 
 async function ensureWizardMaterial(

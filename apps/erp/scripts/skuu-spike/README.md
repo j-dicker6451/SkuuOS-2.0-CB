@@ -20,7 +20,7 @@ UoM and currency codes are read from the seeded company (`kg`, `EA`, `company.ba
 | Finished SKU | Part | Make | Batch | EA | `upsertPart` — readableId `FG-{formulaRef}-{packMl}ML` |
 | Packaging | Part | Buy | Batch | (sku) | not in this spike |
 
-Shared raw materials use real **`partCode`** values from input (Cosmetri codes on Mac `*.local.json`); demo fixture uses `RM-*-DEMO` codes. One material SKU per `partCode`, reused across formulas. **BULK-/FG-** parts, **process** rows (by name), and method BOM lines are also reused across prefixes (`skuu-spike` vs `skuu-product`). Lots and jobs are tagged with the run **`prefix`** (`{SKUU_SPIKE_PREFIX}-{formulaRef}`); teardown does **not** delete shared materials or cross-prefix bulk/fill SKUs. Re-running product seed **reuses** jobs when `job.jobId` already exists (or allocates `{id}-0002` … if the base id is taken).
+Product/spike runs set **`companySettings.materialGeneratedIds = false`**, backfill **`item.name`/`description`** to trade names, and **clear substance+shape** links on formula raws (no new Cosmetic raw / Bulk shape rows). Shared raw materials use real **`partCode`** values from input (Cosmetri codes on Mac `*.local.json`); demo fixture uses `RM-*-DEMO` codes. One material SKU per `partCode`, reused across formulas. **BULK-/FG-** parts, **process** rows (by name), and method BOM lines are also reused across prefixes (`skuu-spike` vs `skuu-product`). Lots and jobs are tagged with the run **`prefix`** (`{SKUU_SPIKE_PREFIX}-{formulaRef}`); teardown does **not** delete shared materials or cross-prefix bulk/fill SKUs. Re-running product seed **reuses** jobs when `job.jobId` already exists (or allocates `{id}-0002` … if the base id is taken).
 
 Never raw `item` inserts — `app.sync_in_progress` on Kysely seed transactions skips item interceptors and breaks receipts.
 
@@ -38,7 +38,7 @@ Teardown deletes tagged jobs/lots/SO/shipment rows by **`readableId` prefix**, p
 | Bulk/fill jobs | `insertJob` → `recalculateJobRequirements` (Skuu gross-up) → release → **MES** `trackedEntitiesToOperation` + `jobOperationBatchComplete` → `complete_job_to_inventory` |
 | Ship | `createDocument` + `postShipment` |
 
-- Input: `example-formula.json` or `SKUU_SPIKE_INPUT` (optional `partCode` per ingredient; optional `secondProduct` for cross-bulk lot sharing)
+- Input: `example-formula.json` or `SKUU_SPIKE_INPUT` / `SKUU_PRODUCT_INPUT` (optional `partCode` per ingredient; optional `phaseNumber` per line; optional `phases[]` instructions; **`fills: []`** = bulk-only — no fill jobs, ship, or trace-to-FG; optional `batchTargetLiters` cross-check vs `batchKg` × density; optional `secondProduct` for cross-bulk lot sharing)
 - PostgREST URL: `SUPABASE_URL` or **`SKUU_SPIKE_SUPABASE_URL`** (e.g. `http://[::1]:54321` when Cursor Agents shadows `127.0.0.1:54321`)
 - Local-only: `*.local.json` (gitignored)
 - Report: `report-last-run.txt` in this folder

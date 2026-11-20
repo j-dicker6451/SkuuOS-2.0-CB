@@ -21,6 +21,7 @@ import {
 import { JobMaterialsTable } from "~/modules/production/ui/Jobs";
 import { getCompanySettings } from "~/modules/settings/settings.service";
 import { getLocationTimeZone } from "~/modules/shared/shared.service";
+import { loadSkuuJobMaterialLots } from "~/modules/skuu/skuu-job-material-lots";
 import { path } from "~/utils/path";
 import { getGenericQueryFilters } from "~/utils/query";
 
@@ -162,6 +163,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     )
   );
 
+  const jobMaterialIds = rows
+    .map((m) => m.id)
+    .filter((id): id is string => Boolean(id));
+  const skuuLotsByJobMaterialId = Object.fromEntries(
+    (
+      await loadSkuuJobMaterialLots(client, companyId, jobMaterialIds)
+    ).entries()
+  );
+
   return {
     count: materials.count ?? 0,
     jobItemIds,
@@ -172,7 +182,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     nearExpiryWarningDays,
     orderStatusByMaterialId,
     picksByMaterialId: picks.data,
-    consumeFirstByItemId
+    consumeFirstByItemId,
+    skuuLotsByJobMaterialId
   };
 }
 
@@ -224,7 +235,8 @@ export default function JobMaterialsRoute() {
     jobItemIds,
     orderStatusByMaterialId,
     picksByMaterialId,
-    consumeFirstByItemId
+    consumeFirstByItemId,
+    skuuLotsByJobMaterialId
   } = useLoaderData<typeof loader>();
   const { setIsExplorerCollapsed } = usePanels();
 
@@ -245,6 +257,7 @@ export default function JobMaterialsRoute() {
         orderStatusByMaterialId={orderStatusByMaterialId}
         picksByMaterialId={picksByMaterialId}
         consumeFirstByItemId={consumeFirstByItemId}
+        skuuLotsByJobMaterialId={skuuLotsByJobMaterialId}
       />
     </VStack>
   );

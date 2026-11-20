@@ -16,6 +16,7 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Boolean, Hidden, Submit } from "~/components/Form";
 import { path } from "~/utils/path";
+import { formatSkuuMaterialLotCodes } from "~/modules/items/material-line-label";
 import type { SkuuBatchRecordView } from "../skuu-batch-record.service";
 import {
   skuuBatchRecordCompleteValidator,
@@ -64,6 +65,17 @@ export function SkuuBulkBatchRecordPanel({ jobId, view, readOnly }: Props) {
                   {line.percentWw.toFixed(4)}% · {line.plannedKg.toFixed(4)} kg
                   planned
                 </p>
+                {line.dispenses.length > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {formatSkuuMaterialLotCodes(
+                      line.dispenses.map((d) => ({
+                        trackedEntityReadableId: d.trackedEntityReadableId,
+                        supplierBatchNumber: d.supplierBatchNumber,
+                        quantityKg: d.quantityKg
+                      }))
+                    )}
+                  </p>
+                ) : null}
                 {line.dispenses.map((d) => (
                   <HStack key={d.id} className="gap-2 items-center mt-2 flex-wrap">
                     <span className="text-xs">

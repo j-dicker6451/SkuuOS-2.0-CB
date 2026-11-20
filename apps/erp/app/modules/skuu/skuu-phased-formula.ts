@@ -13,12 +13,13 @@ export const SKUU_PHASE_INSTRUCTIONS_PLACEHOLDER =
 export type SkuuPhasedFormulaBlock = {
   phaseNumber: number;
   instructions: string;
-  lines: Array<{
+    lines: Array<{
     methodMaterialId: string;
     itemReadableId: string | null;
     itemName: string | null;
     percentWw: number | null;
     kgPerBatch: number | null;
+    order: number;
   }>;
 };
 
@@ -63,6 +64,7 @@ export function buildSkuuPhasedFormulaBlocks(
           m.lineKind !== "bulk_lot_rework" &&
           m.percentWw != null
       )
+      .sort((a, b) => a.order - b.order)
       .map((m) => ({
         methodMaterialId: m.methodMaterialId,
         itemReadableId: m.itemReadableId,
@@ -71,7 +73,8 @@ export function buildSkuuPhasedFormulaBlocks(
         kgPerBatch:
           m.percentWw != null
             ? lineKgFromPercent(Number(m.percentWw), grossBasis)
-            : null
+            : null,
+        order: m.order
       }));
     return {
       phaseNumber: phase.phaseNumber,

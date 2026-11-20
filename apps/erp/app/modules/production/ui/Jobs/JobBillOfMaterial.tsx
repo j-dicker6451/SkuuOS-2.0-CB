@@ -90,6 +90,7 @@ import {
 import type { MethodItemType, MethodType } from "~/modules/shared/types";
 import type { action as updateMaterialAction } from "~/routes/x+/job+/methods+/$jobId.material.$id";
 import type { action as createMaterialAction } from "~/routes/x+/job+/methods+/$jobId.material.new";
+import { itemTradeDisplayName } from "~/modules/items/material-line-label";
 import type { Item as ItemType } from "~/stores";
 import { useItems } from "~/stores";
 import { path } from "~/utils/path";
@@ -173,7 +174,11 @@ function makeItem(
     title: (
       <MaterialRowTitle
         readableId={itemReadableId}
-        description={material?.description}
+        description={itemTradeDisplayName(
+          { description: material.description },
+          items,
+          material.itemId
+        )}
         itemId={material.itemId}
         itemType={material.itemType}
         supersessionMode={

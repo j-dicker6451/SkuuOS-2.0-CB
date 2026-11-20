@@ -16,3 +16,10 @@ export {
   sumPercentWw,
   validatePercentSum
 } from "./bulk-formula";
+export {
+  ceilOrderKg,
+  formatDispenseAndOrderKg,
+  formatLiters,
+  formatMassQuantityKg,
+  formatPercentWw4
+} from "./quantity-display";

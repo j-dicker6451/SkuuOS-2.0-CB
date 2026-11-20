@@ -48,7 +48,10 @@ export type SpikeInput = {
   expectedYieldPercent: number;
   productDensityGPerMl: number;
   ingredients: SpikeIngredient[];
-  fills: { packSizeMl: number; units: number }[];
+  /** FG fill jobs; empty array = bulk-only (no fill/ship trace assertions). */
+  fills?: { packSizeMl: number; units: number }[];
+  /** Optional finished batch volume (L) — informational; batchKg is the net kg basis. */
+  batchTargetLiters?: number;
   /** Phase method text (optional; seeded into skuuFormulaPhase). */
   phases?: SpikeFormulaPhase[];
   /** Buy packaging parts per FG unit (optional; not in committed example). */

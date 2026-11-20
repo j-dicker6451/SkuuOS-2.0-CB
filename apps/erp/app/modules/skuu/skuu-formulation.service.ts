@@ -21,6 +21,7 @@ export type SkuuFormulationMaterialLine = {
   percentWw: number | null;
   phaseNumber: number | null;
   lineKind: string | null;
+  order: number;
 };
 
 export async function loadSkuuFormulaPhases(
@@ -115,7 +116,8 @@ export async function loadSkuuFormulationMaterials(
       itemType: mm.itemType ?? item?.type ?? "Material",
       percentWw: f?.percentWw != null ? Number(f.percentWw) : null,
       phaseNumber: f?.phaseNumber != null ? Number(f.phaseNumber) : 1,
-      lineKind: f?.lineKind ?? "ingredient"
+      lineKind: f?.lineKind ?? "ingredient",
+      order: mm.order ?? 0
     };
   });
 }

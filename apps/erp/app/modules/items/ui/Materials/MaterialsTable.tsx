@@ -81,6 +81,7 @@ import { methodType } from "~/modules/shared/shared.models";
 import { usePeople, useSuppliers } from "~/stores";
 import { path } from "~/utils/path";
 import { itemTrackingTypes } from "../../items.models";
+import { itemTradeDisplayName } from "../../material-line-label";
 import type { MaterialListItem } from "../../types";
 
 type MaterialsTableProps = {
@@ -152,10 +153,20 @@ const MaterialsTable = memo((props: MaterialsTableProps) => {
                 {row.original.readableId}
                 {distinctItemText(
                   row.original.readableId,
-                  row.original.name
+                  itemTradeDisplayName({
+                    name: row.original.name,
+                    description: row.original.description,
+                    materialSubstance: row.original.materialSubstance,
+                    materialForm: row.original.materialForm
+                  })
                 ) && (
                   <div className="w-full truncate text-muted-foreground text-xs">
-                    {row.original.name}
+                    {itemTradeDisplayName({
+                      name: row.original.name,
+                      description: row.original.description,
+                      materialSubstance: row.original.materialSubstance,
+                      materialForm: row.original.materialForm
+                    })}
                   </div>
                 )}
               </VStack>
@@ -178,9 +189,14 @@ const MaterialsTable = memo((props: MaterialsTableProps) => {
       {
         accessorKey: "description",
         header: t`Description`,
-        cell: (item) => (
+        cell: ({ row }) => (
           <div className="max-w-[320px] truncate">
-            {item.getValue<string>()}
+            {itemTradeDisplayName({
+              name: row.original.name,
+              description: row.original.description,
+              materialSubstance: row.original.materialSubstance,
+              materialForm: row.original.materialForm
+            })}
           </div>
         ),
         meta: {

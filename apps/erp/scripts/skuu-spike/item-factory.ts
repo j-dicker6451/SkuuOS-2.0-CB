@@ -119,12 +119,6 @@ export async function ensureSpikeMaterial(
     unitCost: input.unitCost ?? 1,
     companyId: ctx.companyId,
     createdBy: ctx.userId,
-    ...(lookups.materialGeneratedIds
-      ? {
-          materialSubstanceId: lookups.materialSubstanceId,
-          materialFormId: lookups.materialFormId
-        }
-      : {})
   };
 
   const created = await upsertMaterial(client, ctx.db, materialPayload);

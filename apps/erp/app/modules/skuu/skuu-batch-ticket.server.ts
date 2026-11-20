@@ -8,6 +8,7 @@ import {
   validatePercentSum
 } from "@skuu/formula";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadSkuuJobMaterialLotsByMethodMaterial } from "./skuu-job-material-lots";
 import { buildSkuuPhasedFormulaBlocks } from "./skuu-phased-formula";
 import { loadSkuuFormulationView } from "./skuu-formulation.service";
 
@@ -15,11 +16,17 @@ type Client = SupabaseClient<Database>;
 
 export type BulkBatchTicketLine = {
   phaseNumber: number;
+  methodMaterialId: string;
   partCode: string;
   name: string;
   percentWw: number;
   kg: number;
   grams: number;
+  batchLots: Array<{
+    trackedEntityReadableId: string | null;
+    supplierBatchNumber: string | null;
+    quantityKg: number;
+  }>;
 };
 
 export type BulkBatchTicketPhase = {
@@ -102,15 +109,28 @@ export async function buildBulkBatchTicket(
     view.profile
   );
 
+  const lotsByMethodMaterial = await loadSkuuJobMaterialLotsByMethodMaterial(
+    client,
+    args.companyId,
+    args.jobId
+  );
+
   const lines: BulkBatchTicketLine[] = blocks.flatMap((block) =>
-    block.lines.map((line) => ({
-      phaseNumber: block.phaseNumber,
-      partCode: line.itemReadableId ?? line.methodMaterialId,
-      name: line.itemName ?? "",
-      percentWw: Number(line.percentWw),
-      kg: line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg),
-      grams: (line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg)) * 1000
-    }))
+    block.lines.map((line) => {
+      const code = line.itemReadableId ?? line.methodMaterialId;
+      return {
+        phaseNumber: block.phaseNumber,
+        methodMaterialId: line.methodMaterialId,
+        partCode: code,
+        name: line.itemName ?? "",
+        percentWw: Number(line.percentWw),
+        kg: line.kgPerBatch ?? lineKgFromPercent(Number(line.percentWw), grossKg),
+        grams:
+          (line.kgPerBatch ??
+            lineKgFromPercent(Number(line.percentWw), grossKg)) * 1000,
+        batchLots: lotsByMethodMaterial.get(line.methodMaterialId) ?? []
+      };
+    })
   );
 
   const ingredientLines = view.materials.filter(
