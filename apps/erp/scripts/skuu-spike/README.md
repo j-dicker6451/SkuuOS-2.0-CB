@@ -5,9 +5,12 @@ End-to-end: raw lots → bulk % job → two fill jobs → shipment → trace.
 ```bash
 # From repo root (loads .env then .env.local automatically):
 pnpm skuu:spike
+pnpm skuu:product-seed   # uses fixtures/demo-serum.json (synthetic, no customer data)
 ```
 
 Requires migrations, seed (`test@carbon.ms` by default), and `pnpm dev` / `crbn up` for PostgREST.
+
+**Committed fixture:** `fixtures/demo-serum.json` — 6 phases, duplicate water line, 100 kg batch, one 15 ml fill. Override with `SKUU_PRODUCT_INPUT` / `SKUU_SPIKE_INPUT`.
 
 UoM and currency codes are read from the seeded company (`kg`, `EA`, `company.baseCurrencyCode`) — not hardcoded.
 

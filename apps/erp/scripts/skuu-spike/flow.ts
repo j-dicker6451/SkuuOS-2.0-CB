@@ -168,7 +168,7 @@ async function receiveRawLotsForFormula(
   lotsByItem: Map<string, { id: string; quantity: number }[]>,
   note: (section: string, message: string) => void,
   lotTag: string
-) {
+): Promise<string | undefined> {
   const grossKg = manufactureFromExpectedYield(
     input.batchKg,
     input.expectedYieldPercent
@@ -187,6 +187,7 @@ async function receiveRawLotsForFormula(
   }
 
   let multiLotDemoIndex = 0;
+  let multiLotItemId: string | undefined;
   for (const [itemId, { partCode, kg: need }] of needByItem) {
     const existing = lotsByItem.get(itemId);
     if (existing && existing.length > 0) {
@@ -211,6 +212,7 @@ async function receiveRawLotsForFormula(
         `${ctx.prefix}-${lotTag}-${partCode}-B`
       );
       lots.push({ id: lotB.id, quantity: Number(lotB.quantity) });
+      multiLotItemId = itemId;
       note(
         "receive",
         `Ingredient ${partCode}: 2 lots (${lotA.readableId}, ${lotB.readableId}) · ${need.toFixed(3)} kg need`
@@ -224,6 +226,7 @@ async function receiveRawLotsForFormula(
     lotsByItem.set(itemId, lots);
     multiLotDemoIndex += 1;
   }
+  return multiLotItemId;
 }
 
 /** ERP default: Active makeMethod for the item; promote Draft from upsertPart if needed. */
@@ -472,7 +475,8 @@ async function createAndRunBulkJob(
   bulkItemId: string,
   makeMethodId: string,
   lotsByItem: Map<string, { id: string; quantity: number }[]>,
-  jobSuffix = "BULK"
+  jobSuffix = "BULK",
+  multiLotItemId?: string
 ) {
   const client = ctx.service.asSystem.supabase;
   const humanJobIdBase = `${ctx.prefix}-JOB-${jobSuffix}`;
@@ -1023,7 +1027,7 @@ export async function runSpikeFlow(
     partCodeToItemId
   );
   const lotsByItem = new Map<string, { id: string; quantity: number }[]>();
-  await receiveRawLotsForFormula(
+  const multiLotItemId = await receiveRawLotsForFormula(
     ctx,
     input,
     input.ingredients,
@@ -1057,7 +1061,9 @@ export async function runSpikeFlow(
       input,
       bulkItemId,
       makeMethodId,
-      lotsByItem
+      lotsByItem,
+      "BULK",
+      multiLotItemId
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1139,7 +1145,8 @@ export async function runSpikeFlow(
       secondBulkItemId,
       secondMethodId,
       lotsByItem,
-      "BULK-2"
+      "BULK-2",
+      multiLotItemId
     );
     secondBulkLotId = secondRun.bulkLot?.id;
     note(

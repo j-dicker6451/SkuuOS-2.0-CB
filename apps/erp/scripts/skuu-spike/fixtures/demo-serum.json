@@ -1,0 +1,62 @@
+{
+  "product": "Skuu Demo Vitamin C Serum",
+  "formulaRef": "DEMO-SERUM-01",
+  "version": "1",
+  "batchKg": 100,
+  "expectedYieldPercent": 98,
+  "productDensityGPerMl": 1.04,
+  "batchTargetLiters": 96.154,
+  "phases": [
+    { "phaseNumber": 1, "instructions": "Charge main water; begin heat." },
+    { "phaseNumber": 2, "instructions": "Add humectants under agitation." },
+    { "phaseNumber": 3, "instructions": "Dissolve active powder." },
+    { "phaseNumber": 4, "instructions": "Emulsify oil phase." },
+    { "phaseNumber": 5, "instructions": "Cool; add preservative." },
+    { "phaseNumber": 6, "instructions": "Adjust pH; add pre-diluted water." }
+  ],
+  "ingredients": [
+    {
+      "name": "Purified Water DI",
+      "percentage": 62.76,
+      "partCode": "DEMO-1A92-WATER",
+      "phaseNumber": 1
+    },
+    {
+      "name": "Glycerin USP",
+      "percentage": 15,
+      "partCode": "DEMO-1A10-GLY",
+      "phaseNumber": 2
+    },
+    {
+      "name": "Butylene Glycol",
+      "percentage": 6.4,
+      "partCode": "DEMO-1A11-BG",
+      "phaseNumber": 2
+    },
+    {
+      "name": "L-Ascorbic Acid",
+      "percentage": 5,
+      "partCode": "DEMO-1A20-VITC",
+      "phaseNumber": 3
+    },
+    {
+      "name": "Emulsifier Blend",
+      "percentage": 8,
+      "partCode": "DEMO-1A30-EMUL",
+      "phaseNumber": 4
+    },
+    {
+      "name": "Phenoxyethanol Blend",
+      "percentage": 2.44,
+      "partCode": "DEMO-1A40-PRES",
+      "phaseNumber": 5
+    },
+    {
+      "name": "Purified Water DI",
+      "percentage": 0.4,
+      "partCode": "DEMO-1A92-WATER",
+      "phaseNumber": 6
+    }
+  ],
+  "fills": [{ "packSizeMl": 15, "units": 10 }]
+}

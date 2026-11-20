@@ -14,11 +14,19 @@ bootstrapSpikeEnv();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const reportPath = path.join(__dirname, "..", "skuu-spike", "report-product-seed.txt");
+const demoFixture = path.join(
+  __dirname,
+  "..",
+  "skuu-spike",
+  "fixtures",
+  "demo-serum.json"
+);
 
 describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
   it(
-    "seed product from SKUU_PRODUCT_INPUT and leave rows in ERP",
+    "seed product from committed demo-serum fixture and leave rows in ERP",
     async () => {
+      process.env.SKUU_PRODUCT_INPUT = demoFixture;
       const input = loadSpikeInput();
       const tag = process.env.SKUU_SPIKE_PREFIX ?? "skuu-product";
       const { report, note } = createReporter();
