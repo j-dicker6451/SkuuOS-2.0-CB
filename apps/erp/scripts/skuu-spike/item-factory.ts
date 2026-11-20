@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { upsertPart } from "~/modules/items/items.service";
+import { upsertMaterial, upsertPart } from "~/modules/items/items.service";
 import type { SpikeContext } from "./context";
 import { spikeAuthHint } from "./supabase-local";
 
@@ -65,6 +65,61 @@ export async function ensureSpikePart(
     .executeTakeFirst();
   if (!row) {
     throw new Error(`Item ${readableId} missing after upsertPart`);
+  }
+  return row.id;
+}
+
+type EnsureMaterialInput = {
+  name: string;
+  unitOfMeasureCode: string;
+  unitCost?: number;
+};
+
+/** Shared buy material by real part code (readableId); never scoped per formula. */
+export async function ensureSpikeMaterial(
+  ctx: SpikeContext,
+  partCode: string,
+  input: EnsureMaterialInput
+): Promise<string> {
+  const existing = await ctx.db
+    .selectFrom("item")
+    .select("id")
+    .where("companyId", "=", ctx.companyId)
+    .where("readableId", "=", partCode)
+    .executeTakeFirst();
+  if (existing) return existing.id;
+
+  const client = ctx.service.asSystem.supabase;
+  if (!client) {
+    throw new Error("PostgREST client required for upsertMaterial (crbn up / PORT_API).");
+  }
+
+  const created = await upsertMaterial(client, ctx.db, {
+    id: partCode,
+    name: input.name,
+    replenishmentSystem: "Buy",
+    defaultMethodType: "Purchase to Order",
+    itemTrackingType: "Batch",
+    unitOfMeasureCode: input.unitOfMeasureCode,
+    unitCost: input.unitCost ?? 1,
+    companyId: ctx.companyId,
+    createdBy: ctx.userId
+  });
+
+  if (created.error) {
+    throw new Error(
+      spikeAuthHint(`upsertMaterial failed for ${partCode}: ${created.error.message}`)
+    );
+  }
+
+  const row = await ctx.db
+    .selectFrom("item")
+    .select("id")
+    .where("companyId", "=", ctx.companyId)
+    .where("readableId", "=", partCode)
+    .executeTakeFirst();
+  if (!row) {
+    throw new Error(`Material ${partCode} missing after upsertMaterial`);
   }
   return row.id;
 }

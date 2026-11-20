@@ -22,7 +22,13 @@ import { handlesOf } from "../../test/database/fixtures/handles";
 import { seedTrx, unwrap } from "./posting-helpers";
 import type { SpikeContext, SpikeInput } from "./context";
 import type { SpikeReportLine } from "./report";
-import { ensureSpikePart } from "./item-factory";
+import { ensureSpikeMaterial, ensureSpikePart } from "./item-factory";
+import { assertSpikeRawMaterials } from "./spike-assertions";
+import {
+  bulkItemReadableId,
+  fillItemReadableId,
+  resolveIngredientPartCode
+} from "./spike-codes";
 import {
   allocateTrackedIssueDraws,
   assertJobConsumptionTrace,
@@ -39,10 +45,12 @@ import {
   stampJobBatchLotNumber
 } from "./spike-tracking";
 import {
+  assertSharedRawLotCrossBulkJobs,
   assertSpikeTrace,
   formatTraceReport,
   traceActivityLineage
 } from "./trace-lineage";
+import type { SpikeIngredient } from "./context";
 
 type Db = SpikeContext["db"];
 
@@ -84,6 +92,115 @@ async function runTrx<T>(
 
 function spikeReadableId(ctx: SpikeContext, suffix: string) {
   return `${ctx.prefix}-${suffix}`;
+}
+
+async function ensureSharedRawMaterialItems(
+  ctx: SpikeContext,
+  ingredients: SpikeIngredient[],
+  note: (section: string, message: string) => void
+): Promise<Map<string, string>> {
+  const partCodeToItemId = new Map<string, string>();
+  for (const ing of ingredients) {
+    const partCode = resolveIngredientPartCode(ing);
+    if (partCodeToItemId.has(partCode)) continue;
+    const itemId = await ensureSpikeMaterial(ctx, partCode, {
+      name: ing.name,
+      unitOfMeasureCode: ctx.lookups.unitKg,
+      unitCost: 1
+    });
+    partCodeToItemId.set(partCode, itemId);
+    note("raw-item", `Material ${partCode} (${ing.name})`);
+  }
+  await assertSpikeRawMaterials(ctx, [...partCodeToItemId.values()]);
+  note("raw-item", `All ${partCodeToItemId.size} raw ingredient(s) verified type Material`);
+  return partCodeToItemId;
+}
+
+function ingredientItemIdsInOrder(
+  ingredients: SpikeIngredient[],
+  partCodeToItemId: Map<string, string>
+): string[] {
+  return ingredients.map((ing) => {
+    const code = resolveIngredientPartCode(ing);
+    const itemId = partCodeToItemId.get(code);
+    if (!itemId) {
+      throw new Error(`Missing shared material for partCode ${code}`);
+    }
+    return itemId;
+  });
+}
+
+async function refreshLotQuantities(
+  ctx: SpikeContext,
+  lotsByItem: Map<string, { id: string; quantity: number }[]>
+) {
+  for (const [itemId, lots] of lotsByItem) {
+    const refreshed: { id: string; quantity: number }[] = [];
+    for (const lot of lots) {
+      const row = await ctx.db
+        .selectFrom("trackedEntity")
+        .select(["id", "quantity"])
+        .where("companyId", "=", ctx.companyId)
+        .where("id", "=", lot.id)
+        .executeTakeFirst();
+      if (row) {
+        refreshed.push({ id: row.id, quantity: Number(row.quantity) });
+      }
+    }
+    lotsByItem.set(itemId, refreshed);
+  }
+}
+
+async function receiveRawLotsForFormula(
+  ctx: SpikeContext,
+  input: Pick<SpikeInput, "batchKg" | "expectedYieldPercent">,
+  ingredients: SpikeIngredient[],
+  ingredientIds: string[],
+  lotsByItem: Map<string, { id: string; quantity: number }[]>,
+  note: (section: string, message: string) => void,
+  lotTag: string
+) {
+  const grossKg = manufactureFromExpectedYield(
+    input.batchKg,
+    input.expectedYieldPercent
+  );
+  for (let i = 0; i < ingredients.length; i++) {
+    const ing = ingredients[i]!;
+    const itemId = ingredientIds[i]!;
+    const partCode = resolveIngredientPartCode(ing);
+    const existing = lotsByItem.get(itemId);
+    if (existing && existing.length > 0) {
+      note(
+        "receive",
+        `Ingredient ${partCode}: reusing ${existing.length} existing lot(s) from prior bulk in run`
+      );
+      continue;
+    }
+    const need = lineKgFromPercent(ing.percentage, grossKg) * 1.05;
+    const lotA = await receiveLot(
+      ctx,
+      itemId,
+      need,
+      `${ctx.prefix}-${lotTag}-${partCode}-A`
+    );
+    const lots = [{ id: lotA.id, quantity: Number(lotA.quantity) }];
+    if (i === 0) {
+      const lotB = await receiveLot(
+        ctx,
+        itemId,
+        need * 0.4,
+        `${ctx.prefix}-${lotTag}-${partCode}-B`
+      );
+      lots.push({ id: lotB.id, quantity: Number(lotB.quantity) });
+      note(
+        "receive",
+        `Ingredient ${partCode}: 2 lots (${lotA.readableId}, ${lotB.readableId}) for dispense scaffold`
+      );
+    } else {
+      note("receive", `Ingredient ${partCode}: lot ${lotA.readableId}`);
+    }
+    lotsByItem.set(itemId, lots);
+  }
 }
 
 /** ERP default: Active makeMethod for the item; promote Draft from upsertPart if needed. */
@@ -200,8 +317,9 @@ async function setupBulkItem(
   ingredientItemIds: string[],
   bulkItemId: string
 ) {
-  const processId = `${ctx.prefix}-proc`;
-  const operationId = `${ctx.prefix}-mop`;
+  const methodKey = input.formulaRef.replace(/[^a-zA-Z0-9-_]/g, "-");
+  const processId = `${ctx.prefix}-proc-${methodKey}`;
+  const operationId = `${ctx.prefix}-mop-${methodKey}`;
   const formulaRows: { methodMaterialId: string; percentWw: number }[] = [];
 
   const makeMethodId = await runTrx(db, async (trx) => {
@@ -237,7 +355,7 @@ async function setupBulkItem(
 
     for (let i = 0; i < input.ingredients.length; i++) {
       const ing = input.ingredients[i]!;
-      const methodMaterialId = `${ctx.prefix}-mmat-${i}`;
+      const methodMaterialId = `${ctx.prefix}-mmat-${methodKey}-${i}`;
       await trx
         .insertInto("methodMaterial")
         .values({
@@ -245,7 +363,7 @@ async function setupBulkItem(
           makeMethodId: resolvedMakeMethodId,
           methodOperationId: operationId,
           itemId: ingredientItemIds[i]!,
-          itemType: "Part",
+          itemType: "Material",
           methodType: "Pull from Inventory",
           quantity: 0,
           unitOfMeasureCode: ctx.lookups.unitKg,
@@ -296,7 +414,8 @@ async function createAndRunBulkJob(
   input: SpikeInput,
   bulkItemId: string,
   makeMethodId: string,
-  lotsByItem: Map<string, { id: string; quantity: number }[]>
+  lotsByItem: Map<string, { id: string; quantity: number }[]>,
+  jobSuffix = "BULK"
 ) {
   const client = ctx.service.asSystem.supabase;
   const created = await insertJob(client, ctx.db, {
@@ -306,7 +425,7 @@ async function createAndRunBulkJob(
     locationId: ctx.locationId,
     companyId: ctx.companyId,
     createdBy: ctx.userId,
-    jobId: `${ctx.prefix}-JOB-BULK`
+    jobId: `${ctx.prefix}-JOB-${jobSuffix}`
   } as never);
   if (created.error || !created.data) {
     throw new Error(`insertJob failed: ${created.error?.message ?? "unknown"}`);
@@ -753,59 +872,47 @@ export async function runSpikeFlow(
   }
   note("formula", `Ingredient % total OK (${percentCheck.total})`);
 
-  const ingredientIds: string[] = [];
-  const lotsByItem = new Map<string, { id: string; quantity: number }[]>();
-  for (let i = 0; i < input.ingredients.length; i++) {
-    const ing = input.ingredients[i]!;
-    const itemId = await ensureSpikePart(
-      ctx,
-      spikeReadableId(ctx, `RM-${i}`),
-      {
-        name: ing.name,
-        replenishmentSystem: "Buy",
-        itemTrackingType: "Batch",
-        unitOfMeasureCode: ctx.lookups.unitKg,
-        unitCost: 1
+  const catalogIngredients: SpikeIngredient[] = [...input.ingredients];
+  if (input.secondProduct) {
+    for (const ing of input.secondProduct.ingredients) {
+      const code = resolveIngredientPartCode(ing);
+      if (
+        !catalogIngredients.some(
+          (existing) => resolveIngredientPartCode(existing) === code
+        )
+      ) {
+        catalogIngredients.push(ing);
       }
-    );
-    ingredientIds.push(itemId);
-    const grossKg = manufactureFromExpectedYield(
-      input.batchKg,
-      input.expectedYieldPercent
-    );
-    const need = lineKgFromPercent(ing.percentage, grossKg) * 1.05;
-    const lotA = await receiveLot(
-      ctx,
-      itemId,
-      need,
-      `${ctx.prefix}-LOT-${i}-A`
-    );
-    const lots = [{ id: lotA.id, quantity: Number(lotA.quantity) }];
-    if (i === 0) {
-      const lotB = await receiveLot(
-        ctx,
-        itemId,
-        need * 0.4,
-        `${ctx.prefix}-LOT-${i}-B`
-      );
-      lots.push({ id: lotB.id, quantity: Number(lotB.quantity) });
-      note(
-        "receive",
-        `Ingredient ${ing.name}: 2 lots (${lotA.readableId}, ${lotB.readableId}) for dispense scaffold`
-      );
-    } else {
-      note("receive", `Ingredient ${ing.name}: lot ${lotA.readableId}`);
     }
-    lotsByItem.set(itemId, lots);
   }
+  const partCodeToItemId = await ensureSharedRawMaterialItems(
+    ctx,
+    catalogIngredients,
+    note
+  );
+  const ingredientIds = ingredientItemIdsInOrder(
+    input.ingredients,
+    partCodeToItemId
+  );
+  const lotsByItem = new Map<string, { id: string; quantity: number }[]>();
+  await receiveRawLotsForFormula(
+    ctx,
+    input,
+    input.ingredients,
+    ingredientIds,
+    lotsByItem,
+    note,
+    "RAW"
+  );
 
-  const bulkItemId = await ensureSpikePart(ctx, spikeReadableId(ctx, "BULK"), {
+  const bulkSku = bulkItemReadableId(input.formulaRef);
+  const bulkItemId = await ensureSpikePart(ctx, bulkSku, {
     name: input.product,
     replenishmentSystem: "Make",
     itemTrackingType: "Batch",
     unitOfMeasureCode: ctx.lookups.unitKg
   });
-  await ensureItemBatchSequence(ctx, bulkItemId, `BULK-${input.formulaRef}`);
+  await ensureItemBatchSequence(ctx, bulkItemId, bulkSku);
   const { makeMethodId } = await setupBulkItem(
     ctx.db,
     ctx,
@@ -848,17 +955,99 @@ export async function runSpikeFlow(
   const bulkLotId = bulkRun.bulkLot?.id;
   if (!bulkLotId) throw new Error("No bulk lot to fill from");
 
+  let secondBulkLotId: string | undefined;
+  if (input.secondProduct) {
+    const second = input.secondProduct;
+    const secondPct = validatePercentSum(
+      second.ingredients.map((i, idx) => ({
+        id: String(idx),
+        percentWw: i.percentage
+      }))
+    );
+    if (!secondPct.ok) {
+      throw new Error(`secondProduct: ${secondPct.message}`);
+    }
+    const secondIngredientIds = ingredientItemIdsInOrder(
+      second.ingredients,
+      partCodeToItemId
+    );
+    await receiveRawLotsForFormula(
+      ctx,
+      second,
+      second.ingredients,
+      secondIngredientIds,
+      lotsByItem,
+      note,
+      "RAW2"
+    );
+    const secondBulkSku = bulkItemReadableId(second.formulaRef);
+    const secondBulkItemId = await ensureSpikePart(ctx, secondBulkSku, {
+      name: second.product,
+      replenishmentSystem: "Make",
+      itemTrackingType: "Batch",
+      unitOfMeasureCode: ctx.lookups.unitKg
+    });
+    await ensureItemBatchSequence(ctx, secondBulkItemId, secondBulkSku);
+    const secondInput: SpikeInput = {
+      ...input,
+      product: second.product,
+      formulaRef: second.formulaRef,
+      batchKg: second.batchKg,
+      expectedYieldPercent: second.expectedYieldPercent,
+      ingredients: second.ingredients,
+      fills: []
+    };
+    const { makeMethodId: secondMethodId } = await setupBulkItem(
+      ctx.db,
+      ctx,
+      secondInput,
+      secondIngredientIds,
+      secondBulkItemId
+    );
+    await refreshLotQuantities(ctx, lotsByItem);
+    const secondRun = await createAndRunBulkJob(
+      ctx,
+      secondInput,
+      secondBulkItemId,
+      secondMethodId,
+      lotsByItem,
+      "BULK-2"
+    );
+    secondBulkLotId = secondRun.bulkLot?.id;
+    note(
+      "bulk-2",
+      `Second bulk job ${secondRun.jobId} → lot ${secondBulkLotId ?? "missing"}`
+    );
+    if (!secondBulkLotId) {
+      throw new Error("Second product bulk lot missing after job complete");
+    }
+    const sharedRawLotId = [...lotsByItem.values()][0]?.[0]?.id;
+    if (!sharedRawLotId) {
+      throw new Error("No shared raw lot for cross-product assertion");
+    }
+    await assertSharedRawLotCrossBulkJobs(
+      ctx.db,
+      ctx.companyId,
+      sharedRawLotId,
+      [bulkLotId, secondBulkLotId]
+    );
+    note(
+      "cross-product",
+      `Shared raw lot consumed into both bulk lots (${bulkLotId}, ${secondBulkLotId}); forward trace OK`
+    );
+  }
+
   const fillResults: Awaited<ReturnType<typeof runFillJob>>[] = [];
   for (let f = 0; f < input.fills.length; f++) {
     const fill = input.fills[f]!;
-    const fillSku = spikeReadableId(ctx, `FILL-${f}`);
+    const fillSku = fillItemReadableId(input.formulaRef, fill.packSizeMl);
     const fillItemId = await ensureSpikePart(ctx, fillSku, {
       name: `Fill ${fill.packSizeMl}mL`,
       replenishmentSystem: "Make",
       itemTrackingType: "Batch",
       unitOfMeasureCode: ctx.lookups.unitEa
     });
-    await ensureItemBatchSequence(ctx, fillItemId, `FG-${fillSku}`);
+    await ensureItemBatchSequence(ctx, fillItemId, fillSku);
     const { kgPerUnit } = await setupFillItem(
       ctx.db,
       ctx,
@@ -917,7 +1106,7 @@ export async function runSpikeFlow(
       .selectFrom("item")
       .select("id")
       .where("companyId", "=", ctx.companyId)
-      .where("readableId", "=", spikeReadableId(ctx, "FILL-0"))
+      .where("readableId", "=", fillItemReadableId(input.formulaRef, input.fills[0]!.packSizeMl))
       .executeTakeFirstOrThrow()
       .then((r) => r.id);
     const lotForShip = await ctx.db

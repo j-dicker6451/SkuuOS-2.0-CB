@@ -417,30 +417,6 @@ export async function teardownTagged(
   await runTeardownTrx(db, async (trx) => {
     const likePrefix = `${prefix}%`;
 
-    const { itemIds, partNumbers } = await teardownStep(
-      trx,
-      "discover-items",
-      async () => {
-        const spikeItems = await trx
-          .selectFrom("item")
-          .select(["id", "readableId"])
-          .where("companyId", "=", companyId)
-          .where((eb) =>
-            eb.or([
-              eb("readableId", "like", likePrefix),
-              eb("id", "like", likePrefix)
-            ])
-          )
-          .execute();
-        return {
-          itemIds: spikeItems.map((r) => r.id),
-          partNumbers: spikeItems
-            .map((r) => r.readableId)
-            .filter((id): id is string => id != null)
-        };
-      }
-    );
-
     const jobIds = await teardownStep(trx, "discover-jobs", async () => {
       const jobRows = await trx
         .selectFrom("job")
@@ -456,6 +432,46 @@ export async function teardownTagged(
         .execute();
       return jobRows.map((r) => r.id);
     });
+
+    const { itemIds, partNumbers } = await teardownStep(
+      trx,
+      "discover-items",
+      async () => {
+        const prefixed = await trx
+          .selectFrom("item")
+          .select(["id", "readableId"])
+          .where("companyId", "=", companyId)
+          .where((eb) =>
+            eb.or([
+              eb("readableId", "like", likePrefix),
+              eb("id", "like", likePrefix)
+            ])
+          )
+          .execute();
+        const idSet = new Set(prefixed.map((r) => r.id));
+        if (jobIds.length > 0) {
+          const jobItems = await trx
+            .selectFrom("job")
+            .select("itemId")
+            .where("companyId", "=", companyId)
+            .where("id", "in", jobIds)
+            .execute();
+          for (const row of jobItems) idSet.add(row.itemId);
+        }
+        const spikeItems = await trx
+          .selectFrom("item")
+          .select(["id", "readableId"])
+          .where("companyId", "=", companyId)
+          .where("id", "in", [...idSet])
+          .execute();
+        return {
+          itemIds: spikeItems.map((r) => r.id),
+          partNumbers: spikeItems
+            .map((r) => r.readableId)
+            .filter((id): id is string => id != null)
+        };
+      }
+    );
 
     const jobOpIds = await teardownStep(trx, "discover-job-operations", async () => {
       if (jobIds.length === 0) return [];

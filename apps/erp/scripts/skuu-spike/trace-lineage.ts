@@ -192,6 +192,66 @@ function entityReachable(
   return ids.has(entityId);
 }
 
+export async function assertSharedRawLotCrossBulkJobs(
+  db: Db,
+  companyId: string,
+  rawLotId: string,
+  bulkLotIds: string[],
+  tolerance = 1e-4
+): Promise<void> {
+  const lot = await db
+    .selectFrom("trackedEntity")
+    .select(["quantity", "readableId"])
+    .where("companyId", "=", companyId)
+    .where("id", "=", rawLotId)
+    .executeTakeFirst();
+  if (!lot) {
+    throw new Error(`Shared raw lot ${rawLotId} not found`);
+  }
+  if (Number(lot.quantity) < -tolerance) {
+    throw new Error(
+      `Shared raw lot ${lot.readableId ?? rawLotId} has negative quantity ${lot.quantity}`
+    );
+  }
+
+  const consumptionRows = await db
+    .selectFrom("trackedActivityInput as tai")
+    .innerJoin("trackedActivity as ta", "ta.id", "tai.trackedActivityId")
+    .select(["ta.id as activityId", "ta.sourceDocumentId", "tai.quantity"])
+    .where("tai.companyId", "=", companyId)
+    .where("tai.trackedEntityId", "=", rawLotId)
+    .where("ta.sourceDocument", "=", "Job Operation")
+    .execute();
+
+  if (consumptionRows.length < 2) {
+    throw new Error(
+      `Expected ≥2 Job Operation consumptions from raw lot ${lot.readableId ?? rawLotId}, got ${consumptionRows.length}`
+    );
+  }
+
+  const totalConsumed = consumptionRows.reduce(
+    (acc, row) => acc + Number(row.quantity ?? 0),
+    0
+  );
+  if (totalConsumed <= 0) {
+    throw new Error("No positive consumption qty recorded on shared raw lot");
+  }
+
+  const forwardNodes = await traceActivityLineage(
+    db,
+    companyId,
+    rawLotId,
+    "forward"
+  );
+  for (const bulkId of bulkLotIds) {
+    if (!entityReachable(forwardNodes, bulkId)) {
+      throw new Error(
+        `Forward trace from shared raw lot ${lot.readableId ?? rawLotId} missing bulk lot ${bulkId}`
+      );
+    }
+  }
+}
+
 export function assertSpikeTrace(expect: SpikeTraceExpectations): void {
   const { forwardNodes, reverseNodes, bulkLotId, allRawLotIds, fillLotIds } =
     expect;

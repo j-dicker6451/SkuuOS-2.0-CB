@@ -18,6 +18,21 @@ import { asSpikeDb, type SpikeDb } from "./spike-db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+export type SpikeIngredient = {
+  name: string;
+  percentage: number;
+  /** Real material part code; omitted values derive from the trade name slug. */
+  partCode?: string;
+};
+
+export type SpikeSecondProduct = {
+  product: string;
+  formulaRef: string;
+  batchKg: number;
+  expectedYieldPercent: number;
+  ingredients: SpikeIngredient[];
+};
+
 export type SpikeInput = {
   product: string;
   formulaRef: string;
@@ -25,8 +40,10 @@ export type SpikeInput = {
   batchKg: number;
   expectedYieldPercent: number;
   productDensityGPerMl: number;
-  ingredients: { name: string; percentage: number }[];
+  ingredients: SpikeIngredient[];
   fills: { packSizeMl: number; units: number }[];
+  /** Synthetic second bulk formula reusing shared raw lots (committed fixture only). */
+  secondProduct?: SpikeSecondProduct;
 };
 
 export function loadSpikeInput(): SpikeInput {

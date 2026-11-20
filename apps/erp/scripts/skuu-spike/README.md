@@ -11,9 +11,26 @@ Requires migrations, seed (`test@carbon.ms` by default), and `pnpm dev` / `crbn 
 
 UoM and currency codes are read from the seeded company (`kg`, `EA`, `company.baseCurrencyCode`) — not hardcoded.
 
-Parts are created with `upsertPart` (same as **New Part**), never raw `item` inserts — `app.sync_in_progress` on Kysely seed transactions skips item interceptors and breaks receipts.
+### Item types (Cosmetri mapping)
 
-Teardown deletes by **`readableId` prefix** (and legacy `id` prefix), including jobs matched by readable **`jobId` prefix** or spike **`itemId`**, MES rows (`trackedActivity`, `itemLedger`, `productionQuantity`, …), shipments/SO lines, and Skuu rows. Uses `session_replication_role = replica` like test fixture resets.
+| Role | Type | Replenishment | Tracking | UoM | Create path |
+| --- | --- | --- | --- | --- | --- |
+| Raw ingredient | **Material** | Buy | Batch | kg | `upsertMaterial` (New Material — `item` + `material` + cost/replenishment) |
+| Bulk | Part | Make | Batch | kg | `upsertPart` — readableId `BULK-{formulaRef}` |
+| Finished SKU | Part | Make | Batch | EA | `upsertPart` — readableId `FG-{formulaRef}-{packMl}ML` |
+| Packaging | Part | Buy | Batch | (sku) | not in this spike |
+
+Shared raw materials use real **`partCode`** values from input (Cosmetri codes on Mac `*.local.json`); demo fixture uses `RM-*-DEMO` codes. One material SKU per `partCode`, reused across formulas. Lots and jobs are tagged with the run **`prefix`** (`{SKUU_SPIKE_PREFIX}-{formulaRef}`); teardown does **not** delete shared materials.
+
+Never raw `item` inserts — `app.sync_in_progress` on Kysely seed transactions skips item interceptors and breaks receipts.
+
+Teardown deletes tagged jobs/lots/SO/shipment rows by **`readableId` prefix**, plus bulk/fill **parts** tied to those jobs (not shared raw **materials**). MES rows (`trackedActivity`, `itemLedger`, …) and Skuu rows follow the same tag. Uses `session_replication_role = replica` like test fixture resets.
+
+### Material vs Part in Carbon
+
+- **Materials** have no active make method by default; spike BOM lines use `itemType: "Material"` on `methodMaterial` / `jobMaterial`.
+- Receipt, MES batch issue (`trackedEntitiesToOperation`), gross-up (`recalculateJobRequirements`), and trace behave the same as for buy **Parts** in this flow.
+- **Parts** (`upsertPart`) get an auto **Draft** make method; spike promotes it to **Active** for bulk/fill SKUs.
 
 | Step | ERP mirror |
 | --- | --- |
@@ -21,7 +38,7 @@ Teardown deletes by **`readableId` prefix** (and legacy `id` prefix), including 
 | Bulk/fill jobs | `insertJob` → `recalculateJobRequirements` (Skuu gross-up) → release → **MES** `trackedEntitiesToOperation` + `jobOperationBatchComplete` → `complete_job_to_inventory` |
 | Ship | `createDocument` + `postShipment` |
 
-- Input: `example-formula.json` or `SKUU_SPIKE_INPUT`
+- Input: `example-formula.json` or `SKUU_SPIKE_INPUT` (optional `partCode` per ingredient; optional `secondProduct` for cross-bulk lot sharing)
 - PostgREST URL: `SUPABASE_URL` or **`SKUU_SPIKE_SUPABASE_URL`** (e.g. `http://[::1]:54321` when Cursor Agents shadows `127.0.0.1:54321`)
 - Local-only: `*.local.json` (gitignored)
 - Report: `report-last-run.txt` in this folder
