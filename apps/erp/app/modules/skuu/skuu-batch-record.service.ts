@@ -142,6 +142,7 @@ export async function loadSkuuBatchRecordView(
     const { data: tes } = await client
       .from("trackedEntity")
       .select("id, readableId")
+      .eq("companyId", args.companyId)
       .in("id", teIds);
     for (const te of tes ?? []) {
       teReadable.set(te.id, te.readableId ?? te.id);

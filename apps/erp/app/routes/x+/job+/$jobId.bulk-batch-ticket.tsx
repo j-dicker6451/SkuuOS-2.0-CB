@@ -9,8 +9,7 @@ import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { client, companyId } = await requirePermissions(request, {
-    view: "production",
-    bypassRls: true
+    view: "production"
   });
   const { jobId } = params;
   if (!jobId) throw new Response("Not found", { status: 404 });

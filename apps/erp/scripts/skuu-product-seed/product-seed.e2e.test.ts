@@ -8,6 +8,7 @@ import { bootstrapSpikeEnv } from "../skuu-spike/env-bootstrap";
 import { buildSpikeContext, loadSpikeInput } from "../skuu-spike/context";
 import { buildBulkBatchTicket } from "~/modules/skuu/skuu-batch-ticket.server";
 import { bulkItemReadableId } from "../skuu-spike/spike-codes";
+import type { SpikeInput } from "../skuu-spike/context";
 import { runSpikeFlow } from "../skuu-spike/flow";
 import { createReporter } from "../skuu-spike/report";
 import { hasLocalDatabase } from "../../test/database/fixtures/local-database";
@@ -23,6 +24,16 @@ const demoFixture = path.join(
   "fixtures",
   "demo-serum.json"
 );
+
+/** On-hand bulk lot after fill jobs have drawn bulk (rerun-stable). */
+function expectedBulkLotKgAfterFills(input: SpikeInput): number {
+  let fillDrawKg = 0;
+  for (const fill of input.fills ?? []) {
+    fillDrawKg +=
+      ((fill.packSizeMl * input.productDensityGPerMl) / 1000) * fill.units;
+  }
+  return Math.round((input.batchKg - fillDrawKg) * 1000) / 1000;
+}
 
 describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
   it(
@@ -87,7 +98,11 @@ describe.skipIf(!hasLocalDatabase)("SkuuOS product seed (e2e)", () => {
             3
           );
         }
-        expect(Number(bulkLotAfter?.quantity)).toBeCloseTo(input.batchKg, 3);
+        const expectedBulkOnHand = expectedBulkLotKgAfterFills(input);
+        expect(Number(bulkLotAfter?.quantity)).toBeCloseTo(
+          expectedBulkOnHand,
+          3
+        );
 
         const fillHumanId = `${ctx.prefix}-JOB-F0`;
         const fillIssued = await ctx.db

@@ -41,6 +41,7 @@ export async function loadSkuuJobMaterialLots(
     const { data: tes } = await client
       .from("trackedEntity")
       .select("id, readableId")
+      .eq("companyId", companyId)
       .in("id", teIds);
     for (const te of tes ?? []) {
       teReadable.set(te.id, te.readableId ?? te.id);
@@ -111,6 +112,7 @@ export async function loadSkuuJobMaterialLotsFromConsumption(
     const { data: tes } = await client
       .from("trackedEntity")
       .select("id, readableId, sourceDocumentReadableId")
+      .eq("companyId", companyId)
       .in("id", teIds);
     for (const te of tes ?? []) {
       teMeta.set(te.id, {
@@ -203,6 +205,7 @@ export async function loadSkuuJobMaterialLotsFromTrackedActivity(
     const { data: tes } = await client
       .from("trackedEntity")
       .select("id, readableId, sourceDocumentReadableId")
+      .eq("companyId", companyId)
       .in("id", teIds);
     for (const te of tes ?? []) {
       teMeta.set(te.id, {

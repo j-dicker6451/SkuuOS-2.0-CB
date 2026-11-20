@@ -72,6 +72,7 @@ export async function buildBulkBatchTicket(
     .from("item")
     .select("readableId, name")
     .eq("id", job.itemId)
+    .eq("companyId", args.companyId)
     .single();
 
   const view = await loadSkuuFormulationView(
