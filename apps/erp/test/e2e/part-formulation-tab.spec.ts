@@ -17,7 +17,9 @@ test.describe("part formulation tab", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`${baseUrl}/login`);
     await page.getByLabel(/email/i).fill(devEmail);
-    await page.getByRole("button", { name: /sign in|continue|log in/i }).click();
+    await page
+      .getByRole("button", { name: "Continue", exact: true })
+      .click();
     await page.waitForURL((url) => !url.pathname.endsWith("/login"), {
       timeout: 120_000
     });

@@ -7,11 +7,11 @@ import {
   CardHeader,
   CardTitle,
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr
 } from "@carbon/react";
 import { Trans } from "@lingui/react/macro";
 import type { MethodMaterial } from "~/modules/items/types";
@@ -79,69 +79,69 @@ export function SkuuProductBuildPanel({
           <Trans>Bulk</Trans>
         </h3>
         <Table className="mb-6">
-          <TableHeader>
-            <TableRow>
-              <TableHead>
+          <Thead>
+            <Tr>
+              <Th>
                 <Trans>Code</Trans>
-              </TableHead>
-              <TableHead>
+              </Th>
+              <Th>
                 <Trans>Name</Trans>
-              </TableHead>
-              <TableHead>
+              </Th>
+              <Th>
                 <Trans>Qty / unit</Trans>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow>
-              <TableCell>{bulkCode ?? bulkRow?.readableId ?? "—"}</TableCell>
-              <TableCell>{bulkName ?? bulkRow?.name ?? "—"}</TableCell>
-              <TableCell>
+              </Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            <Tr>
+              <Td>{bulkCode ?? bulkRow?.readableId ?? "—"}</Td>
+              <Td>{bulkName ?? bulkRow?.name ?? "—"}</Td>
+              <Td>
                 {kgPerUnit != null
                   ? `${kgPerUnit.toFixed(4)} kg`
                   : (bulkRow?.quantity ?? "—")}
-              </TableCell>
-            </TableRow>
-          </TableBody>
+              </Td>
+            </Tr>
+          </Tbody>
         </Table>
 
         <h3 className="font-medium mb-2">
           <Trans>Packaging</Trans>
         </h3>
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>
+          <Thead>
+            <Tr>
+              <Th>
                 <Trans>Code</Trans>
-              </TableHead>
-              <TableHead>
+              </Th>
+              <Th>
                 <Trans>Name</Trans>
-              </TableHead>
-              <TableHead>
+              </Th>
+              <Th>
                 <Trans>Qty / unit</Trans>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+              </Th>
+            </Tr>
+          </Thead>
+          <Tbody>
             {packaging.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3}>
+              <Tr>
+                <Td colSpan={3}>
                   <Trans>
                     Add buy Parts (bottle, pump, label, carton) on the method
                     BOM.
                   </Trans>
-                </TableCell>
-              </TableRow>
+                </Td>
+              </Tr>
             ) : (
               packaging.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>{m.readableId}</TableCell>
-                  <TableCell>{m.name}</TableCell>
-                  <TableCell>{m.quantity}</TableCell>
-                </TableRow>
+                <Tr key={m.id}>
+                  <Td>{m.readableId}</Td>
+                  <Td>{m.name}</Td>
+                  <Td>{m.quantity}</Td>
+                </Tr>
               ))
             )}
-          </TableBody>
+          </Tbody>
         </Table>
       </CardContent>
     </Card>

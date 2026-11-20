@@ -7,11 +7,11 @@ import {
   CardHeader,
   CardTitle,
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
   VStack
 } from "@carbon/react";
 import { Trans } from "@lingui/react/macro";
@@ -41,42 +41,42 @@ export function SkuuPhasedFormulaView({ title, blocks }: Props) {
               {block.instructions}
             </p>
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>
+              <Thead>
+                <Tr>
+                  <Th>
                     <Trans>Code</Trans>
-                  </TableHead>
-                  <TableHead>
+                  </Th>
+                  <Th>
                     <Trans>Name</Trans>
-                  </TableHead>
-                  <TableHead>
+                  </Th>
+                  <Th>
                     <Trans>% w/w</Trans>
-                  </TableHead>
-                  <TableHead>
+                  </Th>
+                  <Th>
                     <Trans>kg / batch</Trans>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+                  </Th>
+                </Tr>
+              </Thead>
+              <Tbody>
                 {block.lines.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4}>
+                  <Tr>
+                    <Td colSpan={4}>
                       <Trans>No ingredients in this phase.</Trans>
-                    </TableCell>
-                  </TableRow>
+                    </Td>
+                  </Tr>
                 ) : (
                   block.lines.map((line) => (
-                    <TableRow key={line.methodMaterialId}>
-                      <TableCell>{line.itemReadableId}</TableCell>
-                      <TableCell>{line.itemName}</TableCell>
-                      <TableCell>{formatPercentWw4(line.percentWw)}</TableCell>
-                      <TableCell>
+                    <Tr key={line.methodMaterialId}>
+                      <Td>{line.itemReadableId}</Td>
+                      <Td>{line.itemName}</Td>
+                      <Td>{formatPercentWw4(line.percentWw)}</Td>
+                      <Td>
                         {formatMassQuantityKg(line.kgPerBatch)}
-                      </TableCell>
-                    </TableRow>
+                      </Td>
+                    </Tr>
                   ))
                 )}
-              </TableBody>
+              </Tbody>
             </Table>
           </section>
         ))}

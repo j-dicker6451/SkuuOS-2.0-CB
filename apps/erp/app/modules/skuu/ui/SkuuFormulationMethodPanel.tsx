@@ -8,11 +8,11 @@ import {
   CardHeader,
   CardTitle,
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
   Textarea,
   VStack
 } from "@carbon/react";
@@ -159,57 +159,57 @@ export function SkuuFormulationMethodPanel({
               )}
 
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
+                <Thead>
+                  <Tr>
+                    <Th>
                       <Trans>Material code</Trans>
-                    </TableHead>
-                    <TableHead>
+                    </Th>
+                    <Th>
                       <Trans>Name</Trans>
-                    </TableHead>
-                    <TableHead>
+                    </Th>
+                    <Th>
                       <Trans>% w/w</Trans>
-                    </TableHead>
-                    <TableHead>
+                    </Th>
+                    <Th>
                       <Trans>kg / batch</Trans>
-                    </TableHead>
+                    </Th>
                     {!readOnly && (
-                      <TableHead>
+                      <Th>
                         <Trans>Save</Trans>
-                      </TableHead>
+                      </Th>
                     )}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+                  </Tr>
+                </Thead>
+                <Tbody>
                   {(grouped.find(([n]) => n === phase.phaseNumber)?.[1] ?? [])
                     .length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={readOnly ? 4 : 5}>
+                    <Tr>
+                      <Td colSpan={readOnly ? 4 : 5}>
                         <Trans>No materials in this phase on the BOM.</Trans>
-                      </TableCell>
-                    </TableRow>
+                      </Td>
+                    </Tr>
                   ) : (
                     (
                       grouped.find(([n]) => n === phase.phaseNumber)?.[1] ?? []
                     ).map((m) => (
-                      <TableRow key={m.methodMaterialId}>
-                        <TableCell>{m.itemReadableId}</TableCell>
-                        <TableCell>{m.itemName}</TableCell>
-                        <TableCell>
+                      <Tr key={m.methodMaterialId}>
+                        <Td>{m.itemReadableId}</Td>
+                        <Td>{m.itemName}</Td>
+                        <Td>
                           {m.percentWw != null
                             ? `${Number(m.percentWw).toFixed(4)}`
                             : "—"}
-                        </TableCell>
-                        <TableCell>
+                        </Td>
+                        <Td>
                           {m.percentWw != null
                             ? lineKgFromPercent(
                                 Number(m.percentWw),
                                 grossBasis
                               ).toFixed(4)
                             : "—"}
-                        </TableCell>
+                        </Td>
                         {!readOnly && (
-                          <TableCell>
+                          <Td>
                             <ValidatedForm
                               method="post"
                               action={path.to.skuuBulkFormulaMaterial}
@@ -234,12 +234,12 @@ export function SkuuFormulationMethodPanel({
                                 <Trans>Save</Trans>
                               </Submit>
                             </ValidatedForm>
-                          </TableCell>
+                          </Td>
                         )}
-                      </TableRow>
+                      </Tr>
                     ))
                   )}
-                </TableBody>
+                </Tbody>
               </Table>
             </div>
           ))}
