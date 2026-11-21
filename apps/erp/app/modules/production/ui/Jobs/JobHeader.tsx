@@ -174,6 +174,7 @@ const JobHeader = () => {
       headerLabel: string;
       targetFinishedKg: number;
     } | null;
+    skuuFormulationVersion?: number | null;
   }>(path.to.job(jobId));
   const projectCharge = routeData?.projectCharge;
 
@@ -384,9 +385,14 @@ const JobHeader = () => {
       : jobQuantity != null
         ? t`Qty ${jobQuantity}`
         : null;
+  const formulationVersionLabel =
+    routeData?.skuuFormulationVersion != null
+      ? t`Formulation V${Number(routeData.skuuFormulationVersion).toFixed(2)}`
+      : null;
   const heroSubtitle =
     [
       routeData?.job?.itemReadableIdWithRevision,
+      formulationVersionLabel,
       quantityLabel
     ]
       .filter(Boolean)

@@ -4387,6 +4387,25 @@ export async function insertJob(
 
   const scrapQuantity = scrapAllowance(input.quantity, scrapPercentage);
 
+  const { validateSkuuFormulationApprovedForNewJob } = await import(
+    "~/modules/skuu/skuu-formulation-change-control.service"
+  );
+  const skuuFormulationGate = await validateSkuuFormulationApprovedForNewJob(
+    client,
+    input.itemId,
+    input.companyId
+  );
+  if (!skuuFormulationGate.ok) {
+    return {
+      data: null,
+      error: { message: skuuFormulationGate.message } as PostgrestError
+    };
+  }
+  const skuuFormulationMakeMethodId =
+    skuuFormulationGate.ok && skuuFormulationGate.skuuBulk
+      ? skuuFormulationGate.makeMethodId
+      : null;
+
   const job = await client
     .from("job")
     .insert({
@@ -4419,6 +4438,7 @@ export async function insertJob(
       receiveToProjectStock: input.receiveToProjectStock ?? false,
       planningGroupId: input.planningGroupId ?? null,
       customerContractLineId: input.customerContractLineId ?? null,
+      skuuFormulationMakeMethodId,
       configuration: (input.configuration as Json | undefined) ?? null,
       companyId: input.companyId,
       createdBy: input.createdBy,

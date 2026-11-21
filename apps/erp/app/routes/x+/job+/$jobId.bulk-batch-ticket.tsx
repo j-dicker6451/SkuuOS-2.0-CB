@@ -47,6 +47,11 @@ export default function BulkBatchTicketPrint() {
         <p>
           <strong>Batch no.:</strong> {ticket.batchNumber}
         </p>
+        {ticket.formulationVersion != null ? (
+          <p>
+            <strong>Formulation version:</strong> V{ticket.formulationVersion}
+          </p>
+        ) : null}
         <p>
           <strong>Batch size:</strong> {ticket.batchHeaderLabel}
         </p>

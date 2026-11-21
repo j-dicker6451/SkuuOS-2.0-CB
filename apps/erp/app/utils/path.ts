@@ -2798,6 +2798,9 @@ export const path = {
     skuuBulkFormula: `${x}/part/skuu-bulk/formula`,
     skuuBulkFormulaMaterial: `${x}/part/skuu-bulk/formula-material`,
     skuuFormulaPhase: `${x}/part/skuu-bulk/phase`,
+    skuuFormulationVersionNew: `${x}/part/skuu-formulation/version-new`,
+    skuuFormulationSubmit: `${x}/part/skuu-formulation/submit`,
+    skuuFormulationApprove: `${x}/part/skuu-formulation/approve`,
     skuuNewProduct: `${x}/skuu/new-product`,
     jobBulkBatchTicket: (jobId: string) =>
       generatePath(`${x}/job/${jobId}/bulk-batch-ticket`),

@@ -1120,6 +1120,7 @@ export const manifest = {
   makeMethod: company("parts", { read: "parts_view" }),
   skuuItemRetest: company("parts", { read: "parts_view" }),
   skuuMakeMethodBulk: company("parts", { read: "parts_view" }),
+  skuuFormulationRevision: company("parts", { read: "parts_view" }),
   skuuMethodMaterialFormula: company("parts", { read: "parts_view" }),
   skuuFormulaPhase: company("parts", { read: "parts_view" }),
   skuuJobMaterialDispense: company("production", { read: "production_view" }),

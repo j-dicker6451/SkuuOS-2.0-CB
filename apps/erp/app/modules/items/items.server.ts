@@ -4712,6 +4712,21 @@ export const updateMethodMaterial = defineServiceFn({
         { kind: "makeMethod", id: input.makeMethodId }
       ]
     );
+    try {
+      const { assertSkuuFormulationEditable, SkuuFormulationLockedError } =
+        await import("~/modules/skuu/skuu-formulation-change-control.service");
+      await assertSkuuFormulationEditable(
+        ctx.asCaller.supabase,
+        input.makeMethodId,
+        ctx.company.id
+      );
+    } catch (e) {
+      const err = e as { message?: string; name?: string };
+      if (err.name === "SkuuFormulationLockedError") {
+        return { data: null, error: { message: err.message ?? "Locked" } };
+      }
+      throw e;
+    }
     if (!lock.ok) return ctx.error("rule", lock.message);
     return service.withLockNotice(
       lock,

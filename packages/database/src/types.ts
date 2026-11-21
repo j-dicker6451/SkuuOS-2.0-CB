@@ -31267,6 +31267,7 @@ export type Database = {
           releasedDate: string | null
           salesOrderId: string | null
           salesOrderLineId: string | null
+          skuuFormulationMakeMethodId: string | null
           scheduleOutdatedAt: string | null
           scheduleOutdatedReason: string | null
           scrapQuantity: number
@@ -31318,6 +31319,7 @@ export type Database = {
           releasedDate?: string | null
           salesOrderId?: string | null
           salesOrderLineId?: string | null
+          skuuFormulationMakeMethodId?: string | null
           scheduleOutdatedAt?: string | null
           scheduleOutdatedReason?: string | null
           scrapQuantity?: number
@@ -31369,6 +31371,7 @@ export type Database = {
           releasedDate?: string | null
           salesOrderId?: string | null
           salesOrderLineId?: string | null
+          skuuFormulationMakeMethodId?: string | null
           scheduleOutdatedAt?: string | null
           scheduleOutdatedReason?: string | null
           scrapQuantity?: number
@@ -76535,6 +76538,66 @@ export type Database = {
         }
         Relationships: []
       }
+      skuuFormulationRevision: {
+        Row: {
+          approvedAt: string | null
+          approvedBy: string | null
+          changeReason: string
+          companyId: string
+          createdAt: string
+          createdBy: string
+          itemId: string
+          makeMethodId: string
+          sourceMakeMethodId: string | null
+          status: Database["public"]["Enums"]["skuuFormulationStatus"]
+          submittedAt: string | null
+          submittedBy: string | null
+          updatedAt: string
+          updatedBy: string
+          version: number
+          withdrawnAt: string | null
+          withdrawnBy: string | null
+        }
+        Insert: {
+          approvedAt?: string | null
+          approvedBy?: string | null
+          changeReason: string
+          companyId: string
+          createdAt?: string
+          createdBy: string
+          itemId: string
+          makeMethodId: string
+          sourceMakeMethodId?: string | null
+          status?: Database["public"]["Enums"]["skuuFormulationStatus"]
+          submittedAt?: string | null
+          submittedBy?: string | null
+          updatedAt?: string
+          updatedBy: string
+          version: number
+          withdrawnAt?: string | null
+          withdrawnBy?: string | null
+        }
+        Update: {
+          approvedAt?: string | null
+          approvedBy?: string | null
+          changeReason?: string
+          companyId?: string
+          createdAt?: string
+          createdBy?: string
+          itemId?: string
+          makeMethodId?: string
+          sourceMakeMethodId?: string | null
+          status?: Database["public"]["Enums"]["skuuFormulationStatus"]
+          submittedAt?: string | null
+          submittedBy?: string | null
+          updatedAt?: string
+          updatedBy?: string
+          version?: number
+          withdrawnAt?: string | null
+          withdrawnBy?: string | null
+        }
+        Relationships: []
+      }
       skuuMethodMaterialFormula: {
         Row: {
           companyId: string
@@ -112859,6 +112922,12 @@ export type Database = {
         | "Invoiced"
         | "Cancelled"
       serviceType: "Internal" | "External"
+      skuuFormulationStatus:
+        | "draft"
+        | "pending_approval"
+        | "approved"
+        | "superseded"
+        | "withdrawn"
       serviceWorkSite: "Depot" | "Customer Site"
       shelfLifeMode: "Fixed Duration" | "Calculated" | "Set on Receipt"
       shelfLifeTriggerTiming: "Before" | "After"

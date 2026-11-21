@@ -171,6 +171,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       ? await loadSkuuFillBulkPullOverlay(client, { jobId, companyId })
       : null;
 
+  const skuuFormulationVersion = skuuBulkResolved?.formulationVersion ?? null;
+
   return {
     job: job.data,
     projectCharge: projectCharge.data ?? null,
@@ -178,6 +180,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     skuuJobQuantitySummary,
     skuuBomQuantity,
     skuuFillBulkPull,
+    skuuFormulationVersion,
     unbatchedBatchableOperations,
     tags: tags.data ?? [],
     trackedEntities: getTrackedEntitiesByJobId(client, jobId),

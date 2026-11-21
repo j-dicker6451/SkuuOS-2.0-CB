@@ -11,8 +11,15 @@ import type { PartSummary } from "~/modules/items/types";
 import { usePartLayoutData } from "~/modules/items/ui/Parts/usePartLayoutData";
 import { findLatestSkuuBulkJobForItem } from "~/modules/skuu/skuu-job-bulk.server";
 import { loadSkuuFormulationView } from "~/modules/skuu/skuu-formulation.service";
+import {
+  computeSkuuFormulationDiff,
+  listSkuuFormulationRevisionsForItem,
+  resolveSkuuFormulationStatus
+} from "~/modules/skuu/skuu-formulation-change-control.service";
 import { SkuuFormulationMethodPanel } from "~/modules/skuu/ui/SkuuFormulationMethodPanel";
+import { SkuuFormulationVersionPanel } from "~/modules/skuu/ui/SkuuFormulationVersionPanel";
 import { path } from "~/utils/path";
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { client, companyId } = await requirePermissions(request, {
     view: "parts"
@@ -20,22 +27,52 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { itemId } = params;
   if (!itemId) throw new Error("itemId required");
 
+  const url = new URL(request.url);
+  const makeMethodIdParam = url.searchParams.get("makeMethodId");
+
   const methods = await getMakeMethodsOnce(client, itemId, companyId);
   const active =
     methods.data?.find((m) => m.status === "Active") ?? methods.data?.[0];
-  if (!active) {
-    return { makeMethodId: null, view: null };
+
+  const selected =
+    (makeMethodIdParam &&
+      methods.data?.find((m) => m.id === makeMethodIdParam)) ??
+    active;
+
+  if (!selected) {
+    return { makeMethodId: null, view: null, revisions: [], formulationStatus: "draft", diff: null, version: null };
   }
 
-  const view = await loadSkuuFormulationView(client, active.id, companyId);
+  const [view, revisions, formulationStatus] = await Promise.all([
+    loadSkuuFormulationView(client, selected.id, companyId),
+    listSkuuFormulationRevisionsForItem(client, itemId, companyId),
+    resolveSkuuFormulationStatus(client, selected.id, companyId)
+  ]);
+
+  const revision = revisions.find((r) => r.makeMethodId === selected.id);
+  let diff = null;
+  if (revision?.sourceMakeMethodId) {
+    diff = await computeSkuuFormulationDiff(
+      client,
+      revision.sourceMakeMethodId,
+      selected.id,
+      companyId
+    );
+  }
+
   const latestBulkJob = view.profile?.enabled
     ? await findLatestSkuuBulkJobForItem(client, itemId, companyId)
     : null;
+
   return {
-    makeMethodId: active.id,
+    makeMethodId: selected.id,
     view,
-    methodStatus: active.status,
-    latestBulkJob
+    methodStatus: selected.status,
+    latestBulkJob,
+    revisions,
+    formulationStatus,
+    diff,
+    version: selected.version
   };
 }
 
@@ -45,6 +82,7 @@ export default function PartFormulationRoute() {
   const data = useLoaderData<typeof loader>();
   const layout = usePartLayoutData<{ partSummary: PartSummary }>();
   const readableId = layout?.partSummary?.readableId ?? itemId ?? "";
+  const readOnly = data.formulationStatus !== "draft";
 
   if (!data.makeMethodId) {
     return (
@@ -78,6 +116,7 @@ export default function PartFormulationRoute() {
       <HStack className="flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">
           {t`Formulation & method`} — {readableId}
+          {data.version != null ? ` · V${Number(data.version).toFixed(2)}` : ""}
         </h1>
         {data.latestBulkJob ? (
           <HStack className="gap-2">
@@ -98,6 +137,15 @@ export default function PartFormulationRoute() {
           </HStack>
         ) : null}
       </HStack>
+      {view.profile?.enabled ? (
+        <SkuuFormulationVersionPanel
+          itemId={itemId!}
+          revisions={data.revisions}
+          diff={data.diff}
+          selectedMakeMethodId={data.makeMethodId}
+          formulationStatus={data.formulationStatus}
+        />
+      ) : null}
       <SkuuFormulationMethodPanel
         makeMethodId={data.makeMethodId}
         profile={view.profile}
@@ -106,6 +154,7 @@ export default function PartFormulationRoute() {
           instructions: p.instructions
         }))}
         materials={view.materials}
+        readOnly={readOnly}
       />
     </VStack>
   );

@@ -39,6 +39,7 @@ export type BulkBatchTicketPhase = {
 export type BulkBatchTicket = {
   productName: string;
   productCode: string;
+  formulationVersion: number | null;
   batchNumber: string;
   batchSizeKg: number;
   batchSizeL: number | null;
@@ -57,6 +58,8 @@ export async function buildBulkBatchTicket(
 ): Promise<BulkBatchTicket | null> {
   const resolved = await resolveSkuuBulkMakeMethodForJob(client, args);
   if (!resolved) return null;
+
+  const formulationVersion = resolved.formulationVersion ?? null;
 
   const { data: job, error: jobErr } = await client
     .from("job")
@@ -151,6 +154,7 @@ export async function buildBulkBatchTicket(
   return {
     productName: item?.name ?? "",
     productCode: item?.readableId ?? job.itemId,
+    formulationVersion,
     batchNumber: job.jobId ?? job.id,
     batchSizeKg,
     batchSizeL,

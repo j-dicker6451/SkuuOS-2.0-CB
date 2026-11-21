@@ -54,20 +54,18 @@ async function resolveActiveMakeMethodForItem(
 export async function resolveSkuuBulkMakeMethodForJob(
   client: Client,
   args: { jobId: string; companyId: string }
-): Promise<{ makeMethodId: string; itemId: string } | null> {
+): Promise<{ makeMethodId: string; itemId: string; formulationVersion?: number } | null> {
   const { data: job, error: jobErr } = await client
     .from("job")
-    .select("id, itemId")
+    .select("id, itemId, skuuFormulationMakeMethodId")
     .eq("id", args.jobId)
     .eq("companyId", args.companyId)
     .maybeSingle();
   if (jobErr || !job?.itemId) return null;
 
-  let makeMethodId = await resolveJobMakeMethodId(
-    client,
-    args.jobId,
-    args.companyId
-  );
+  let makeMethodId =
+    job.skuuFormulationMakeMethodId ??
+    (await resolveJobMakeMethodId(client, args.jobId, args.companyId));
   if (!makeMethodId) {
     makeMethodId = await resolveActiveMakeMethodForItem(
       client,
@@ -84,7 +82,18 @@ export async function resolveSkuuBulkMakeMethodForJob(
   );
   if (!profile?.enabled) return null;
 
-  return { makeMethodId, itemId: job.itemId };
+  const { data: mm } = await client
+    .from("makeMethod")
+    .select("version")
+    .eq("id", makeMethodId)
+    .eq("companyId", args.companyId)
+    .maybeSingle();
+
+  return {
+    makeMethodId,
+    itemId: job.itemId,
+    formulationVersion: mm?.version != null ? Number(mm.version) : undefined
+  };
 }
 
 export async function isSkuuBulkFormulaJob(
